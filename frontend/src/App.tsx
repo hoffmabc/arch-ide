@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Editor from './components/Editor';
-import Output from './components/Output';
+import { Output } from './components/Output';
 import Toolbar from './components/Toolbar';
 import FileExplorer from './components/FileExplorer';
 import ProjectList from './components/ProjectList';
@@ -12,6 +12,7 @@ import type { Project, FileNode } from './types';
 import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
+import { BuildPanel } from './components/BuildPanel';
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,9 @@ const App = () => {
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
   const [newItemPath, setNewItemPath] = useState<string[]>([]);
   const [newItemType, setNewItemType] = useState<'file' | 'directory'>();
+  const [outputMessages, setOutputMessages] = useState<OutputMessage[]>([]);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [programId, setProgramId] = useState<string>();
 
   useEffect(() => {
     // Load projects on mount
@@ -37,6 +41,40 @@ const App = () => {
       setCurrentProject(loadedProjects[0]);
     }
   }, []);
+
+  const handleDeploy = async () => {
+    if (!currentProject || !programId) return;
+
+    setIsDeploying(true);
+    addOutputMessage('command', 'solana program deploy');
+
+    try {
+      const response = await fetch('http://localhost:8080/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          program: programId,
+          network: 'devnet' // or could make this configurable
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        addOutputMessage('success', `Program deployed successfully`);
+        addOutputMessage('info', `Program ID: ${result.programId}`);
+        setProgramId(result.programId);
+      } else {
+        addOutputMessage('error', result.error || 'Deploy failed');
+      }
+    } catch (error: any) {
+      addOutputMessage('error', `Deploy error: ${error.message}`);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   const handleCreateProject = (name: string, description: string) => {
     const newProject = projectService.createProject(name, description);
@@ -156,14 +194,29 @@ const App = () => {
     if (!currentProject) return;
     
     setIsCompiling(true);
+    addOutputMessage('command', 'cargo build-sbf');
+    
     try {
       const result = await projectService.compileProject(currentProject);
-      setOutput(result.success ? result.output : result.error);
+      if (result.success) {
+        addOutputMessage('success', 'Build successful. Completed in 2.14s');
+        setProgramId(result.program); // Store the program ID/binary
+      } else {
+        addOutputMessage('error', result.error);
+      }
     } catch (error: any) {
-      setOutput(`Error: ${error.message}`);
+      addOutputMessage('error', `Error: ${error.message}`);
     } finally {
       setIsCompiling(false);
     }
+  };
+  
+  const addOutputMessage = (type: OutputMessage['type'], content: string) => {
+    setOutputMessages(prev => [...prev, {
+      type,
+      content,
+      timestamp: new Date()
+    }]);
   };
 
   const handleDeleteProject = (projectId: string) => {
@@ -218,17 +271,20 @@ const App = () => {
   </nav>
   
   <div className="flex flex-1 overflow-hidden">
-      <FileExplorer
-        files={currentProject?.files || []}
-        onFileSelect={handleFileSelect}
-        onUpdateTree={handleUpdateTree}
-        onNewItem={handleNewItem}
-      />
-    
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <Toolbar 
-        onCompile={handleCompile} 
-        isCompiling={isCompiling}
+    <FileExplorer
+      files={currentProject?.files || []}
+      onFileSelect={handleFileSelect}
+      onUpdateTree={handleUpdateTree}
+      onNewItem={handleNewItem}
+    />
+
+    <div className="flex flex-1 overflow-hidden">
+      <BuildPanel
+        onBuild={handleCompile}
+        onDeploy={handleDeploy}
+        isBuilding={isCompiling}
+        isDeploying={isDeploying}
+        programId={programId}
       />
       
       <div className="flex flex-col flex-1 overflow-hidden">
@@ -244,12 +300,12 @@ const App = () => {
             onChange={handleEditorChange}
           />
         </div>
-      </div>
 
-      <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-        <ResizeHandle onMouseDown={handleResizeStart} />
-        <div className="flex-1 min-h-0">
-          <Output content={output} />
+        <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+          <ResizeHandle onMouseDown={handleResizeStart} />
+          <div className="flex-1 min-h-0">
+            <Output messages={outputMessages} />
+          </div>
         </div>
       </div>
     </div>

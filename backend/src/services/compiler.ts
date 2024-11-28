@@ -71,7 +71,7 @@ export class CompilerService {
       });
 
       // Read the compiled .so file
-      const soFile = path.join(projectDir, 'program/target/sbf-solana-solana/release/arch_program.so');
+      const soFile = path.join(projectDir, 'target/sbf-solana-solana/release/arch_program.so');
       let programBytes = null;
       
       try {
@@ -81,9 +81,9 @@ export class CompilerService {
       }
 
       // Cleanup
-      // await fs.rm(projectDir, { recursive: true, force: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
 
-      if (stderr && !stderr.includes('Completed successfully')) {
+      if (stderr && !stderr.includes('Finished release')) {
         return {
           success: false,
           error: stderr
