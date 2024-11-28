@@ -1,6 +1,27 @@
 // src/components/FileExplorer.tsx
 import React, { useState } from 'react';
-import { Folder, File, ChevronRight, ChevronDown, MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { 
+  Folder, 
+  File,
+  ChevronRight, 
+  ChevronDown, 
+  MoreVertical, 
+  Plus, 
+  Trash2,
+  FileJson,
+  FileText,
+  FileCode,
+  FileType,
+  Terminal,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileCog,
+  FileSearch,
+  FileKey,
+  FileSpreadsheet,
+  Package
+} from 'lucide-react';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -19,6 +40,67 @@ const getNodePath = (node: FileNode): string[] => {
   // This would need to be implemented to track the full path
   // You'd likely want to pass the full path down through props
   return [node.name];
+};
+
+const getFileIcon = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  switch (extension) {
+    // Programming Languages
+    case 'js':
+    case 'jsx':
+      return <FileCode size={16} className="ml-1 text-yellow-400" />;
+    case 'ts':
+    case 'tsx':
+      return <FileCode size={16} className="ml-1 text-blue-400" />;
+    case 'py':
+      return <FileCode size={16} className="ml-1 text-green-500" />;
+    case 'rs':
+      return <FileType size={16} className="ml-1 text-orange-400" />;
+    case 'go':
+      return <FileCode size={16} className="ml-1 text-cyan-400" />;
+    
+    // Config files
+    case 'json':
+      return <FileJson size={16} className="ml-1 text-yellow-300" />;
+    case 'yaml':
+    case 'yml':
+      return <FileCog size={16} className="ml-1 text-red-400" />;
+    case 'toml':
+      return <FileCog size={16} className="ml-1 text-blue-300" />;
+    
+    // Shell scripts
+    case 'sh':
+    case 'bash':
+      return <Terminal size={16} className="ml-1 text-purple-400" />;
+    
+    // Documentation
+    case 'md':
+    case 'txt':
+      return <FileText size={16} className="ml-1 text-blue-200" />;
+    
+    // Package files
+    case 'lock':
+      return <FileKey size={16} className="ml-1 text-red-300" />;
+    case 'cargo':
+      return <Package size={16} className="ml-1 text-orange-300" />;
+    
+    // Media files
+    case 'jpg':
+    case 'png':
+    case 'gif':
+    case 'svg':
+      return <FileImage size={16} className="ml-1 text-pink-400" />;
+    case 'mp4':
+    case 'mov':
+      return <FileVideo size={16} className="ml-1 text-purple-500" />;
+    case 'mp3':
+    case 'wav':
+      return <FileAudio size={16} className="ml-1 text-green-400" />;
+    
+    // Default
+    default:
+      return <File size={16} className="ml-1 text-gray-400" />;
+  }
 };
 
 interface FileExplorerProps {
@@ -105,7 +187,7 @@ const FileExplorerItem = ({
           {node.type === 'directory' ? (
             <Folder size={16} className="ml-1 text-blue-400" />
           ) : (
-            <File size={16} className="ml-1 text-gray-400" />
+            getFileIcon(node.name)
           )}
           <span className="ml-2 text-sm">{node.name}</span>
         </div>
