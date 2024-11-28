@@ -10,7 +10,11 @@ import NewProjectDialog from './components/NewProjectDialog';
 import { projectService } from './services/projectService';
 import type { Project, FileNode } from './types';
 import TabBar from './components/TabBar';
+import ResizeHandle from './components/ResizeHandle';
+import NewItemDialog from './components/NewItemDialog';
+
 const queryClient = new QueryClient();
+
 
 const App = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -20,6 +24,10 @@ const App = () => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const [openFiles, setOpenFiles] = useState<FileNode[]>([]);
+  const [terminalHeight, setTerminalHeight] = useState(192);
+  const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
+  const [newItemPath, setNewItemPath] = useState<string[]>([]);
+  const [newItemType, setNewItemType] = useState<'file' | 'directory'>();
 
   useEffect(() => {
     // Load projects on mount
@@ -34,6 +42,20 @@ const App = () => {
     const newProject = projectService.createProject(name, description);
     setProjects([...projects, newProject]);
     setCurrentProject(newProject);
+  };
+
+  const handleNewItem = (path: string[], type: 'file' | 'directory') => {
+    console.log('handleNewItem called with:', { path, type });
+    setNewItemPath(path);
+    setNewItemType(type);
+    setIsNewFileDialogOpen(true);
+  };
+
+  const handleCreateNewItem = (name: string) => {
+    console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
+    if (newItemPath && newItemType) {
+      handleUpdateTree('create', [...newItemPath, name], newItemType);
+    }
   };
 
   const handleFileSelect = (file: FileNode) => {
@@ -52,46 +74,77 @@ const App = () => {
     }
   };
 
+  const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.pageY;
+    const startHeight = terminalHeight;
+  
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = startY - e.pageY;
+      const newHeight = Math.max(100, Math.min(800, startHeight + delta));
+      setTerminalHeight(newHeight);
+    };
+  
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [terminalHeight]);
+
   const handleUpdateTree = (operation: 'create' | 'delete', path: string[], type?: 'file' | 'directory') => {
+    console.log('handleUpdateTree called with:', { operation, path, type });
     if (!currentProject) return;
-
+  
     const updateFiles = (nodes: FileNode[], currentPath: string[]): FileNode[] => {
+      console.log('updateFiles processing:', { nodes, currentPath });
       if (currentPath.length === 0) return nodes;
-
+  
       const [current, ...rest] = currentPath;
+      
+      // If we're creating a new item and we're at the parent directory
+      if (operation === 'create' && rest.length === 1) {
+        const targetNode = nodes.find(node => node.name === current);
+        if (targetNode && targetNode.type === 'directory') {
+          const newNode: FileNode = {
+            name: rest[0],  // Use the last part of the path as the new item's name
+            type: type || 'file',
+            content: type === 'file' ? '' : undefined,
+            children: type === 'directory' ? [] : undefined
+          };
+          
+          return nodes.map(node =>
+            node.name === current
+              ? { ...node, children: [...(node.children || []), newNode] }
+              : node
+          );
+        }
+      }
+  
+      // Handle deletion or traverse deeper
       return nodes.map(node => {
         if (node.name === current) {
           if (rest.length === 0) {
-            if (operation === 'delete') {
-              return null;
-            } else if (operation === 'create' && type) {
-              const newNode: FileNode = {
-                name: current,
-                type,
-                content: type === 'file' ? '' : undefined,
-              };
-              return {
-                ...node,
-                children: [...(node.children || []), newNode],
-              };
-            }
+            return operation === 'delete' ? null : node;
           }
           return {
             ...node,
-            children: updateFiles(node.children || [], rest),
+            children: updateFiles(node.children || [], rest)
           };
         }
         return node;
       }).filter(Boolean) as FileNode[];
     };
-
+  
     const updatedFiles = updateFiles(currentProject.files, path);
     const updatedProject = {
       ...currentProject,
       files: updatedFiles,
-      lastModified: new Date(),
+      lastModified: new Date()
     };
-
+  
     projectService.saveProject(updatedProject);
     setCurrentProject(updatedProject);
     setProjects(projects.map(p => 
@@ -154,7 +207,7 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
   <nav className="border-b border-gray-800 flex items-center justify-between p-4">
-    <h1 className="text-xl font-bold">Arch Network IDE</h1>
+    <h1 className="text-xl font-bold">Arch Network Playground</h1>
     <ProjectList
       projects={projects}
       currentProject={currentProject || undefined}
@@ -165,11 +218,12 @@ const App = () => {
   </nav>
   
   <div className="flex flex-1 overflow-hidden">
-    <FileExplorer 
-      files={currentProject?.files || []}
-      onFileSelect={handleFileSelect}
-      onUpdateTree={handleUpdateTree}
-    />
+      <FileExplorer
+        files={currentProject?.files || []}
+        onFileSelect={handleFileSelect}
+        onUpdateTree={handleUpdateTree}
+        onNewItem={handleNewItem}
+      />
     
     <div className="flex-1 flex flex-col overflow-hidden">
       <Toolbar 
@@ -192,8 +246,11 @@ const App = () => {
         </div>
       </div>
 
-      <div className="h-48 border-t border-gray-700">
-        <Output content={output} />
+      <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+        <ResizeHandle onMouseDown={handleResizeStart} />
+        <div className="flex-1 min-h-0">
+          <Output content={output} />
+        </div>
       </div>
     </div>
   </div>
@@ -202,6 +259,12 @@ const App = () => {
     isOpen={isNewProjectOpen}
     onClose={() => setIsNewProjectOpen(false)}
     onCreateProject={handleCreateProject}
+  />
+  <NewItemDialog
+    isOpen={isNewFileDialogOpen}
+    onClose={() => setIsNewFileDialogOpen(false)}
+    onSubmit={handleCreateNewItem}
+    type={newItemType || 'file'}
   />
 </div>
     </QueryClientProvider>

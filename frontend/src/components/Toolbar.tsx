@@ -8,18 +8,18 @@ interface ToolbarProps {
 
 const Toolbar = ({ onCompile, onSave, isCompiling }: ToolbarProps) => {
   return (
-    <div className="flex gap-2 mb-4">
+    <div className="flex items-center h-14 px-4 border-b border-gray-800">
       <button
         onClick={onCompile}
         disabled={isCompiling}
-        className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        className="px-6 py-2 bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
       >
         {isCompiling ? 'Compiling...' : 'Compile & Run'}
       </button>
       {onSave && (
         <button
           onClick={onSave}
-          className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors"
+          className="ml-2 px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors text-sm"
         >
           Save
         </button>

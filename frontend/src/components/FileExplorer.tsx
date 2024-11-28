@@ -25,6 +25,7 @@ interface FileExplorerProps {
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
   onUpdateTree: (operation: 'create' | 'delete', path: string[], type?: 'file' | 'directory') => void;
+  onNewItem: (path: string[], type: 'file' | 'directory') => void;
 }
 
 interface FileContextMenuProps {
@@ -66,30 +67,22 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete }: FileContext
 
 const FileExplorerItem = ({ 
   node, 
+  path = [],
   depth = 0, 
   onSelect,
-  onUpdateTree 
-}: { 
-  node: FileNode; 
-  depth?: number; 
-  onSelect: (node: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete', path: string[], type?: 'file' | 'directory') => void;
+  onUpdateTree,
+  onNewItem
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
 
-  const handleNewItem = (type: 'file' | 'directory') => {
-    setIsCreating(true);
-    setIsOpen(true);
+  const handleNewFile = () => {
+    console.log('handleNewFile called with path:', path);
+    onNewItem([...path, node.name], 'file');
   };
 
-  const handleCreateItem = (type: 'file' | 'directory') => {
-    if (newItemName) {
-      onUpdateTree('create', [...getNodePath(node), newItemName], type);
-      setIsCreating(false);
-      setNewItemName('');
-    }
+  const handleNewFolder = () => {
+    console.log('handleNewFolder called with path:', path);
+    onNewItem([...path, node.name], 'directory');
   };
 
   return (
@@ -119,44 +112,28 @@ const FileExplorerItem = ({
         <div className="opacity-0 group-hover:opacity-100 pr-2">
           <FileContextMenu
             node={node}
-            onNewFile={() => handleNewItem('file')}
-            onNewFolder={() => handleNewItem('directory')}
-            onDelete={() => onUpdateTree('delete', getNodePath(node))}
+            onNewFile={handleNewFile}
+            onNewFolder={handleNewFolder}
+            onDelete={() => onUpdateTree('delete', [...path, node.name])}
           />
         </div>
       </div>
-      {isCreating && (
-        <div className="flex items-center px-2 py-1" style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
-          <input
-            autoFocus
-            value={newItemName}
-            onChange={(e) => setNewItemName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleCreateItem('file');
-              } else if (e.key === 'Escape') {
-                setIsCreating(false);
-                setNewItemName('');
-              }
-            }}
-            className="bg-gray-700 px-2 py-1 text-sm rounded"
-          />
-        </div>
-      )}
       {isOpen && node.children?.map((child, i) => (
         <FileExplorerItem 
           key={i} 
           node={child} 
+          path={[...path, node.name]}
           depth={depth + 1} 
           onSelect={onSelect}
           onUpdateTree={onUpdateTree}
+          onNewItem={onNewItem}
         />
       ))}
     </div>
   );
 };
 
-const FileExplorer = ({ files, onFileSelect, onUpdateTree }: FileExplorerProps) => {
+const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem }: FileExplorerProps) => {
   return (
     <div className="bg-gray-800 w-64 h-full overflow-y-auto border-r border-gray-700">
       <div className="p-2 border-b border-gray-700 font-medium">Explorer</div>
@@ -164,8 +141,10 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree }: FileExplorerProps) 
         <FileExplorerItem 
           key={i} 
           node={file} 
+          path={[]}  // Add this line
           onSelect={onFileSelect}
           onUpdateTree={onUpdateTree}
+          onNewItem={onNewItem}
         />
       ))}
     </div>
