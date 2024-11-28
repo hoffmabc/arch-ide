@@ -57,8 +57,13 @@ export class CompilerService {
           "crates/sdk",
           "crates/bip322",
           "crates/program"
-      ]`
+      ]
+
+      resolver = "2"
+      `
       );
+
+      console.log('Program directory:', path.join(projectDir, 'program'));
   
       // Compile using cargo build-sbf
       const { stdout, stderr } = await execAsync('cargo build-sbf', {

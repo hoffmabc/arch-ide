@@ -6,23 +6,12 @@ name = "arch-program"
 version = "0.1.0"
 edition = "2021"
 
-# These dependencies are provided by the server during compilation
-# and should reference the server-side crate paths
 [dependencies]
-sdk = { path = "../crates/sdk" }
 arch_program = { path = "../crates/program" }
-bip322 = { path = "../crates/bip322" }
-
-# Standard dependencies that will be downloaded during compilation
-bitcoincore-rpc = "0.18.0"
-hex = "0.4.3"
-borsh = { version = "1.4.0", features = ["derive"] }
-bitcoin = { version = "0.32.3", features = ["serde", "rand"] }
-log = "0.4"
-env_logger = "0.10"
+borsh = { version = "1.5.1", features = ["derive"] }
 
 [lib]
-path = "src/lib.rs"`;
+crate-type = ["cdylib", "lib"]`;
 
 const DEFAULT_PROGRAM = `use arch_program::{
     account::AccountInfo,
