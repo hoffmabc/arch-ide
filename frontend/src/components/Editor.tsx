@@ -8,7 +8,7 @@ interface EditorProps {
 
 const Editor = ({ code, onChange }: EditorProps) => {
   return (
-    <div className="h-full rounded-lg overflow-hidden border border-gray-700">
+    <div className="h-full w-full">
       <MonacoEditor
         height="100%"
         defaultLanguage="rust"

@@ -9,7 +9,7 @@ import ProjectList from './components/ProjectList';
 import NewProjectDialog from './components/NewProjectDialog';
 import { projectService } from './services/projectService';
 import type { Project, FileNode } from './types';
-
+import TabBar from './components/TabBar';
 const queryClient = new QueryClient();
 
 const App = () => {
@@ -19,6 +19,7 @@ const App = () => {
   const [output, setOutput] = useState('');
   const [isCompiling, setIsCompiling] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [openFiles, setOpenFiles] = useState<FileNode[]>([]);
 
   useEffect(() => {
     // Load projects on mount
@@ -38,6 +39,16 @@ const App = () => {
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
       setCurrentFile(file);
+      if (!openFiles.find(f => f.name === file.name)) {
+        setOpenFiles([...openFiles, file]);
+      }
+    }
+  };
+
+  const handleCloseFile = (file: FileNode) => {
+    setOpenFiles(openFiles.filter(f => f.name !== file.name));
+    if (currentFile?.name === file.name) {
+      setCurrentFile(openFiles[0] || null);
     }
   };
 
@@ -102,62 +113,97 @@ const App = () => {
     }
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    if (window.confirm('Are you sure you want to delete this project?')) {
+      projectService.deleteProject(projectId);
+      setProjects(projects.filter(p => p.id !== projectId));
+      if (currentProject?.id === projectId) {
+        setCurrentProject(projects[0] || null);
+      }
+    }
+  };
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (!currentProject || !currentFile || !value) return;
+  
+    // Update the current file's content
+    const updatedFiles = updateFileContent(currentProject.files, currentFile, value);
+    
+    // Create updated project
+    const updatedProject = {
+      ...currentProject,
+      files: updatedFiles,
+      lastModified: new Date()
+    };
+  
+    // Save to storage and update state
+    projectService.saveProject(updatedProject);
+    setCurrentProject(updatedProject);
+    setProjects(projects.map(p => 
+      p.id === updatedProject.id ? updatedProject : p
+    ));
+  
+    // Update the current file in openFiles
+    setOpenFiles(openFiles.map(f => 
+      f === currentFile ? { ...f, content: value } : f
+    ));
+    setCurrentFile({ ...currentFile, content: value });
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
-        <nav className="border-b border-gray-800 flex items-center justify-between p-4">
-          <h1 className="text-xl font-bold">Arch Network IDE</h1>
-          <ProjectList
-            projects={projects}
-            currentProject={currentProject || undefined}
-            onSelectProject={setCurrentProject}
-            onNewProject={() => setIsNewProjectOpen(true)}
-          />
-        </nav>
-        
-        <div className="flex-1 flex">
-          <FileExplorer 
-            files={currentProject?.files || []}
-            onFileSelect={handleFileSelect}
-            onUpdateTree={handleUpdateTree}
-          />
-          
-          <main className="flex-1 p-4">
-            <Toolbar 
-              onCompile={handleCompile} 
-              isCompiling={isCompiling}
-            />
-            
-            <div className="grid grid-cols-2 gap-4 h-[calc(100vh-12rem)]">
-              <Editor 
-                code={currentFile?.content || '// Select a file to edit'} 
-                onChange={(value) => {
-                  if (currentFile && currentProject) {
-                    const updatedProject = {
-                      ...currentProject,
-                      files: updateFileContent(
-                        currentProject.files,
-                        currentFile,
-                        value || ''
-                      ),
-                      lastModified: new Date(),
-                    };
-                    projectService.saveProject(updatedProject);
-                    setCurrentProject(updatedProject);
-                  }
-                }}
-              />
-              <Output content={output} />
-            </div>
-          </main>
-        </div>
-
-        <NewProjectDialog
-          isOpen={isNewProjectOpen}
-          onClose={() => setIsNewProjectOpen(false)}
-          onCreateProject={handleCreateProject}
+  <nav className="border-b border-gray-800 flex items-center justify-between p-4">
+    <h1 className="text-xl font-bold">Arch Network IDE</h1>
+    <ProjectList
+      projects={projects}
+      currentProject={currentProject || undefined}
+      onSelectProject={setCurrentProject}
+      onNewProject={() => setIsNewProjectOpen(true)}
+      onDeleteProject={handleDeleteProject}
+    />
+  </nav>
+  
+  <div className="flex flex-1 overflow-hidden">
+    <FileExplorer 
+      files={currentProject?.files || []}
+      onFileSelect={handleFileSelect}
+      onUpdateTree={handleUpdateTree}
+    />
+    
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <Toolbar 
+        onCompile={handleCompile} 
+        isCompiling={isCompiling}
+      />
+      
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <TabBar
+          openFiles={openFiles}
+          currentFile={currentFile}
+          onSelectFile={setCurrentFile}
+          onCloseFile={handleCloseFile}
         />
+        <div className="flex-1 overflow-hidden">
+          <Editor
+            code={currentFile?.content || '// Select a file to edit'} 
+            onChange={handleEditorChange}
+          />
+        </div>
       </div>
+
+      <div className="h-48 border-t border-gray-700">
+        <Output content={output} />
+      </div>
+    </div>
+  </div>
+
+  <NewProjectDialog
+    isOpen={isNewProjectOpen}
+    onClose={() => setIsNewProjectOpen(false)}
+    onCreateProject={handleCreateProject}
+  />
+</div>
     </QueryClientProvider>
   );
 };
