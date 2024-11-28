@@ -1,6 +1,29 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Project, FileNode } from '../types';
 
+const CARGO_TOML_TEMPLATE = `[package]
+name = "arch-program"
+version = "0.1.0"
+edition = "2021"
+
+# These dependencies are provided by the server during compilation
+# and should reference the server-side crate paths
+[dependencies]
+sdk = { path = "../../sdk" }
+arch_program = { path = "../../program" }
+bip322 = { path = "../../bip322" }
+
+# Standard dependencies that will be downloaded during compilation
+bitcoincore-rpc = "0.18.0"
+hex = "0.4.3"
+borsh = { version = "1.4.0", features = ["derive"] }
+bitcoin = { version = "0.32.3", features = ["serde", "rand"] }
+log = "0.4"
+env_logger = "0.10"
+
+[lib]
+path = "src/lib.rs"`;
+
 const DEFAULT_PROGRAM = `use arch_program::{
     account::AccountInfo,
     entrypoint, msg,
@@ -98,13 +121,7 @@ const PROGRAM_TEMPLATE: FileNode[] = [
         {
         name: 'Cargo.toml',
         type: 'file',
-        content: `[package]
-name = "basic"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-anchor-lang = "0.28.0"`
+        content: CARGO_TOML_TEMPLATE
         }
     ]
   },
@@ -395,6 +412,46 @@ export class ProjectService {
     const projects = this.getAllProjects();
     delete projects[id];
     this.storage.setItem('projects', JSON.stringify(projects));
+  }
+
+  async compileProject(project: Project) {
+    const files: { path: string, content: string }[] = [];
+    
+    // Recursive function to collect all files from a directory
+    const collectFiles = (nodes: FileNode[], currentPath: string = '') => {
+      for (const node of nodes) {
+        const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
+        
+        if (node.type === 'file') {
+          files.push({
+            path: nodePath.replace('program/', ''), // Remove program/ prefix for backend
+            content: node.content
+          });
+        } else if (node.type === 'directory' && node.children) {
+          collectFiles(node.children, nodePath);
+        }
+      }
+    };
+  
+    // Find the program directory
+    const programDir = project.files.find(node => 
+      node.type === 'directory' && node.name === 'program'
+    );
+  
+    if (programDir?.type === 'directory' && programDir.children) {
+      collectFiles(programDir.children);
+    }
+  
+    // Make API call to compile
+    const response = await fetch('http://localhost:8080/compile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ files })
+    });
+  
+    return response.json();
   }
 }
 

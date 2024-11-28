@@ -89,18 +89,13 @@ const App = () => {
   };
 
   const handleCompile = async () => {
-    if (!currentFile?.content) return;
+    if (!currentProject) return;
     
     setIsCompiling(true);
     try {
-      const response = await fetch('http://localhost:8080/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: currentFile.content }),
-      });
-      const data = await response.json();
-      setOutput(data.success ? data.output : data.error);
-    } catch (error) {
+      const result = await projectService.compileProject(currentProject);
+      setOutput(result.success ? result.output : result.error);
+    } catch (error: any) {
       setOutput(`Error: ${error.message}`);
     } finally {
       setIsCompiling(false);
