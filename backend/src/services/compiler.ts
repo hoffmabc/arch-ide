@@ -53,10 +53,10 @@ export class CompilerService {
         path.join(projectDir, 'Cargo.toml'),
         `[workspace]
       members = [
-          ".",
-          "crates/program",
+          "program",
           "crates/sdk",
-          "crates/bip322"
+          "crates/bip322",
+          "crates/program"
       ]`
       );
   
