@@ -20,41 +20,44 @@ export class CompilerService {
 
   async compile(files: { path: string, content: string }[]) {
     try {
-      console.log('Received files:', JSON.stringify(files, null, 2));
-      
-      const projectDir = path.join(this.tempDir, `project_${Date.now()}`);
+      const projectDir = path.join(this.tempDir, `project_${Date.now()}`);      
       
       // Create project structure
       await fs.mkdir(path.join(projectDir, 'program/src'), { recursive: true });
       await fs.mkdir(path.join(projectDir, 'crates'), { recursive: true });
   
-      // Copy only our custom crates
-      await this.copyCrate('program', projectDir);
-      await this.copyCrate('sdk', projectDir);
-      await this.copyCrate('bip322', projectDir);
-      
-      // Write all program files
+      // Write all program files first
       for (const file of files) {
         if (!file.path) {
           console.error('File missing path:', file);
           continue;
         }
-        console.log(`Writing file: ${file.path}`);
+        console.log(`Writing file to: program/${file.path}`);
         const filePath = path.join(projectDir, 'program', file.path);
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, file.content);
       }
   
+      // Debug: List files in program directory
+      console.log('Files in program directory:');
+      const programFiles = await fs.readdir(path.join(projectDir, 'program'), { recursive: true });
+      console.log(programFiles);
+  
+      // Copy SDK and other crates, but not program
+      await this.copyCrate('sdk', projectDir);
+      await this.copyCrate('bip322', projectDir);
+      await this.copyCrate('program', projectDir);
+
       // Write minimal workspace Cargo.toml
       await fs.writeFile(
         path.join(projectDir, 'Cargo.toml'),
         `[workspace]
-  members = [
-      "program",
-      "crates/program",
-      "crates/sdk",
-      "crates/bip322"
-  ]`
+      members = [
+          ".",
+          "crates/program",
+          "crates/sdk",
+          "crates/bip322"
+      ]`
       );
   
       // Compile using cargo build-sbf
@@ -73,7 +76,7 @@ export class CompilerService {
       }
 
       // Cleanup
-      //await fs.rm(projectDir, { recursive: true, force: true });
+      // await fs.rm(projectDir, { recursive: true, force: true });
 
       if (stderr && !stderr.includes('Completed successfully')) {
         return {

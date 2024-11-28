@@ -9,9 +9,9 @@ edition = "2021"
 # These dependencies are provided by the server during compilation
 # and should reference the server-side crate paths
 [dependencies]
-sdk = { path = "../../sdk" }
-arch_program = { path = "../../program" }
-bip322 = { path = "../../bip322" }
+sdk = { path = "../crates/sdk" }
+arch_program = { path = "../crates/program" }
+bip322 = { path = "../crates/bip322" }
 
 # Standard dependencies that will be downloaded during compilation
 bitcoincore-rpc = "0.18.0"
@@ -416,15 +416,19 @@ export class ProjectService {
 
   async compileProject(project: Project) {
     const files: { path: string, content: string }[] = [];
-    
-    // Recursive function to collect all files from a directory
-    const collectFiles = (nodes: FileNode[], currentPath: string = '') => {
+
+    // Find the program directory first
+    const programDir = project.files.find(node =>
+      node.type === 'directory' && node.name === 'program'
+    );
+
+    const collectFiles = (nodes: FileNode[], currentPath = '') => {
       for (const node of nodes) {
         const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
         
         if (node.type === 'file') {
           files.push({
-            path: nodePath.replace('program/', ''), // Remove program/ prefix for backend
+            path: nodePath,
             content: node.content
           });
         } else if (node.type === 'directory' && node.children) {
@@ -432,11 +436,6 @@ export class ProjectService {
         }
       }
     };
-  
-    // Find the program directory
-    const programDir = project.files.find(node => 
-      node.type === 'directory' && node.name === 'program'
-    );
   
     if (programDir?.type === 'directory' && programDir.children) {
       collectFiles(programDir.children);

@@ -28,7 +28,6 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      console.log('Received files:', files);
       const result = await compiler.compile(files);
       res.json(result);
     } catch (error) {
