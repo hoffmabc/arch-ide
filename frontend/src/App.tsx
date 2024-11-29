@@ -189,9 +189,17 @@ const App = () => {
   };
 
   const handleCloseFile = (file: FileNode) => {
-    setOpenFiles(openFiles.filter(f => f.path !== file.path));
-    if (currentFile?.path === file.path) {
-      setCurrentFile(openFiles[0] || null);
+    const newOpenFiles = openFiles.filter(f => f.path !== file.path);
+    setOpenFiles(newOpenFiles);
+    
+    if (newOpenFiles.length === 0) {
+      // If this was the last tab, show welcome screen
+      console.log('Showing welcome screen');
+      setCurrentFile(null);
+    } else if (currentFile?.path === file.path) {
+      // If we're closing the current file and have other files open,
+      // switch to the last tab in the list
+      setCurrentFile(newOpenFiles[newOpenFiles.length - 1]);
     }
   };
 
