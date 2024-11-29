@@ -118,23 +118,23 @@ export const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, program
           />
           <div className="flex items-center space-x-2">
             <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
-              {currentAccount ? currentAccount.address : 'Not deployed'}
+                {currentAccount ? currentAccount.pubkey : 'Not deployed'}
             </code>
             <TooltipProvider>
                 <Tooltip>
-                    <TooltipTrigger asChild>
+                <TooltipTrigger asChild>
                     <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => currentAccount && navigator.clipboard.writeText(currentAccount.address)}
-                        disabled={!currentAccount}
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => currentAccount && navigator.clipboard.writeText(currentAccount.pubkey)}
+                    disabled={!currentAccount}
                     >
-                        <ClipboardIcon className="h-4 w-4" />
+                    <ClipboardIcon className="h-4 w-4" />
                     </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
+                </TooltipTrigger>
+                <TooltipContent>
                     <p>Copy program ID</p>
-                    </TooltipContent>
+                </TooltipContent>
                 </Tooltip>
             </TooltipProvider>
           </div>
