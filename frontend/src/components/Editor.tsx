@@ -37,7 +37,7 @@ const DEFAULT_WELCOME_MESSAGE = `
  * 
  * Need Help?
  * ─────────
- * • Visit docs.archnetwork.io for documentation
+ * • Visit https://docs.arch.network for documentation
  * • Join our Discord community for support
  * • Check out example programs in the templates
  * 
@@ -46,13 +46,16 @@ const DEFAULT_WELCOME_MESSAGE = `
 `;
 
 const Editor = ({ code, onChange }: EditorProps) => {
+  const displayCode = code === '// Select a file to edit' ? DEFAULT_WELCOME_MESSAGE : code;
+  const isWelcomeScreen = code === '// Select a file to edit';
+  
   return (
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
         defaultLanguage="rust"
         theme="vs-dark"
-        value={code === '// Select a file to edit' ? DEFAULT_WELCOME_MESSAGE : code}
+        value={displayCode}
         onChange={onChange}
         options={{
           minimap: { enabled: false },
@@ -61,7 +64,7 @@ const Editor = ({ code, onChange }: EditorProps) => {
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           tabSize: 2,
-          readOnly: code === '// Select a file to edit'
+          readOnly: isWelcomeScreen
         }}
       />
     </div>

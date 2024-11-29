@@ -335,10 +335,10 @@ const App = () => {
           onCloseFile={handleCloseFile}
         />
         <div className="flex-1 overflow-hidden">
-          <Editor
-            code={currentFile?.content || '// Select a file to edit'} 
-            onChange={handleEditorChange}
-          />
+        <Editor
+          code={currentFile === null ? '// Select a file to edit' : (currentFile.content || '')}
+          onChange={handleEditorChange}
+        />
         </div>
 
         <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
