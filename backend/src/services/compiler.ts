@@ -3,6 +3,10 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';
 
+const MAX_FILE_AMOUNT = 64;
+const MAX_PATH_LENGTH = 128;
+const ALLOWED_PATH_REGEX = /^(src\/[\w/-]+\.rs|Cargo\.toml)$/;
+
 const execAsync = promisify(exec);
 
 export class CompilerService {
@@ -20,6 +24,7 @@ export class CompilerService {
 
   async compile(files: { path: string, content: string }[]) {
     try {
+      this.validateFiles(files);
       const projectDir = path.join(this.tempDir, `project_${Date.now()}`);      
       
       // Create project structure
@@ -66,7 +71,7 @@ export class CompilerService {
       console.log('Program directory:', path.join(projectDir, 'program'));
   
       // Compile using cargo build-sbf
-      const { stdout, stderr } = await execAsync('cargo build-sbf', {
+      const { stdout, stderr } = await execAsync('cargo build-sbf --offline', {
         cwd: path.join(projectDir, 'program')
       });
 
@@ -101,6 +106,38 @@ export class CompilerService {
         success: false,
         error: error instanceof Error ? error.message : 'An unknown error occurred'
       };
+    }
+  }
+
+  private isCompileError(stderr: string): boolean {
+    return stderr.includes('error: could not compile') ||
+           stderr.includes('error[E') ||
+           stderr.includes('compilation failed');
+  }
+
+  private validateFiles(files: { path: string, content: string }[]): void {
+    // Check file count
+    if (files.length > MAX_FILE_AMOUNT) {
+      throw new Error(`Exceeded maximum file amount (${MAX_FILE_AMOUNT})`);
+    }
+  
+    // Validate each file
+    for (const file of files) {
+      if (!file.path) {
+        throw new Error('File missing path');
+      }
+  
+      if (file.path.length > MAX_PATH_LENGTH) {
+        throw new Error(`File path exceeds maximum length (${MAX_PATH_LENGTH})`);
+      }
+  
+      if (!ALLOWED_PATH_REGEX.test(file.path)) {
+        throw new Error(`Invalid file path: ${file.path}`);
+      }
+  
+      if (file.path.includes('..') || file.path.includes('//')) {
+        throw new Error(`Unsafe file path: ${file.path}`);
+      }
     }
   }
 

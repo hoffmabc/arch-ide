@@ -405,29 +405,44 @@ export class ProjectService {
 
   async compileProject(project: Project) {
     const files: { path: string, content: string }[] = [];
-
-    // Find the program directory first
+  
+    // Find the program directory
     const programDir = project.files.find(node =>
       node.type === 'directory' && node.name === 'program'
     );
-
-    const collectFiles = (nodes: FileNode[], currentPath = '') => {
+  
+    if (!programDir?.type || !programDir.children) {
+      throw new Error('Program directory not found or invalid');
+    }
+  
+    // Only collect required files from the program directory
+    const requiredFiles = [
+      'src/lib.rs',
+      'Cargo.toml'
+    ];
+  
+    const collectRequiredFiles = (nodes: FileNode[], currentPath = '') => {
       for (const node of nodes) {
         const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
         
-        if (node.type === 'file') {
+        if (node.type === 'file' && requiredFiles.includes(nodePath)) {
           files.push({
             path: nodePath,
             content: node.content
           });
         } else if (node.type === 'directory' && node.children) {
-          collectFiles(node.children, nodePath);
+          collectRequiredFiles(node.children, nodePath);
         }
       }
     };
   
-    if (programDir?.type === 'directory' && programDir.children) {
-      collectFiles(programDir.children);
+    collectRequiredFiles(programDir.children);
+  
+    // Verify we have all required files
+    for (const requiredFile of requiredFiles) {
+      if (!files.some(f => f.path === requiredFile)) {
+        throw new Error(`Missing required file: ${requiredFile}`);
+      }
     }
   
     // Make API call to compile
