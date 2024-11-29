@@ -1,11 +1,18 @@
 import { ArchIdl } from '../types/idl';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Download } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "./ui/accordion";
+import { Button } from "./ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 
 interface IdlPanelProps {
   idl: ArchIdl | null;
@@ -20,11 +27,43 @@ export const IdlPanel = ({ idl }: IdlPanelProps) => {
     );
   }
 
+  const handleDownloadIdl = () => {
+    const idlString = JSON.stringify(idl, null, 2);
+    const blob = new Blob([idlString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${idl.name}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full bg-gray-800 p-4 overflow-auto">
-      {/* Program Info */}
+      {/* Program Info with Download Button */}
       <div className="mb-6">
-        <h3 className="text-sm font-semibold text-white mb-2">Program Info</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-white">Program Info</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDownloadIdl}
+                  className="h-8 w-8"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Download IDL file</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <div className="space-y-1">
           <div className="text-xs text-blue-300">Name: {idl.name}</div>
           <div className="text-xs text-blue-300">Version: {idl.version}</div>

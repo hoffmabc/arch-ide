@@ -1,8 +1,13 @@
 export interface ArchInstruction {
   name: string;
+  accounts: {
+    name: string;
+    isMut: boolean;
+    isSigner: boolean;
+  }[];
   args: {
     name: string;
-    type: string;
+    type: string | ComplexType;
   }[];
 }
 
@@ -25,12 +30,12 @@ export interface ArchTypeDefinition {
       name: string;
       fields?: {
         name: string;
-        type: string;
+        type: string | ComplexType;
       }[];
     }[];
     fields?: {
       name: string;
-      type: string;
+      type: string | ComplexType;
     }[];
   };
 }
@@ -48,4 +53,11 @@ export interface ArchIdl {
   accounts: ArchAccountType[];
   types: ArchTypeDefinition[];
   errors: ArchError[];
+}
+
+export interface ComplexType {
+  option?: ComplexType;
+  tuple?: (string | ComplexType)[];  // Changed from ComplexType[] to allow string literals
+  vec?: ComplexType | string;        // Changed to allow string type for simple vectors
+  defined?: string;
 }
