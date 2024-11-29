@@ -45,6 +45,7 @@ const App = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [programId, setProgramId] = useState<string>();
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [programBinary, setProgramBinary] = useState<string | null>(null);
 
   useEffect(() => {
     // Load projects on mount
@@ -240,7 +241,7 @@ const App = () => {
       const result = await projectService.compileProject(currentProject);
       if (result.success) {
         addOutputMessage('success', 'Build successful. Completed in 2.14s');
-        setProgramId(result.program); // Store the program ID/binary
+        setProgramBinary(result.program);
       } else {
         addOutputMessage('error', result.error);
       }
@@ -322,13 +323,15 @@ const App = () => {
     />
 
     <div className="flex flex-1 overflow-hidden">
-      <BuildPanel
-        onBuild={handleCompile}
-        onDeploy={handleDeploy}
-        isBuilding={isCompiling}
-        isDeploying={isDeploying}
-        programId={programId}
-      />
+    <BuildPanel
+      onBuild={handleCompile}
+      onDeploy={handleDeploy}
+      isBuilding={isCompiling}
+      isDeploying={isDeploying}
+      programId={programId}
+      programBinary={programBinary}
+      onProgramBinaryChange={setProgramBinary}
+    />
       
       <div className="flex flex-col flex-1 overflow-hidden">
         <TabBar

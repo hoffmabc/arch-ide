@@ -9,6 +9,7 @@ import {
     TooltipTrigger,
   } from "./ui/tooltip";
   import { NewKeypairDialog } from './NewKeypairDialog';
+  import { useEffect } from 'react';
 
   interface BuildPanelProps {
     onBuild: () => void;
@@ -16,42 +17,55 @@ import {
     isBuilding: boolean;
     isDeploying: boolean;
     programId?: string;
-    programBinary?: string;
+    programBinary?: string | null;
     onProgramBinaryChange?: (binary: string | null) => void;
   }
 
-const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: BuildPanelProps) => {
-    const [currentAccount, setCurrentAccount] = useState<{
-      privkey: string;
-      pubkey: string;
-      address: string;
-    }>();
-    const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
-    const [programBinary, setProgramBinary] = useState<string | null>(null);
-    const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
+  const BuildPanel = ({
+    onBuild,
+    onDeploy,
+    isBuilding,
+    isDeploying,
+    programId,
+    programBinary,
+    onProgramBinaryChange
+  }: BuildPanelProps) => {
+      const [currentAccount, setCurrentAccount] = useState<{
+        privkey: string;
+        pubkey: string;
+        address: string;
+      }>();
+      const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
+      const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
 
-    const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        
-        // Check if it's a .so file
-        if (!file.name.endsWith('.so')) {
-            console.error('Only .so files are allowed');
-            return;
-        }
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const binary = e.target?.result as string;
-                setProgramBinary(binary);
-                setBinaryFileName(file.name);
-            } catch (error) {
-                console.error('Failed to import binary:', error);
-            }
-        };
-        reader.readAsDataURL(file);
-    };
+      // Update effect to handle both uploaded and compiled binaries
+      useEffect(() => {
+          if (programBinary) {
+              setBinaryFileName('arch_program.so');
+          }
+      }, [programBinary]);
+
+      const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+
+          if (!file.name.endsWith('.so')) {
+              console.error('Only .so files are allowed');
+              return;
+          }
+  
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              try {
+                  const binary = e.target?.result as string;
+                  onProgramBinaryChange?.(binary);
+                  setBinaryFileName(file.name);
+              } catch (error) {
+                  console.error('Failed to import binary:', error);
+              }
+          };
+          reader.readAsDataURL(file);
+      };
       
     const handleExportBinary = () => {
         if (!programBinary || !binaryFileName) return;
