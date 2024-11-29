@@ -39,10 +39,8 @@ interface FileNode {
   children?: FileNode[];
 }
 
-const getNodePath = (node: FileNode): string[] => {
-  // This would need to be implemented to track the full path
-  // You'd likely want to pass the full path down through props
-  return [node.name];
+const getNodePath = (node: FileNode, path: string[] = []): string => {
+  return [...path, node.name].join('/');
 };
 
 const getFileIcon = (fileName: string) => {
@@ -196,7 +194,10 @@ const FileExplorerItem = ({
             if (node.type === 'directory') {
               setIsOpen(!isOpen);
             } else {
-              onSelect(node);
+              onSelect({
+                ...node,
+                path: getNodePath(node, path)
+              });
             }
           }}
         >

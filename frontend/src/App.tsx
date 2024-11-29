@@ -99,15 +99,15 @@ const App = () => {
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
       setCurrentFile(file);
-      if (!openFiles.find(f => f.name === file.name)) {
+      if (!openFiles.find(f => f.path === file.path)) {
         setOpenFiles([...openFiles, file]);
       }
     }
   };
 
   const handleCloseFile = (file: FileNode) => {
-    setOpenFiles(openFiles.filter(f => f.name !== file.name));
-    if (currentFile?.name === file.name) {
+    setOpenFiles(openFiles.filter(f => f.path !== file.path));
+    if (currentFile?.path === file.path) {
       setCurrentFile(openFiles[0] || null);
     }
   };
@@ -345,7 +345,7 @@ const App = () => {
 
 function updateFileContent(files: FileNode[], targetFile: FileNode, newContent: string): FileNode[] {
   return files.map(file => {
-    if (file === targetFile) {
+    if (file.path === targetFile.path) {
       return { ...file, content: newContent };
     }
     if (file.children) {

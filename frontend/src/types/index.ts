@@ -3,6 +3,7 @@ export interface FileNode {
     type: 'file' | 'directory';
     content?: string;
     children?: FileNode[];
+    path?: string;
   }
   
   export interface Project {
