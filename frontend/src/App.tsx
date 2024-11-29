@@ -12,7 +12,7 @@ import type { Project, FileNode } from './types';
 import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
-import { BuildPanel } from './components/BuildPanel';
+import BuildPanel from './components/BuildPanel';
 
 const queryClient = new QueryClient();
 

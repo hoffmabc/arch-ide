@@ -8,6 +8,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
   } from "./ui/tooltip";
+  import { NewKeypairDialog } from './NewKeypairDialog';
 
 interface BuildPanelProps {
   onBuild: () => void;
@@ -17,17 +18,24 @@ interface BuildPanelProps {
   programId?: string;
 }
 
-export const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: BuildPanelProps) => {
+const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: BuildPanelProps) => {
     const [currentAccount, setCurrentAccount] = useState<{
       privkey: string;
       pubkey: string;
       address: string;
     }>();
+    const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
   
     const handleNewKeypair = async () => {
       const connection = ArchConnection(new RpcConnection('http://localhost:9002'));
       const account = await connection.createNewAccount();
       setCurrentAccount(account);
+      setIsNewKeypairDialogOpen(false);
+    };
+  
+    // Update the Plus button click handler
+    const handleNewKeypairClick = () => {
+      setIsNewKeypairDialogOpen(true);
     };
   
     const handleExportKeypair = () => {
@@ -76,7 +84,7 @@ export const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, program
             <TooltipProvider>
                 <Tooltip>
                 <TooltipTrigger asChild>
-                    <Button size="icon" variant="ghost" onClick={handleNewKeypair}>
+                    <Button size="icon" variant="ghost" onClick={handleNewKeypairClick}>
                     <Plus className="h-4 w-4" />
                     </Button>
                 </TooltipTrigger>
@@ -84,6 +92,12 @@ export const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, program
                     <p>Generate new program ID</p>
                 </TooltipContent>
                 </Tooltip>
+
+                <NewKeypairDialog
+                    isOpen={isNewKeypairDialogOpen}
+                    onClose={() => setIsNewKeypairDialogOpen(false)}
+                    onConfirm={handleNewKeypair}
+                />
 
                 <Tooltip>
                 <TooltipTrigger asChild>
@@ -150,3 +164,5 @@ export const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, program
       </div>
     );
   };
+
+export default BuildPanel;
