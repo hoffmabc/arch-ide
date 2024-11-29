@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';
+import { IdlGenerator } from './idl-generator';
 
 const MAX_FILE_AMOUNT = 64;
 const MAX_PATH_LENGTH = 128;
@@ -12,10 +13,12 @@ const execAsync = promisify(exec);
 export class CompilerService {
   private readonly tempDir: string;
   private readonly cratesPath: string;
+  private readonly idlGenerator: IdlGenerator;
 
   constructor() {
     this.tempDir = path.join(process.cwd(), 'temp');
     this.cratesPath = path.join(process.cwd(), '../crates');
+    this.idlGenerator = new IdlGenerator();
   }
 
   async init() {
@@ -95,10 +98,15 @@ export class CompilerService {
         };
       }
 
+      // Generate IDL from lib.rs
+      const libRsFile = files.find(f => f.path === 'src/lib.rs');
+      const idl = libRsFile ? this.idlGenerator.generateIdl(libRsFile.content) : null;
+
       return {
         success: true,
         output: stdout,
-        program: programBytes ? programBytes.toString('base64') : null
+        program: programBytes ? programBytes.toString('base64') : null,
+        idl: idl
       };
 
     } catch (error) {

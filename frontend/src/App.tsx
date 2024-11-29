@@ -44,6 +44,7 @@ const App = () => {
   const [programId, setProgramId] = useState<string>();
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [programBinary, setProgramBinary] = useState<string | null>(null);
+  const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
 
   useEffect(() => {
     // Load projects on mount
@@ -236,15 +237,71 @@ const App = () => {
     addOutputMessage('command', 'cargo build-sbf');
     
     try {
-      const result = await projectService.compileProject(currentProject);
+      // Find the program directory
+      const programDir = currentProject.files.find(node =>
+        node.type === 'directory' && node.name === 'program'
+      );
+  
+      if (!programDir?.children) {
+        throw new Error('Program directory not found or invalid');
+      }
+  
+      // Find src directory and Cargo.toml directly in program directory
+      const srcDir = programDir.children.find(node => 
+        node.type === 'directory' && node.name === 'src'
+      );
+      
+      const cargoToml = programDir.children.find(node =>
+        node.type === 'file' && node.name === 'Cargo.toml'
+      );
+  
+      // Find lib.rs in src directory
+      const libRs = srcDir?.children?.find(node =>
+        node.type === 'file' && node.name === 'lib.rs'
+      );
+  
+      if (!libRs || !cargoToml) {
+        throw new Error('Missing required files (lib.rs and/or Cargo.toml)');
+      }
+  
+      const programFiles = [
+        {
+          path: 'src/lib.rs',
+          content: libRs.content || ''
+        },
+        {
+          path: 'Cargo.toml',
+          content: cargoToml.content || ''
+        }
+      ];
+  
+      console.log('Sending files to compile:', programFiles); // Debug log
+  
+      const response = await fetch('http://localhost:8080/compile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ files: programFiles })
+      });
+  
+      const result = await response.json();
+      console.log('Compile result:', result); // Debug log
+  
       if (result.success) {
-        addOutputMessage('success', 'Build successful. Completed in 2.14s');
+        addOutputMessage('success', 'Build successful');
         setProgramBinary(result.program);
+        if (result.idl) {
+          setProgramIdl(result.idl);
+          addOutputMessage('info', 'IDL generated successfully');
+        } else {
+          addOutputMessage('warning', 'No IDL was generated');
+        }
       } else {
         addOutputMessage('error', result.error);
       }
     } catch (error: any) {
-      addOutputMessage('error', `Error: ${error.message}`);
+      addOutputMessage('error', `Build error: ${error.message}`);
     } finally {
       setIsCompiling(false);
     }
@@ -325,6 +382,7 @@ const App = () => {
       programId={programId}
       programBinary={programBinary}
       onProgramBinaryChange={setProgramBinary}
+      programIdl={programIdl}
     />
       
       <div className="flex flex-col flex-1 overflow-hidden">

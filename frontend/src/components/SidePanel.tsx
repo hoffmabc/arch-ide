@@ -24,11 +24,12 @@ interface SidePanelProps {
   programId?: string;
   programBinary?: string | null;
   onProgramBinaryChange?: (binary: string | null) => void;
+  programIdl: ArchIdl | null;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange }: SidePanelProps) => {
+const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
     const [width, setWidth] = useState(256); // Default width in pixels
   
@@ -101,6 +102,7 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             programId={programId}
             programBinary={programBinary}
             onProgramBinaryChange={onProgramBinaryChange}
+            idl={programIdl}
           />
         )}
       </div>
