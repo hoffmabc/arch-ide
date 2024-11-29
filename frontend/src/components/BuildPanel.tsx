@@ -28,40 +28,48 @@ const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: B
     }>();
     const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
     const [programBinary, setProgramBinary] = useState<string | null>(null);
+    const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
 
     const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-      
+        
+        // Check if it's a .so file
+        if (!file.name.endsWith('.so')) {
+            console.error('Only .so files are allowed');
+            return;
+        }
+        
         const reader = new FileReader();
         reader.onload = (e) => {
-          try {
-            const binary = e.target?.result as string;
-            setProgramBinary(binary);
-          } catch (error) {
-            console.error('Failed to import binary:', error);
-          }
+            try {
+                const binary = e.target?.result as string;
+                setProgramBinary(binary);
+                setBinaryFileName(file.name);
+            } catch (error) {
+                console.error('Failed to import binary:', error);
+            }
         };
         reader.readAsDataURL(file);
-      };
+    };
       
-      const handleExportBinary = () => {
-        if (!programBinary) return;
+    const handleExportBinary = () => {
+        if (!programBinary || !binaryFileName) return;
         
         const binary = atob(programBinary.split(',')[1]);
         const array = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) {
-          array[i] = binary.charCodeAt(i);
+            array[i] = binary.charCodeAt(i);
         }
         
         const blob = new Blob([array], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'program.so';
+        a.download = binaryFileName;
         a.click();
         URL.revokeObjectURL(url);
-      };
+    };
   
     const handleNewKeypair = async () => {
       const connection = ArchConnection(new RpcConnection('http://localhost:9002'));
@@ -237,7 +245,7 @@ const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: B
                 onChange={handleImportBinary}
             />
             <div className="text-xs bg-gray-900 p-2 rounded">
-                {programBinary ? 'Program binary loaded' : 'Import your program binary'}
+                {binaryFileName || 'Import your program binary (.so)'}
             </div>
             </div>
   

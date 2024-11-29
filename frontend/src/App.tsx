@@ -14,7 +14,19 @@ import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
 import BuildPanel from './components/BuildPanel';
 import { OutputMessage } from './components/Output';
+import { ConfigPanel } from './components/ConfigPanel';
+import { Button } from './components/ui/button';
+import { Settings } from 'lucide-react';
+
 const queryClient = new QueryClient();
+
+interface Config {
+  network: 'mainnet-beta' | 'devnet' | 'testnet';
+  showTransactionDetails: boolean;
+  improveErrors: boolean;
+  automaticAirdrop: boolean;
+}
+
 
 
 const App = () => {
@@ -32,6 +44,7 @@ const App = () => {
   const [outputMessages, setOutputMessages] = useState<OutputMessage[]>([]);
   const [isDeploying, setIsDeploying] = useState(false);
   const [programId, setProgramId] = useState<string>();
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   useEffect(() => {
     // Load projects on mount
@@ -42,11 +55,22 @@ const App = () => {
     }
   }, []);
 
+  const [config, setConfig] = useState<Config>({
+    network: 'devnet',
+    showTransactionDetails: false,
+    improveErrors: true,
+    automaticAirdrop: true
+  });
+
   const handleDeploy = async () => {
     if (!currentProject || !programId) return;
 
     setIsDeploying(true);
-    addOutputMessage('command', 'solana program deploy');
+    if (config.showTransactionDetails) {
+      addOutputMessage('command', 'solana program deploy');
+      addOutputMessage('info', `Deploying to ${config.network}...`);
+      addOutputMessage('info', `Using program ID: ${programId}`);
+    }
 
     try {
       const response = await fetch('http://localhost:8080/deploy', {
@@ -284,6 +308,9 @@ const App = () => {
       onNewProject={() => setIsNewProjectOpen(true)}
       onDeleteProject={handleDeleteProject}
     />
+    <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(!isConfigOpen)}>
+      <Settings className="h-5 w-5" />
+    </Button>
   </nav>
   
   <div className="flex flex-1 overflow-hidden">
@@ -337,6 +364,13 @@ const App = () => {
     onClose={() => setIsNewFileDialogOpen(false)}
     onSubmit={handleCreateNewItem}
     type={newItemType || 'file'}
+  />
+
+  <ConfigPanel
+    isOpen={isConfigOpen}
+    onClose={() => setIsConfigOpen(false)}
+    config={config}
+    onConfigChange={setConfig}
   />
 </div>
     </QueryClientProvider>
