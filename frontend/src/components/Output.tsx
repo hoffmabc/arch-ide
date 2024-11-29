@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-interface OutputMessage {
+export interface OutputMessage {
   type: 'command' | 'success' | 'error' | 'info';
   content: string;
   timestamp: Date;
@@ -45,3 +45,5 @@ export const Output = ({ messages }: OutputProps) => {
     </div>
   );
 };
+
+export default Output;

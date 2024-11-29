@@ -13,7 +13,7 @@ import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
 import BuildPanel from './components/BuildPanel';
-
+import { OutputMessage } from './components/Output';
 const queryClient = new QueryClient();
 
 
@@ -132,22 +132,21 @@ const App = () => {
     document.addEventListener('mouseup', handleMouseUp);
   }, [terminalHeight]);
 
-  const handleUpdateTree = (operation: 'create' | 'delete', path: string[], type?: 'file' | 'directory') => {
+  const handleUpdateTree = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
     console.log('handleUpdateTree called with:', { operation, path, type });
     if (!currentProject) return;
   
     const updateFiles = (nodes: FileNode[], currentPath: string[]): FileNode[] => {
       console.log('updateFiles processing:', { nodes, currentPath });
       if (currentPath.length === 0) return nodes;
-  
+
       const [current, ...rest] = currentPath;
       
-      // If we're creating a new item and we're at the parent directory
       if (operation === 'create' && rest.length === 1) {
         const targetNode = nodes.find(node => node.name === current);
         if (targetNode && targetNode.type === 'directory') {
           const newNode: FileNode = {
-            name: rest[0],  // Use the last part of the path as the new item's name
+            name: rest[0],
             type: type || 'file',
             content: type === 'file' ? '' : undefined,
             children: type === 'directory' ? [] : undefined
@@ -160,12 +159,15 @@ const App = () => {
           );
         }
       }
-  
-      // Handle deletion or traverse deeper
+
       return nodes.map(node => {
         if (node.name === current) {
           if (rest.length === 0) {
-            return operation === 'delete' ? null : node;
+            if (operation === 'delete') return null;
+            if (operation === 'rename' && newName) {
+              return { ...node, name: newName };
+            }
+            return node;
           }
           return {
             ...node,
@@ -188,6 +190,20 @@ const App = () => {
     setProjects(projects.map(p => 
       p.id === updatedProject.id ? updatedProject : p
     ));
+
+    if (operation === 'rename' && newName) {
+      const oldName = path[path.length - 1];
+
+      // Update openFiles
+      setOpenFiles(openFiles.map(file =>
+        file.name === oldName ? { ...file, name: newName } : file
+      ));
+
+      // Update currentFile if it's the renamed file
+      if (currentFile?.name === oldName) {
+        setCurrentFile({ ...currentFile, name: newName });
+      }
+    }
   };
 
   const handleCompile = async () => {

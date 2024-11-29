@@ -10,6 +10,7 @@ import {
   Trash2,
   FileJson,
   FileText,
+  Pencil,
   FileCode,
   FileType,
   Terminal,
@@ -28,6 +29,8 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
+import RenameDialog from './RenameDialog';
+
 
 interface FileNode {
   name: string;
@@ -106,7 +109,12 @@ const getFileIcon = (fileName: string) => {
 interface FileExplorerProps {
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete', path: string[], type?: 'file' | 'directory') => void;
+  onUpdateTree: (
+    operation: 'create' | 'delete' | 'rename',
+    path: string[],
+    type?: 'file' | 'directory',
+    newName?: string
+  ) => void;
   onNewItem: (path: string[], type: 'file' | 'directory') => void;
 }
 
@@ -115,9 +123,10 @@ interface FileContextMenuProps {
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onDelete?: () => void;
+  onRename?: () => void;
 }
 
-const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete }: FileContextMenuProps) => {
+const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: FileContextMenuProps) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -138,6 +147,10 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete }: FileContext
             </DropdownMenuItem>
           </>
         )}
+        <DropdownMenuItem onClick={onRename}>
+          <Pencil size={16} className="mr-2" />
+          Rename
+        </DropdownMenuItem>
         <DropdownMenuItem className="text-red-400" onClick={onDelete}>
           <Trash2 size={16} className="mr-2" />
           Delete
@@ -156,6 +169,7 @@ const FileExplorerItem = ({
   onNewItem
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const handleNewFile = () => {
     console.log('handleNewFile called with path:', path);
@@ -165,6 +179,11 @@ const FileExplorerItem = ({
   const handleNewFolder = () => {
     console.log('handleNewFolder called with path:', path);
     onNewItem([...path, node.name], 'directory');
+  };
+
+  const handleRename = (newName: string) => {
+    onUpdateTree('rename', [...path, node.name], undefined, newName);
+    setIsRenaming(false);
   };
 
   return (
@@ -197,6 +216,14 @@ const FileExplorerItem = ({
             onNewFile={handleNewFile}
             onNewFolder={handleNewFolder}
             onDelete={() => onUpdateTree('delete', [...path, node.name])}
+            onRename={() => setIsRenaming(true)}
+          />
+          <RenameDialog
+            isOpen={isRenaming}
+            onClose={() => setIsRenaming(false)}
+            onRename={handleRename}
+            currentName={node.name}
+            type={node.type}
           />
         </div>
       </div>
