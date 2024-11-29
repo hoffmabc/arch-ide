@@ -3,8 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Editor from './components/Editor';
 import { Output } from './components/Output';
-import Toolbar from './components/Toolbar';
-import FileExplorer from './components/FileExplorer';
 import ProjectList from './components/ProjectList';
 import NewProjectDialog from './components/NewProjectDialog';
 import { projectService } from './services/projectService';
@@ -12,11 +10,11 @@ import type { Project, FileNode } from './types';
 import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
-import BuildPanel from './components/BuildPanel';
 import { OutputMessage } from './components/Output';
 import { ConfigPanel } from './components/ConfigPanel';
 import { Button } from './components/ui/button';
 import { Settings } from 'lucide-react';
+import SidePanel from './components/SidePanel';
 
 const queryClient = new QueryClient();
 
@@ -315,15 +313,11 @@ const App = () => {
   </nav>
   
   <div className="flex flex-1 overflow-hidden">
-    <FileExplorer
+    <SidePanel
       files={currentProject?.files || []}
       onFileSelect={handleFileSelect}
       onUpdateTree={handleUpdateTree}
       onNewItem={handleNewItem}
-    />
-
-    <div className="flex flex-1 overflow-hidden">
-    <BuildPanel
       onBuild={handleCompile}
       onDeploy={handleDeploy}
       isBuilding={isCompiling}
@@ -354,7 +348,7 @@ const App = () => {
           </div>
         </div>
       </div>
-    </div>
+    
   </div>
 
   <NewProjectDialog

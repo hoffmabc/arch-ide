@@ -245,7 +245,7 @@ const FileExplorerItem = ({
 
 const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem }: FileExplorerProps) => {
   return (
-    <div className="bg-gray-800 w-64 h-full overflow-y-auto border-r border-gray-700">
+    <div className="bg-gray-800 w-full h-full overflow-y-auto border-r border-gray-700">
       <div className="p-2 border-b border-gray-700 font-medium">Explorer</div>
       {files.map((file, i) => (
         <FileExplorerItem 

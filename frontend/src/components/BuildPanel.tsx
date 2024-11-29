@@ -125,7 +125,7 @@ import {
     };
   
     return (
-      <div className="w-64 bg-gray-800 border-r border-gray-700 p-4">
+      <div className="w-full bg-gray-800 border-r border-gray-700 p-4">
         <h2 className="text-lg font-semibold mb-4">BUILD & DEPLOY</h2>
         
         <Button 
