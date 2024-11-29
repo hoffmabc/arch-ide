@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useCallback, useEffect } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-
+import { FileNode } from '../types';
 interface EditorProps {
   code: string;
   onChange: (value: string | undefined) => void;
+  onSave?: (value: string) => void;
+  currentFile?: FileNode | null;
 }
 
 const DEFAULT_WELCOME_MESSAGE = `
@@ -45,18 +47,45 @@ const DEFAULT_WELCOME_MESSAGE = `
  */
 `;
 
-const Editor = ({ code, onChange }: EditorProps) => {
-  const displayCode = code === '// Select a file to edit' ? DEFAULT_WELCOME_MESSAGE : code;
-  const isWelcomeScreen = code === '// Select a file to edit';
+const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
+  console.log('Editor code', { code });
+  const isUnselectedFile = code === '// Select a file to edit';
+  const displayCode = isUnselectedFile ? DEFAULT_WELCOME_MESSAGE : code;
+  const isWelcomeScreen = isUnselectedFile;
   
+  // Remove the problematic useEffect hook that was causing the loop
+
+  const handleKeyDown = useCallback((e: monaco.IKeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+      e.preventDefault();
+      console.log('Manual save triggered', { displayCode });
+      if (onSave && !isWelcomeScreen) {
+        onSave(displayCode);
+      }
+    }
+  }, [onSave, displayCode, isWelcomeScreen]);
+
+  const handleChange = (value: string | undefined) => {
+    console.log('Editor content changed', { value });
+    if (!isWelcomeScreen) {
+      onChange(value);
+    }
+  };
+
+  const handleEditorMount = useCallback((editor: any) => {
+    editor.onKeyDown(handleKeyDown);
+  }, [handleKeyDown]);
+
   return (
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
         defaultLanguage="rust"
         theme="vs-dark"
+        key={currentFile?.path || 'welcome'}
         value={displayCode}
-        onChange={onChange}
+        onChange={handleChange}
+        onMount={handleEditorMount}
         options={{
           minimap: { enabled: false },
           fontSize: 14,

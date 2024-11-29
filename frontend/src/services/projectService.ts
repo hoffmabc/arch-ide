@@ -382,9 +382,17 @@ export class ProjectService {
   }
 
   saveProject(project: Project) {
+    console.log('projectService.saveProject called', {
+      projectId: project.id,
+      projectName: project.name,
+      filesCount: project.files.length
+    });
+    
     const projects = this.getAllProjects();
     projects[project.id] = project;
     this.storage.setItem('projects', JSON.stringify(projects));
+    
+    console.log('Project saved to storage');
   }
 
   getProject(id: string): Project | null {

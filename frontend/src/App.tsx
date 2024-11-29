@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Editor from './components/Editor';
 import { Output } from './components/Output';
@@ -45,6 +45,7 @@ const App = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [programBinary, setProgramBinary] = useState<string | null>(null);
   const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Load projects on mount
@@ -113,6 +114,43 @@ const App = () => {
     setIsNewFileDialogOpen(true);
   };
 
+
+  // Modify your handleFileChange function
+  const handleFileChange = useCallback((newContent: string | undefined) => {
+    console.log('handleFileChange called', {
+      newContent: newContent?.substring(0, 50) + '...',
+      currentFile: currentFile?.name,
+      hasCurrentProject: !!currentProject
+    });
+
+    if (!newContent || !currentFile || !currentProject) return;
+  
+    // Clear existing timeout if any
+    if (saveTimeout) {
+      console.log('Clearing existing save timeout');
+      clearTimeout(saveTimeout);
+    }
+  
+    // Update the content immediately in state
+    const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
+    const updatedProject = {
+      ...currentProject,
+      files: updatedFiles,
+      lastModified: new Date()
+    };
+  
+    console.log('Updating current project state');
+    setCurrentProject(updatedProject);
+    
+    // Set new timeout for auto-save
+    const timeout = setTimeout(() => {
+      console.log('Auto-save triggered');
+      projectService.saveProject(updatedProject);
+    }, 1000);
+  
+    setSaveTimeout(timeout);
+  }, [currentFile, currentProject, saveTimeout]);
+
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
     if (newItemPath && newItemType) {
@@ -120,11 +158,32 @@ const App = () => {
     }
   };
 
+  const findFileInProject = (files: FileNode[], targetPath: string): FileNode | null => {
+    for (const file of files) {
+      if (file.path === targetPath) return file;
+      if (file.children) {
+        const found = findFileInProject(file.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
-      setCurrentFile(file);
-      if (!openFiles.find(f => f.path === file.path)) {
-        setOpenFiles([...openFiles, file]);
+      // Ensure the file has a path
+      const filePath = file.path || `${file.name}`;
+      const fileWithPath = { ...file, path: filePath };
+      
+      // Get the most up-to-date version of the file from the current project
+      const currentProjectFile = findFileInProject(currentProject?.files || [], filePath);
+      
+      // Use the current project's version of the file if available, otherwise use the file with path
+      const updatedFile = currentProjectFile || fileWithPath;
+      
+      setCurrentFile(updatedFile);
+      if (!openFiles.find(f => f.path === filePath)) {
+        setOpenFiles([...openFiles, updatedFile]);
       }
     }
   };
@@ -169,13 +228,21 @@ const App = () => {
       if (operation === 'create' && rest.length === 1) {
         const targetNode = nodes.find(node => node.name === current);
         if (targetNode && targetNode.type === 'directory') {
+          const newPath = [...path].join('/');
           const newNode: FileNode = {
             name: rest[0],
             type: type || 'file',
             content: type === 'file' ? '' : undefined,
-            children: type === 'directory' ? [] : undefined
+            children: type === 'directory' ? [] : undefined,
+            path: newPath + '/' + rest[0]
           };
           
+          // If it's a file, automatically select it for editing
+          if (type === 'file') {
+            setCurrentFile(newNode);
+            setOpenFiles(prev => [...prev, newNode]);
+          }
+
           return nodes.map(node =>
             node.name === current
               ? { ...node, children: [...(node.children || []), newNode] }
@@ -325,32 +392,26 @@ const App = () => {
     }
   };
 
-  const handleEditorChange = (value: string | undefined) => {
-    if (!currentProject || !currentFile || !value) return;
+  const handleSaveFile = useCallback((content: string) => {
+    console.log('handleSaveFile called', { 
+      contentLength: content.length,
+      currentFile: currentFile?.name,
+      hasCurrentProject: !!currentProject 
+    });
   
-    // Update the current file's content
-    const updatedFiles = updateFileContent(currentProject.files, currentFile, value);
+    if (!currentFile || !currentProject) return;
     
-    // Create updated project
+    const updatedFiles = updateFileContent(currentProject.files, currentFile, content);
     const updatedProject = {
       ...currentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
-  
-    // Save to storage and update state
+    
+    console.log('Saving to storage');
     projectService.saveProject(updatedProject);
     setCurrentProject(updatedProject);
-    setProjects(projects.map(p => 
-      p.id === updatedProject.id ? updatedProject : p
-    ));
-  
-    // Update the current file in openFiles
-    setOpenFiles(openFiles.map(f => 
-      f === currentFile ? { ...f, content: value } : f
-    ));
-    setCurrentFile({ ...currentFile, content: value });
-  };
+  }, [currentFile, currentProject]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -394,8 +455,9 @@ const App = () => {
         />
         <div className="flex-1 overflow-hidden">
         <Editor
-          code={currentFile === null ? '// Select a file to edit' : (currentFile.content || '')}
-          onChange={handleEditorChange}
+          code={currentFile ? (currentFile.content ?? '') : '// Select a file to edit'}
+          onChange={handleFileChange}
+          onSave={handleSaveFile}
         />
         </div>
 
@@ -432,19 +494,37 @@ const App = () => {
   );
 };
 
-function updateFileContent(files: FileNode[], targetFile: FileNode, newContent: string): FileNode[] {
-  return files.map(file => {
-    if (file.path === targetFile.path) {
-      return { ...file, content: newContent };
+const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: string): FileNode[] => {
+  console.log('updateFileContent called with:', { 
+    nodes: nodes.map(n => ({ name: n.name, path: n.path })), 
+    targetFile: {
+      name: targetFile.name,
+      path: targetFile.path,
+      type: targetFile.type
     }
-    if (file.children) {
-      return {
-        ...file,
-        children: updateFileContent(file.children, targetFile, newContent),
-      };
-    }
-    return file;
   });
-}
+
+  return nodes.map(node => {
+    // If this is the target file, update its content
+    if (node.path === targetFile.path || 
+        (targetFile.path && node.name === targetFile.name && node.type === 'file')) {
+      console.log('Target file found, updating content');
+      return { ...node, content: newContent };
+    }
+
+    // If this is a directory, recursively search its children
+    if (node.children) {
+      // Check if target path starts with this directory's path
+      const updatedChildren = updateFileContent(node.children, targetFile, newContent);
+      if (JSON.stringify(updatedChildren) !== JSON.stringify(node.children)) {
+        // Only update if children have changed
+        return { ...node, children: updatedChildren };
+      }
+    }
+
+    // Otherwise return the node unchanged
+    return node;
+  });
+};
 
 export default App;
