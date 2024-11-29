@@ -10,13 +10,15 @@ import {
   } from "./ui/tooltip";
   import { NewKeypairDialog } from './NewKeypairDialog';
 
-interface BuildPanelProps {
-  onBuild: () => void;
-  onDeploy: () => void;
-  isBuilding: boolean;
-  isDeploying: boolean;
-  programId?: string;
-}
+  interface BuildPanelProps {
+    onBuild: () => void;
+    onDeploy: () => void;
+    isBuilding: boolean;
+    isDeploying: boolean;
+    programId?: string;
+    programBinary?: string;
+    onProgramBinaryChange?: (binary: string | null) => void;
+  }
 
 const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: BuildPanelProps) => {
     const [currentAccount, setCurrentAccount] = useState<{
@@ -25,6 +27,41 @@ const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: B
       address: string;
     }>();
     const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
+    const [programBinary, setProgramBinary] = useState<string | null>(null);
+
+    const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+      
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const binary = e.target?.result as string;
+            setProgramBinary(binary);
+          } catch (error) {
+            console.error('Failed to import binary:', error);
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+      
+      const handleExportBinary = () => {
+        if (!programBinary) return;
+        
+        const binary = atob(programBinary.split(',')[1]);
+        const array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          array[i] = binary.charCodeAt(i);
+        }
+        
+        const blob = new Blob([array], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'program.so';
+        a.click();
+        URL.revokeObjectURL(url);
+      };
   
     const handleNewKeypair = async () => {
       const connection = ArchConnection(new RpcConnection('http://localhost:9002'));
@@ -153,6 +190,56 @@ const BuildPanel = ({ onBuild, onDeploy, isBuilding, isDeploying, programId }: B
             </TooltipProvider>
           </div>
         </div>
+
+        <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium">Program binary</h3>
+                <div className="flex gap-1">
+                <TooltipProvider>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => document.getElementById('import-binary')?.click()}
+                        >
+                        <Import className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>Import program binary (.so)</p>
+                    </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={handleExportBinary}
+                        disabled={!programBinary}
+                        >
+                        <Save className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>Save program binary</p>
+                    </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+                </div>
+            </div>
+            <input
+                type="file"
+                id="import-binary"
+                className="hidden"
+                accept=".so"
+                onChange={handleImportBinary}
+            />
+            <div className="text-xs bg-gray-900 p-2 rounded">
+                {programBinary ? 'Program binary loaded' : 'Import your program binary'}
+            </div>
+            </div>
   
         <Button 
           className="w-full"
