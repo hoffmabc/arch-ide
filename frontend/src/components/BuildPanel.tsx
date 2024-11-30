@@ -64,7 +64,7 @@ import {
               console.error('Only .so files are allowed');
               return;
           }
-  
+
           const reader = new FileReader();
           reader.onload = (e) => {
               try {
@@ -77,13 +77,13 @@ import {
           };
           reader.readAsDataURL(file);
       };
-      
+
     const handleExportBinary = () => {
         if (!programBinary || !binaryFileName) {
             console.error('Missing binary or filename');
             return;
         }
-        
+
         try {
             let binaryData: Uint8Array;
 
@@ -121,19 +121,19 @@ import {
             console.error('Failed to export binary:', error);
         }
     };
-  
+
     const handleNewKeypair = async () => {
         const connection = ArchConnection(new RpcConnection(config.rpcUrl));
         const account = await connection.createNewAccount();
         setCurrentAccount(account);
         setIsNewKeypairDialogOpen(false);
       };
-  
+
     // Update the Plus button click handler
     const handleNewKeypairClick = () => {
       setIsNewKeypairDialogOpen(true);
     };
-  
+
     const handleExportKeypair = () => {
       if (!currentAccount) return;
       const blob = new Blob([JSON.stringify(currentAccount, null, 2)], { type: 'application/json' });
@@ -144,11 +144,11 @@ import {
       a.click();
       URL.revokeObjectURL(url);
     };
-  
+
     const handleImportKeypair = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-  
+
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
@@ -160,27 +160,27 @@ import {
       };
       reader.readAsText(file);
     };
-  
+
     return (
         <div className="w-full bg-gray-800 border-r border-gray-700 p-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>        
+            <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>
           </div>
-          
-          <Button 
+
+          <Button
             className="w-full mb-4 bg-pink-500 hover:bg-pink-600"
             onClick={onBuild}
             disabled={isBuilding}
           >
             {isBuilding ? 'Building...' : 'Build'}
           </Button>
-      
+
           <Tabs defaultValue="binary" className="w-full">
             <TabsList className="w-full mb-4">
               <TabsTrigger value="binary" className="flex-1">Binary</TabsTrigger>
               <TabsTrigger value="idl" className="flex-1">IDL</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="binary">
               {/* Program ID Section */}
               <div className="mb-4">
@@ -198,13 +198,13 @@ import {
                           <p>Generate new program ID</p>
                         </TooltipContent>
                       </Tooltip>
-      
+
                       <NewKeypairDialog
                         isOpen={isNewKeypairDialogOpen}
                         onClose={() => setIsNewKeypairDialogOpen(false)}
                         onConfirm={handleNewKeypair}
                       />
-      
+
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button size="icon" variant="ghost" onClick={() => document.getElementById('import-keypair')?.click()}>
@@ -215,7 +215,7 @@ import {
                           <p>Import program keypair</p>
                         </TooltipContent>
                       </Tooltip>
-      
+
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button size="icon" variant="ghost" onClick={handleExportKeypair} disabled={!currentAccount}>
@@ -259,7 +259,7 @@ import {
                   </TooltipProvider>
                 </div>
               </div>
-      
+
               {/* Program Binary Section */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
@@ -280,7 +280,7 @@ import {
                           <p>Import program binary (.so)</p>
                         </TooltipContent>
                       </Tooltip>
-      
+
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -311,13 +311,13 @@ import {
                 </div>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="idl">
               <IdlPanel idl={idl} />
             </TabsContent>
           </Tabs>
-      
-          <Button 
+
+          <Button
             className="w-full mt-4"
             onClick={onDeploy}
             disabled={isDeploying || !currentAccount}

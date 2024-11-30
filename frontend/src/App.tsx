@@ -72,14 +72,14 @@ const App = () => {
       addOutputMessage('error', 'Cannot deploy: No connection to network');
       return;
     }
-  
+
     setIsDeploying(true);
     if (config.showTransactionDetails) {
       addOutputMessage('command', 'solana program deploy');
       addOutputMessage('info', `Deploying to ${config.network}...`);
       addOutputMessage('info', `Using program ID: ${programId}`);
     }
-  
+
     try {
       const response = await fetch('http://localhost:8080/deploy', {
         method: 'POST',
@@ -92,9 +92,9 @@ const App = () => {
           rpcUrl: config.rpcUrl
         })
       });
-  
+
       const result = await response.json();
-  
+
       if (result.success) {
         addOutputMessage('success', `Program deployed successfully`);
         addOutputMessage('info', `Program ID: ${result.programId}`);
@@ -132,13 +132,13 @@ const App = () => {
     });
 
     if (!newContent || !currentFile || !currentProject) return;
-  
+
     // Clear existing timeout if any
     if (saveTimeout) {
       console.log('Clearing existing save timeout');
       clearTimeout(saveTimeout);
     }
-  
+
     // Update the content immediately in state
     const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
     const updatedProject = {
@@ -146,16 +146,16 @@ const App = () => {
       files: updatedFiles,
       lastModified: new Date()
     };
-  
+
     console.log('Updating current project state');
     setCurrentProject(updatedProject);
-    
+
     // Set new timeout for auto-save
     const timeout = setTimeout(() => {
       console.log('Auto-save triggered');
       projectService.saveProject(updatedProject);
     }, 1000);
-  
+
     setSaveTimeout(timeout);
   }, [currentFile, currentProject, saveTimeout]);
 
@@ -182,13 +182,13 @@ const App = () => {
       // Ensure the file has a path
       const filePath = file.path || `${file.name}`;
       const fileWithPath = { ...file, path: filePath };
-      
+
       // Get the most up-to-date version of the file from the current project
       const currentProjectFile = findFileInProject(currentProject?.files || [], filePath);
-      
+
       // Use the current project's version of the file if available, otherwise use the file with path
       const updatedFile = currentProjectFile || fileWithPath;
-      
+
       setCurrentFile(updatedFile);
       if (!openFiles.find(f => f.path === filePath)) {
         setOpenFiles([...openFiles, updatedFile]);
@@ -199,7 +199,7 @@ const App = () => {
   const handleCloseFile = (file: FileNode) => {
     const newOpenFiles = openFiles.filter(f => f.path !== file.path);
     setOpenFiles(newOpenFiles);
-    
+
     if (newOpenFiles.length === 0) {
       // If this was the last tab, show welcome screen
       console.log('Showing welcome screen');
@@ -215,18 +215,18 @@ const App = () => {
     e.preventDefault();
     const startY = e.pageY;
     const startHeight = terminalHeight;
-  
+
     const handleMouseMove = (e: MouseEvent) => {
       const delta = startY - e.pageY;
       const newHeight = Math.max(100, Math.min(800, startHeight + delta));
       setTerminalHeight(newHeight);
     };
-  
+
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [terminalHeight]);
@@ -234,13 +234,13 @@ const App = () => {
   const handleUpdateTree = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
     console.log('handleUpdateTree called with:', { operation, path, type });
     if (!currentProject) return;
-  
+
     const updateFiles = (nodes: FileNode[], currentPath: string[]): FileNode[] => {
       console.log('updateFiles processing:', { nodes, currentPath });
       if (currentPath.length === 0) return nodes;
 
       const [current, ...rest] = currentPath;
-      
+
       if (operation === 'create' && rest.length === 1) {
         const targetNode = nodes.find(node => node.name === current);
         if (targetNode && targetNode.type === 'directory') {
@@ -252,7 +252,7 @@ const App = () => {
             children: type === 'directory' ? [] : undefined,
             path: newPath + '/' + rest[0]
           };
-          
+
           // If it's a file, automatically select it for editing
           if (type === 'file') {
             setCurrentFile(newNode);
@@ -284,17 +284,17 @@ const App = () => {
         return node;
       }).filter(Boolean) as FileNode[];
     };
-  
+
     const updatedFiles = updateFiles(currentProject.files, path);
     const updatedProject = {
       ...currentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
-  
+
     projectService.saveProject(updatedProject);
     setCurrentProject(updatedProject);
-    setProjects(projects.map(p => 
+    setProjects(projects.map(p =>
       p.id === updatedProject.id ? updatedProject : p
     ));
 
@@ -315,38 +315,38 @@ const App = () => {
 
   const handleCompile = async () => {
     if (!currentProject) return;
-    
+
     setIsCompiling(true);
     addOutputMessage('command', 'cargo build-sbf');
-    
+
     try {
       // Find the program directory
       const programDir = currentProject.files.find(node =>
         node.type === 'directory' && node.name === 'program'
       );
-  
+
       if (!programDir?.children) {
         throw new Error('Program directory not found or invalid');
       }
-  
+
       // Find src directory and Cargo.toml directly in program directory
-      const srcDir = programDir.children.find(node => 
+      const srcDir = programDir.children.find(node =>
         node.type === 'directory' && node.name === 'src'
       );
-      
+
       const cargoToml = programDir.children.find(node =>
         node.type === 'file' && node.name === 'Cargo.toml'
       );
-  
+
       // Find lib.rs in src directory
       const libRs = srcDir?.children?.find(node =>
         node.type === 'file' && node.name === 'lib.rs'
       );
-  
+
       if (!libRs || !cargoToml) {
         throw new Error('Missing required files (lib.rs and/or Cargo.toml)');
       }
-  
+
       const programFiles = [
         {
           path: 'src/lib.rs',
@@ -357,9 +357,9 @@ const App = () => {
           content: cargoToml.content || ''
         }
       ];
-  
+
       console.log('Sending files to compile:', programFiles); // Debug log
-  
+
       const response = await fetch('http://localhost:8080/compile', {
         method: 'POST',
         headers: {
@@ -367,10 +367,10 @@ const App = () => {
         },
         body: JSON.stringify({ files: programFiles })
       });
-  
+
       const result = await response.json();
       console.log('Compile result:', result); // Debug log
-  
+
       if (result.success) {
         addOutputMessage('success', 'Build successful');
         setProgramBinary(result.program);
@@ -378,7 +378,7 @@ const App = () => {
           setProgramIdl(result.idl);
           addOutputMessage('info', 'IDL generated successfully');
         } else {
-          addOutputMessage('warning', 'No IDL was generated');
+          addOutputMessage('error', 'No IDL was generated');
         }
       } else {
         addOutputMessage('error', result.error);
@@ -389,7 +389,7 @@ const App = () => {
       setIsCompiling(false);
     }
   };
-  
+
   const addOutputMessage = (type: OutputMessage['type'], content: string) => {
     setOutputMessages(prev => [...prev, {
       type,
@@ -409,21 +409,21 @@ const App = () => {
   };
 
   const handleSaveFile = useCallback((content: string) => {
-    console.log('handleSaveFile called', { 
+    console.log('handleSaveFile called', {
       contentLength: content.length,
       currentFile: currentFile?.name,
-      hasCurrentProject: !!currentProject 
+      hasCurrentProject: !!currentProject
     });
-  
+
     if (!currentFile || !currentProject) return;
-    
+
     const updatedFiles = updateFileContent(currentProject.files, currentFile, content);
     const updatedProject = {
       ...currentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
-    
+
     console.log('Saving to storage');
     projectService.saveProject(updatedProject);
     setCurrentProject(updatedProject);
@@ -453,7 +453,7 @@ const App = () => {
             <Settings className="h-5 w-5" />
           </Button>
         </nav>
-        
+
         <div className="flex flex-1 overflow-hidden">
           <SidePanel
             files={currentProject?.files || []}
@@ -472,7 +472,7 @@ const App = () => {
             onConfigChange={setConfig}
             onConnectionStatusChange={setIsConnected}
           />
-          
+
           <div className="flex flex-col flex-1 overflow-hidden">
             <TabBar
               openFiles={openFiles}
@@ -487,7 +487,7 @@ const App = () => {
                 onSave={handleSaveFile}
               />
             </div>
-  
+
             <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
               <ResizeHandle onMouseDown={handleResizeStart} />
               <div className="flex-1 min-h-0">
@@ -496,12 +496,12 @@ const App = () => {
             </div>
           </div>
         </div>
-  
+
         <StatusBar
           config={config}
           onConnectionStatusChange={setIsConnected}
         />
-  
+
         <NewProjectDialog
           isOpen={isNewProjectOpen}
           onClose={() => setIsNewProjectOpen(false)}
@@ -525,8 +525,8 @@ const App = () => {
 };
 
 const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: string): FileNode[] => {
-  console.log('updateFileContent called with:', { 
-    nodes: nodes.map(n => ({ name: n.name, path: n.path })), 
+  console.log('updateFileContent called with:', {
+    nodes: nodes.map(n => ({ name: n.name, path: n.path })),
     targetFile: {
       name: targetFile.name,
       path: targetFile.path,
@@ -536,7 +536,7 @@ const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: 
 
   return nodes.map(node => {
     // If this is the target file, update its content
-    if (node.path === targetFile.path || 
+    if (node.path === targetFile.path ||
         (targetFile.path && node.name === targetFile.name && node.type === 'file')) {
       console.log('Target file found, updating content');
       return { ...node, content: newContent };
