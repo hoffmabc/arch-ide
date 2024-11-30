@@ -4,3 +4,6 @@ dist
 build
 .DS_Store
 backend/temp
+
+# VS Code
+.vscode
