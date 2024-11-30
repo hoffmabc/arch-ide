@@ -13,6 +13,8 @@ import {
   import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
   import { IdlPanel } from './IdlPanel';
   import { ArchIdl } from '../types/idl';
+  import { Config } from '../types/config';
+  import { ConnectionStatus } from './ConnectionStatus';
 
   interface BuildPanelProps {
     onBuild: () => void;
@@ -22,6 +24,9 @@ import {
     programId?: string;
     programBinary?: string | null;
     onProgramBinaryChange?: (binary: string | null) => void;
+    config: Config;
+    onConfigChange?: (config: Config) => void;
+    onConnectionStatusChange?: (connected: boolean) => void;
   }
 
   const BuildPanel = ({
@@ -32,6 +37,8 @@ import {
     programId,
     programBinary,
     onProgramBinaryChange,
+    config,
+    onConnectionStatusChange,
     idl
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
       const [currentAccount, setCurrentAccount] = useState<{
@@ -72,29 +79,55 @@ import {
       };
       
     const handleExportBinary = () => {
-        if (!programBinary || !binaryFileName) return;
-        
-        const binary = atob(programBinary.split(',')[1]);
-        const array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            array[i] = binary.charCodeAt(i);
+        if (!programBinary || !binaryFileName) {
+            console.error('Missing binary or filename');
+            return;
         }
         
-        const blob = new Blob([array], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = binaryFileName;
-        a.click();
-        URL.revokeObjectURL(url);
+        try {
+            let binaryData: Uint8Array;
+
+            // If it's a data URL
+            if (programBinary.startsWith('data:')) {
+                // Extract the base64 part after the comma
+                const base64Content = programBinary.split(',')[1];
+                // Convert base64 to binary string
+                const binaryString = window.atob(base64Content);
+                // Convert binary string to Uint8Array
+                binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+            } else {
+                // Handle raw base64 string
+                try {
+                    const binaryString = window.atob(programBinary);
+                    binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+                } catch (error) {
+                    console.error('Failed to decode base64:', error);
+                    return;
+                }
+            }
+
+            // Create and download the blob
+            const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = binaryFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Failed to export binary:', error);
+        }
     };
   
     const handleNewKeypair = async () => {
-      const connection = ArchConnection(new RpcConnection('http://localhost:9002'));
-      const account = await connection.createNewAccount();
-      setCurrentAccount(account);
-      setIsNewKeypairDialogOpen(false);
-    };
+        const connection = ArchConnection(new RpcConnection(config.rpcUrl));
+        const account = await connection.createNewAccount();
+        setCurrentAccount(account);
+        setIsNewKeypairDialogOpen(false);
+      };
   
     // Update the Plus button click handler
     const handleNewKeypairClick = () => {
@@ -130,7 +163,9 @@ import {
   
     return (
         <div className="w-full bg-gray-800 border-r border-gray-700 p-4">
-          <h2 className="text-lg font-semibold mb-4">BUILD & DEPLOY</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>        
+          </div>
           
           <Button 
             className="w-full mb-4 bg-pink-500 hover:bg-pink-600"

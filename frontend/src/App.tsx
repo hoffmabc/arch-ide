@@ -15,11 +15,13 @@ import { ConfigPanel } from './components/ConfigPanel';
 import { Button } from './components/ui/button';
 import { Settings } from 'lucide-react';
 import SidePanel from './components/SidePanel';
+import { StatusBar } from './components/StatusBar';
 
 const queryClient = new QueryClient();
 
 interface Config {
   network: 'mainnet-beta' | 'devnet' | 'testnet';
+  rpcUrl: string;
   showTransactionDetails: boolean;
   improveErrors: boolean;
   automaticAirdrop: boolean;
@@ -46,6 +48,7 @@ const App = () => {
   const [programBinary, setProgramBinary] = useState<string | null>(null);
   const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     // Load projects on mount
@@ -58,21 +61,25 @@ const App = () => {
 
   const [config, setConfig] = useState<Config>({
     network: 'devnet',
+    rpcUrl: 'http://localhost:9002',
     showTransactionDetails: false,
     improveErrors: true,
     automaticAirdrop: true
   });
 
   const handleDeploy = async () => {
-    if (!currentProject || !programId) return;
-
+    if (!currentProject || !programId || !isConnected) {
+      addOutputMessage('error', 'Cannot deploy: No connection to network');
+      return;
+    }
+  
     setIsDeploying(true);
     if (config.showTransactionDetails) {
       addOutputMessage('command', 'solana program deploy');
       addOutputMessage('info', `Deploying to ${config.network}...`);
       addOutputMessage('info', `Using program ID: ${programId}`);
     }
-
+  
     try {
       const response = await fetch('http://localhost:8080/deploy', {
         method: 'POST',
@@ -81,12 +88,13 @@ const App = () => {
         },
         body: JSON.stringify({
           program: programId,
-          network: 'devnet' // or could make this configurable
+          network: config.network,
+          rpcUrl: config.rpcUrl
         })
       });
-
+  
       const result = await response.json();
-
+  
       if (result.success) {
         addOutputMessage('success', `Program deployed successfully`);
         addOutputMessage('info', `Program ID: ${result.programId}`);
@@ -421,83 +429,97 @@ const App = () => {
     setCurrentProject(updatedProject);
   }, [currentFile, currentProject]);
 
+  useEffect(() => {
+    if (!isConnected) {
+      addOutputMessage('error', 'Not connected to network');
+    } else {
+      addOutputMessage('success', `Connected to ${config.network} (${config.rpcUrl})`);
+    }
+  }, [isConnected, config.network, config.rpcUrl]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
-  <nav className="border-b border-gray-800 flex items-center justify-between p-4">
-    <h1 className="text-xl font-bold">Arch Network Playground</h1>
-    <ProjectList
-      projects={projects}
-      currentProject={currentProject || undefined}
-      onSelectProject={setCurrentProject}
-      onNewProject={() => setIsNewProjectOpen(true)}
-      onDeleteProject={handleDeleteProject}
-    />
-    <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(!isConfigOpen)}>
-      <Settings className="h-5 w-5" />
-    </Button>
-  </nav>
+        <nav className="border-b border-gray-800 flex items-center justify-between p-4">
+          <h1 className="text-xl font-bold">Arch Network Playground</h1>
+          <ProjectList
+            projects={projects}
+            currentProject={currentProject || undefined}
+            onSelectProject={setCurrentProject}
+            onNewProject={() => setIsNewProjectOpen(true)}
+            onDeleteProject={handleDeleteProject}
+          />
+          <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(!isConfigOpen)}>
+            <Settings className="h-5 w-5" />
+          </Button>
+        </nav>
+        
+        <div className="flex flex-1 overflow-hidden">
+          <SidePanel
+            files={currentProject?.files || []}
+            onFileSelect={handleFileSelect}
+            onUpdateTree={handleUpdateTree}
+            onNewItem={handleNewItem}
+            onBuild={handleCompile}
+            onDeploy={handleDeploy}
+            isBuilding={isCompiling}
+            isDeploying={isDeploying}
+            programId={programId}
+            programBinary={programBinary}
+            onProgramBinaryChange={setProgramBinary}
+            programIdl={programIdl}
+            config={config}
+            onConfigChange={setConfig}
+            onConnectionStatusChange={setIsConnected}
+          />
+          
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <TabBar
+              openFiles={openFiles}
+              currentFile={currentFile}
+              onSelectFile={setCurrentFile}
+              onCloseFile={handleCloseFile}
+            />
+            <div className="flex-1 overflow-hidden">
+              <Editor
+                code={currentFile ? (currentFile.content ?? '') : '// Select a file to edit'}
+                onChange={handleFileChange}
+                onSave={handleSaveFile}
+              />
+            </div>
   
-  <div className="flex flex-1 overflow-hidden">
-    <SidePanel
-      files={currentProject?.files || []}
-      onFileSelect={handleFileSelect}
-      onUpdateTree={handleUpdateTree}
-      onNewItem={handleNewItem}
-      onBuild={handleCompile}
-      onDeploy={handleDeploy}
-      isBuilding={isCompiling}
-      isDeploying={isDeploying}
-      programId={programId}
-      programBinary={programBinary}
-      onProgramBinaryChange={setProgramBinary}
-      programIdl={programIdl}
-    />
-      
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <TabBar
-          openFiles={openFiles}
-          currentFile={currentFile}
-          onSelectFile={setCurrentFile}
-          onCloseFile={handleCloseFile}
-        />
-        <div className="flex-1 overflow-hidden">
-        <Editor
-          code={currentFile ? (currentFile.content ?? '') : '// Select a file to edit'}
-          onChange={handleFileChange}
-          onSave={handleSaveFile}
-        />
-        </div>
-
-        <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-          <ResizeHandle onMouseDown={handleResizeStart} />
-          <div className="flex-1 min-h-0">
-            <Output messages={outputMessages} />
+            <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+              <ResizeHandle onMouseDown={handleResizeStart} />
+              <div className="flex-1 min-h-0">
+                <Output messages={outputMessages} />
+              </div>
+            </div>
           </div>
         </div>
+  
+        <StatusBar
+          config={config}
+          onConnectionStatusChange={setIsConnected}
+        />
+  
+        <NewProjectDialog
+          isOpen={isNewProjectOpen}
+          onClose={() => setIsNewProjectOpen(false)}
+          onCreateProject={handleCreateProject}
+        />
+        <NewItemDialog
+          isOpen={isNewFileDialogOpen}
+          onClose={() => setIsNewFileDialogOpen(false)}
+          onSubmit={handleCreateNewItem}
+          type={newItemType || 'file'}
+        />
+        <ConfigPanel
+          isOpen={isConfigOpen}
+          onClose={() => setIsConfigOpen(false)}
+          config={config}
+          onConfigChange={setConfig}
+        />
       </div>
-    
-  </div>
-
-  <NewProjectDialog
-    isOpen={isNewProjectOpen}
-    onClose={() => setIsNewProjectOpen(false)}
-    onCreateProject={handleCreateProject}
-  />
-  <NewItemDialog
-    isOpen={isNewFileDialogOpen}
-    onClose={() => setIsNewFileDialogOpen(false)}
-    onSubmit={handleCreateNewItem}
-    type={newItemType || 'file'}
-  />
-
-  <ConfigPanel
-    isOpen={isConfigOpen}
-    onClose={() => setIsConfigOpen(false)}
-    config={config}
-    onConfigChange={setConfig}
-  />
-</div>
     </QueryClientProvider>
   );
 };

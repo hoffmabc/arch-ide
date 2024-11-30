@@ -6,6 +6,7 @@ import BuildPanel from './BuildPanel';
 import { cn } from '@/lib/utils';
 import type { FileNode } from '../types';
 import VerticalResizeHandle from './VerticalResizeHandle';
+import { Config } from '../types/config';
 
 interface SidePanelProps {
   files: FileNode[];
@@ -25,11 +26,14 @@ interface SidePanelProps {
   programBinary?: string | null;
   onProgramBinaryChange?: (binary: string | null) => void;
   programIdl: ArchIdl | null;
+  config: Config;
+  onConfigChange: (config: Config) => void;
+  onConnectionStatusChange: (connected: boolean) => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl }: SidePanelProps) => {
+const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
     const [width, setWidth] = useState(256); // Default width in pixels
   
@@ -103,6 +107,9 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             programBinary={programBinary}
             onProgramBinaryChange={onProgramBinaryChange}
             idl={programIdl}
+            config={config}
+            onConfigChange={onConfigChange}
+            onConnectionStatusChange={onConnectionStatusChange}
           />
         )}
       </div>

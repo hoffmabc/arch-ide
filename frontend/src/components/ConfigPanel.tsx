@@ -10,6 +10,7 @@ import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 interface ConfigPanelProps {
     isOpen: boolean;
@@ -56,6 +57,16 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
             </SelectContent>
           </Select>
           <p className="text-xs text-gray-400">Select the network to deploy your program</p>
+        </div>
+
+        <div className="space-y-2">
+        <Label>RPC URL</Label>
+        <Input
+            value={config.rpcUrl}
+            onChange={(e) => onConfigChange({ ...config, rpcUrl: e.target.value })}
+            placeholder="Enter RPC URL"
+        />
+        <p className="text-xs text-gray-400">The RPC endpoint for connecting to the network</p>
         </div>
 
         <div className="space-y-4">
