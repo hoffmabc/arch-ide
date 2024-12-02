@@ -18,7 +18,7 @@ class StorageService {
 
   async init() {
     this.db = await openDB<ArchIDEDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db: IDBPDatabase<ArchIDEDB>) {
         const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
         projectStore.createIndex('by-name', 'name');
       },
