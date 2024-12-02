@@ -6,14 +6,17 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@components': path.resolve(__dirname, './src/components'),
+      '@lib': path.resolve(__dirname, './src/lib'),
+      '@utils': path.resolve(__dirname, './src/lib/utils'),
+      '@hooks': path.resolve(__dirname, './src/hooks'),
+      '@types': path.resolve(__dirname, './src/types')
     }
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: undefined
-      }
-    }
+    outDir: 'dist',
+    sourcemap: true,
+    minify: false
   }
 });
