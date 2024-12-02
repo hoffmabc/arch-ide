@@ -19,7 +19,12 @@
     "types": ["node", "vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@lib/*": ["src/lib/*"],
+      "@utils/*": ["src/lib/utils/*"],
+      "@ui/*": ["src/components/ui/*"],
+      "@hooks/*": ["src/hooks/*"]
     }
   },
   "include": ["src"],

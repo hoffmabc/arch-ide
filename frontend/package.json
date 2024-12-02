@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build --debug",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "npx shadcn@latest init"
   },
   "keywords": [],
   "author": "",

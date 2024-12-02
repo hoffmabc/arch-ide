@@ -10,8 +10,8 @@ export default defineConfig({
       '@components': path.resolve(__dirname, './src/components'),
       '@lib': path.resolve(__dirname, './src/lib'),
       '@utils': path.resolve(__dirname, './src/lib/utils'),
-      '@hooks': path.resolve(__dirname, './src/hooks'),
-      '@types': path.resolve(__dirname, './src/types')
+      '@ui': path.resolve(__dirname, './src/components/ui'),
+      '@hooks': path.resolve(__dirname, './src/hooks')
     }
   },
   build: {
