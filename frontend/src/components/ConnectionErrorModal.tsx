@@ -5,19 +5,21 @@ import {
     DialogTitle,
   } from "./ui/dialog";
   import { Button } from "./ui/button";
-  import { X } from "lucide-react";
+  import { Copy } from "lucide-react";
   import { useEffect, useState } from "react";
-  
+  import { X } from "lucide-react";
+
   interface ConnectionErrorModalProps {
     isOpen: boolean;
     onClose: () => void;
     network: string;
   }
-  
+
   export const ConnectionErrorModal = ({ isOpen, onClose, network }: ConnectionErrorModalProps) => {
     const isLocalnet = network === 'devnet';
     const [os, setOs] = useState<'mac' | 'linux' | 'windows' | 'unknown'>('unknown');
-  
+    const [copied, setCopied] = useState(false);
+
     useEffect(() => {
       // Detect operating system
       const platform = window.navigator.platform.toLowerCase();
@@ -29,7 +31,7 @@ import {
         setOs('windows');
       }
     }, []);
-  
+
     const getInstallInstructions = () => {
       switch (os) {
         case 'mac':
@@ -49,43 +51,47 @@ import {
           };
       }
     };
-  
+
     const instructions = getInstallInstructions();
-  
+
+    const handleCopy = async () => {
+      await navigator.clipboard.writeText(`sh -c "${instructions.command}"`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[500px] bg-[#1C1E26] border-gray-800">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle className="text-xl font-mono text-white">
-                Connect to {network}
-              </DialogTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={onClose}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+        <DialogContent className="sm:max-w-[600px] bg-[#1C1E26] border-gray-800">
+          <DialogHeader className="flex flex-row items-center justify-between">
+            <DialogTitle className="text-xl font-mono text-white">
+              Connect to {network}
+            </DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 hover:bg-gray-700 text-gray-400 hover:text-white absolute right-4 top-4"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </DialogHeader>
-  
+
           <div className="bg-[#15171E] text-red-400 p-4 rounded-md flex items-center gap-2 mt-4">
             <span className="text-2xl">☹</span>
             <span>Unable to connect to {network}</span>
           </div>
-  
+
           <div className="mt-6">
             <h2 className="text-lg font-mono text-white mb-2">
               {isLocalnet ? 'How to connect' : 'Connection Issues'}
             </h2>
             <p className="text-gray-400 mb-6">
-              {isLocalnet 
+              {isLocalnet
                 ? 'Here are the steps for connecting to localnet from playground.'
                 : `Common solutions for connecting to ${network}:`}
             </p>
-  
+
             <div className="space-y-6">
               {isLocalnet ? (
                 <>
@@ -96,7 +102,7 @@ import {
                     <p className="text-gray-400 mb-2">
                       Run the following command in your terminal:
                     </p>
-                    <div className="bg-[#15171E] p-4 rounded-md font-mono text-sm whitespace-pre-wrap overflow-x-auto">
+                    <div className="bg-[#15171E] p-4 rounded-md font-mono text-sm whitespace-pre-wrap overflow-x-auto relative group">
                       <code>
                         {os !== 'unknown' ? (
                           <>
@@ -112,21 +118,42 @@ import {
                           </span>
                         )}
                       </code>
+                      {os !== 'unknown' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-2 top-2 bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white"
+                          onClick={handleCopy}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
-                    {os !== 'unknown' && (
+                    {copied && (
+                      <p className="text-sm text-green-400 mt-1">Copied to clipboard!</p>
+                    )}
+                    {/* {os !== 'unknown' && (
                       <button className="text-purple-400 text-sm mt-2">
                         Other installation methods
                       </button>
-                    )}
+                    )} */}
                   </div>
-  
+
                   <div>
                     <h3 className="text-white font-mono mb-2">
-                      2. Start the local validator 
+                      2. Start the local validator
                     </h3>
                     <div className="bg-[#15171E] p-4 rounded-md font-mono text-sm">
                       <code>
                         <span className="text-green-400">arch-local-validator</span>
+                        <span className="text-white"> --bitcoin-rpc-endpoint </span>
+                        <span className="text-green-400">[bitcoin-rpc-endpoint]</span>
+                        <span className="text-white"> --bitcoin-rpc-port </span>
+                        <span className="text-green-400">[bitcoin-rpc-port]</span>
+                        <span className="text-white"> --bitcoin-rpc-username </span>
+                        <span className="text-green-400">[bitcoin-rpc-username]</span>
+                        <span className="text-white"> --bitcoin-rpc-password </span>
+                        <span className="text-green-400">[bitcoin-rpc-password]</span>
                       </code>
                     </div>
                   </div>
@@ -140,7 +167,7 @@ import {
                 </ul>
               )}
             </div>
-  
+
             <div className="mt-6 text-gray-400 text-sm">
               {isLocalnet ? (
                 <a href="https://docs.arch.network" target="_blank" rel="noopener noreferrer" className="text-white font-mono flex items-center gap-2">
