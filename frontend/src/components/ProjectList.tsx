@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Trash2 } from 'lucide-react';
-import type { Project } from '../types/project';
+
+import type { Project } from '../types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,7 +52,7 @@ const ProjectList = ({
           ))}
         </SelectContent>
       </Select>
-      
+
       <Button variant="ghost" size="icon" onClick={onNewProject}>
         <PlusCircle className="h-5 w-5" />
       </Button>

@@ -30,15 +30,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import RenameDialog from './RenameDialog';
-
-
-interface FileNode {
-  name: string;
-  type: 'file' | 'directory';
-  content?: string;
-  children?: FileNode[];
-}
-
+import type { FileNode } from '../types';
 const getNodePath = (node: FileNode, path: string[] = []): string => {
   return [...path, node.name].join('/');
 };
@@ -165,6 +157,13 @@ const FileExplorerItem = ({
   onSelect,
   onUpdateTree,
   onNewItem
+}: {
+  node: FileNode;
+  path?: string[];
+  depth?: number;
+  onSelect: (file: FileNode) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
+  onNewItem: (path: string[], type: 'file' | 'directory') => void;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -228,7 +227,7 @@ const FileExplorerItem = ({
           />
         </div>
       </div>
-      {isOpen && node.children?.map((child, i) => (
+      {isOpen && node.children?.map((child: FileNode, i: number) => (
         <FileExplorerItem
           key={i}
           node={child}
@@ -251,7 +250,7 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem }: FileExpl
         <FileExplorerItem
           key={i}
           node={file}
-          path={[]}  // Add this line
+          path={[]}
           onSelect={onFileSelect}
           onUpdateTree={onUpdateTree}
           onNewItem={onNewItem}

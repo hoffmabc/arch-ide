@@ -21,7 +21,7 @@ export class CompilerService {
     const projectDir = path.join(this.tempDir, `project_${Date.now()}`);
     await fs.mkdir(path.join(projectDir, 'program'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'program', 'src'), { recursive: true });
-    
+
     // Create program/Cargo.toml
     await fs.writeFile(
       path.join(projectDir, 'program', 'Cargo.toml'),
@@ -58,7 +58,7 @@ arch-program = "0.1.0"
 borsh = "0.10.3"`,
         'src/lib.rs': '' // Empty for now, will be used for tests
       };
-      
+
       const projectDir = await this.createProject(files);
 
       // Build the program
@@ -82,10 +82,20 @@ borsh = "0.10.3"`,
       };
 
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      // Since 'error' is of type 'unknown', we need to ensure it's an instance of Error to access its 'message' property.
+      if (error instanceof Error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      } else {
+        // If 'error' is not an instance of Error, we can't access its 'message' property.
+        // In this case, we'll return a generic error message.
+        return {
+          success: false,
+          error: 'An unknown error occurred.'
+        };
+      }
     }
   }
 }

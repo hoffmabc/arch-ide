@@ -1,6 +1,5 @@
-// src/services/github.ts
 import { Octokit } from '@octokit/rest';
-import type { Project, FileNode } from '../types';
+import type { FileNode, Project } from '../types';
 
 export class GitHubService {
   private octokit: Octokit | null = null;
@@ -13,14 +12,14 @@ export class GitHubService {
     if (!this.octokit) throw new Error('Not authenticated');
 
     const files: Record<string, { content: string }> = {};
-    
+
     const processNode = (node: FileNode, path: string = '') => {
       if (node.type === 'file') {
         files[`${path}${node.name}`] = {
           content: node.content || ''
         };
       } else if (node.type === 'directory' && node.children) {
-        node.children.forEach(child => 
+        node.children.forEach(child =>
           processNode(child, `${path}${node.name}/`)
         );
       }
@@ -34,35 +33,39 @@ export class GitHubService {
       files
     });
 
+    // Ensuring the response.data.id is not undefined before returning it
+    if (!response.data.id) throw new Error('Failed to create gist');
     return response.data.id;
   }
 
-  async loadFromGist(gistId: string): Promise<Project> {
+  async loadFromGist(gistId: string): Promise<Project | undefined> {
     if (!this.octokit) throw new Error('Not authenticated');
 
     const response = await this.octokit.gists.get({ gist_id: gistId });
     const { files, description } = response.data;
+    if (!files || !description) return undefined;
 
     const projectFiles: FileNode[] = [];
     const fileMap = new Map<string, FileNode>();
 
-    Object.entries(files).forEach(([path, file]) => {
-      const parts = path.split('/');
-      let currentPath = '';
-      
-      parts.forEach((part, index) => {
+    if (files) {
+      Object.entries(files).forEach(([path, file]) => {
+        const parts = path.split('/');
+        let currentPath = '';
+
+        parts.forEach((part, index) => {
         const isFile = index === parts.length - 1;
         const fullPath = currentPath + part;
-        
+
         if (!fileMap.has(fullPath)) {
           const node: FileNode = {
             name: part,
             type: isFile ? 'file' : 'directory',
             ...(isFile ? { content: file?.content || '' } : { children: [] })
           };
-          
+
           fileMap.set(fullPath, node);
-          
+
           if (currentPath === '') {
             projectFiles.push(node);
           } else {
@@ -70,7 +73,7 @@ export class GitHubService {
             parent?.children?.push(node);
           }
         }
-        
+
         if (!isFile) {
           currentPath += part + '/';
         }
@@ -85,6 +88,7 @@ export class GitHubService {
       lastModified: new Date()
     };
   }
+}
 }
 
 export const github = new GitHubService();

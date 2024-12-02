@@ -16,7 +16,7 @@ import { Button } from './components/ui/button';
 import { Settings } from 'lucide-react';
 import SidePanel from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
-
+import type { ArchIdl } from './types';
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 

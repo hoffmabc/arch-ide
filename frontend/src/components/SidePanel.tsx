@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import type { FileNode } from '../types';
 import VerticalResizeHandle from './VerticalResizeHandle';
 import { Config } from '../types/config';
+import type { ArchIdl } from '../types';
 
 interface SidePanelProps {
   files: FileNode[];
@@ -36,29 +37,29 @@ type View = 'explorer' | 'build';
 const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
     const [width, setWidth] = useState(256); // Default width in pixels
-  
+
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
       e.preventDefault();
       const startX = e.pageX;
       const startWidth = width;
-    
+
       const handleMouseMove = (e: MouseEvent) => {
         const delta = e.pageX - startX;
         const newWidth = Math.max(200, Math.min(800, startWidth + delta));
         setWidth(newWidth);
       };
-    
+
       const handleMouseUp = () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
-    
+
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }, [width]);
-  
+
     return (
-        <div 
+        <div
           className="bg-gray-800 border-r border-gray-700 flex flex-col relative"
           style={{ width: `${width}px` }}
         >

@@ -97,7 +97,7 @@ export const IdlPanel = ({ idl }: IdlPanelProps) => {
                             {arg.name}
                           </span>
                           <span className="text-blue-200 font-mono text-xs">
-                            {arg.type}
+                            {typeof arg.type === 'string' ? arg.type : arg.type.name ? arg.type.name : 'Unknown'}
                           </span>
                         </div>
                       ))}
@@ -173,7 +173,7 @@ export const IdlPanel = ({ idl }: IdlPanelProps) => {
                             {field.name}
                           </span>
                           <span className="text-blue-200 font-mono text-xs">
-                            {field.type}
+                            {typeof field.type === 'string' ? field.type : <pre>{JSON.stringify(field.type, null, 2)}</pre>}
                           </span>
                         </div>
                       ))}
@@ -193,7 +193,7 @@ export const IdlPanel = ({ idl }: IdlPanelProps) => {
                                     {field.name}
                                   </span>
                                   <span className="text-blue-200 font-mono text-xs">
-                                    {field.type}
+                                    {typeof field.type === 'string' ? field.type : <pre>{JSON.stringify(field.type, null, 2)}</pre>}
                                   </span>
                                 </div>
                               ))}

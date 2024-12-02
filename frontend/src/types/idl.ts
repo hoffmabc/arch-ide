@@ -56,6 +56,7 @@ export interface ArchIdl {
 }
 
 export interface ComplexType {
+  name?: string;
   option?: ComplexType;
   tuple?: (string | ComplexType)[];  // Changed from ComplexType[] to allow string literals
   vec?: ComplexType | string;        // Changed to allow string type for simple vectors

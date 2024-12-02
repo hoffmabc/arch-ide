@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Project, FileNode } from '../types';
-
+import type { FileNode, Project } from '../types';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 const CARGO_TOML_TEMPLATE = `[package]
@@ -429,13 +428,12 @@ export class ProjectService {
 
   async compileProject(project: Project) {
     const files: { path: string, content: string }[] = [];
-
     // Find the program directory
-    const programDir = project.files.find(node =>
+    const programDir = project.files.find((node: FileNode) =>
       node.type === 'directory' && node.name === 'program'
     );
 
-    if (!programDir?.type || !programDir.children) {
+    if (!programDir || programDir.type !== 'directory' || !programDir.children) {
       throw new Error('Program directory not found or invalid');
     }
 
@@ -450,10 +448,14 @@ export class ProjectService {
         const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
 
         if (node.type === 'file' && requiredFiles.includes(nodePath)) {
-          files.push({
-            path: nodePath,
-            content: node.content
-          });
+          if (typeof node.content === 'string') {
+            files.push({
+              path: nodePath,
+              content: node.content
+            });
+          } else {
+            throw new Error(`Invalid content type for file: ${nodePath}`);
+          }
         } else if (node.type === 'directory' && node.children) {
           collectRequiredFiles(node.children, nodePath);
         }

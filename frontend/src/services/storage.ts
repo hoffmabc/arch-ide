@@ -1,6 +1,6 @@
 // src/services/storage.ts
 import { openDB, IDBPDatabase } from 'idb';
-import type { Project, FileNode } from '../types';
+import type { FileNode, Project } from '../types';
 
 const DB_NAME = 'arch-ide';
 const DB_VERSION = 1;

@@ -11,14 +11,14 @@ import { Label } from "./ui/label";
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-
+import type { Config } from '../types';
 interface ConfigPanelProps {
     isOpen: boolean;
     onClose: () => void;
     config: Config;
     onConfigChange: (config: Config) => void;
   }
-  
+
 
 interface ConfigOption {
   network: 'mainnet-beta' | 'devnet' | 'testnet';
@@ -29,7 +29,7 @@ interface ConfigOption {
 
 export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigPanelProps) => {
     if (!isOpen) return null;
-  
+
 
   return (
     <div className="fixed bottom-0 right-0 w-80 bg-gray-800 border-l border-t border-gray-700 p-4 rounded-tl-lg shadow-lg">
@@ -75,7 +75,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
               <Label>Show Transaction Details</Label>
               <Switch
                     checked={config.showTransactionDetails}
-                    onCheckedChange={(checked) => 
+                    onCheckedChange={(checked) =>
                     onConfigChange({ ...config, showTransactionDetails: checked })}
                 />
             </div>
@@ -87,8 +87,8 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
               <Label>Improve Build Errors</Label>
               <Switch
                 checked={config.improveErrors}
-                onCheckedChange={(checked) => 
-                  setConfig({ ...config, improveErrors: checked })}
+                onCheckedChange={(checked) =>
+                  onConfigChange({ ...config, improveErrors: checked })}
                 className="data-[state=checked]:bg-blue-600"
               />
             </div>
@@ -100,8 +100,8 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
               <Label>Automatic Airdrop</Label>
               <Switch
                 checked={config.automaticAirdrop}
-                onCheckedChange={(checked) => 
-                  setConfig({ ...config, automaticAirdrop: checked })}
+                onCheckedChange={(checked) =>
+                  onConfigChange({ ...config, automaticAirdrop: checked })}
                 className="data-[state=checked]:bg-blue-600"
               />
             </div>

@@ -68,8 +68,8 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
     }
   }, [isWelcomeScreen, onChange]);
 
-  const handleKeyDown = useCallback((e: monaco.IKeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (!isWelcomeScreen && onSave && editorRef.current) {
         // Get the current value directly from the editor
@@ -90,7 +90,11 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         onChange={handleChange}
         onMount={(editor) => {
           editorRef.current = editor;
-          editor.onKeyDown(handleKeyDown);
+          // Convert KeyboardEvent to IKeyboardEvent for compatibility
+          editor.onKeyDown((e) => {
+            const keyboardEvent = e as unknown as KeyboardEvent;
+            handleKeyDown(keyboardEvent);
+          });
         }}
         options={{
           minimap: { enabled: false },

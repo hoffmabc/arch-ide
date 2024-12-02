@@ -42,7 +42,7 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarPro
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{file.path || file.name}</p>
+                <p>{file.path ? file.path : file.name}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
