@@ -581,6 +581,7 @@ const App = () => {
 
         <StatusBar
           config={config}
+          isConnected={isConnected}
           onConnectionStatusChange={setIsConnected}
         />
 

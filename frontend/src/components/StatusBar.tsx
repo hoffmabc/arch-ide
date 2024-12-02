@@ -5,20 +5,12 @@ import { useState, useEffect } from 'react';
 
 interface StatusBarProps {
   config: Config;
+  isConnected: boolean;
   onConnectionStatusChange: (connected: boolean) => void;
 }
 
-export const StatusBar = ({ config, onConnectionStatusChange, network }: StatusBarProps) => {
+export const StatusBar = ({ config, isConnected, onConnectionStatusChange }: StatusBarProps) => {
   const [lastPingTime, setLastPingTime] = useState<Date | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  const handleConnectionChange = (connected: boolean) => {
-    setIsConnected(connected);
-    if (connected) {
-      setLastPingTime(new Date());
-    }
-    onConnectionStatusChange(connected);
-  };
 
   return (
     <div className="h-6 bg-[#1a1b26] border-t border-gray-800 px-4 flex items-center justify-between text-xs">
@@ -40,8 +32,9 @@ export const StatusBar = ({ config, onConnectionStatusChange, network }: StatusB
         <ConnectionStatus
           rpcUrl={config.rpcUrl}
           network={config.network}
-          onConnect={() => handleConnectionChange(true)}
-          onDisconnect={() => handleConnectionChange(false)}
+          isConnected={isConnected}
+          onConnect={() => onConnectionStatusChange(true)}
+          onDisconnect={() => onConnectionStatusChange(false)}
         />
       </div>
     </div>
