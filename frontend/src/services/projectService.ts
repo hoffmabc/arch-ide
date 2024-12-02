@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Project, FileNode } from '../types';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
 const CARGO_TOML_TEMPLATE = `[package]
 name = "arch-program"
 version = "0.1.0"
@@ -468,13 +470,13 @@ export class ProjectService {
     }
 
     // Make API call to compile
-    const response = await fetch('http://localhost:8080/compile', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ files })
-    });
+    const response = await fetch(`${API_URL}/compile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ files })
+      });
 
     return response.json();
   }
