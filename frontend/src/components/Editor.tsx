@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { FileNode } from '../types';
 interface EditorProps {
@@ -11,16 +11,16 @@ interface EditorProps {
 const DEFAULT_WELCOME_MESSAGE = `
 //  █████╗ ██████╗  ██████╗██╗  ██╗    ███╗   ██╗███████╗████████╗██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
 // ██╔══██╗██╔══██╗██╔════╝██║  ██║    ████╗  ██║██╔════╝╚══██╔══╝██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
-// ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝ 
-// ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═██╗ 
+// ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝
+// ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═██╗
 // ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚████║███████╗   ██║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
 // ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
-                                                                                                      
+
 // Welcome to Arch Network Playground! 🚀
 
 /*
  * This is your workspace for building and deploying Arch Network programs.
- * 
+ *
  * Getting Started:
  * ───────────────
  * 1. Create a new project using the "+" button in the top navigation
@@ -28,7 +28,7 @@ const DEFAULT_WELCOME_MESSAGE = `
  * 3. Write your Arch program in Rust
  * 4. Build your program using the Build panel (🔨)
  * 5. Deploy to your chosen network (mainnet-beta, devnet, or testnet)
- * 
+ *
  * Key Features:
  * ────────────
  * • Full Rust development environment
@@ -36,45 +36,41 @@ const DEFAULT_WELCOME_MESSAGE = `
  * • Program deployment management
  * • Automatic keypair generation
  * • Binary import/export support
- * 
+ *
  * Need Help?
  * ─────────
  * • Visit https://docs.arch.network for documentation
  * • Join our Discord community for support
  * • Check out example programs in the templates
- * 
+ *
  * Happy coding! 🎉
  */
 `;
 
 const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
-  console.log('Editor code', { code });
-  const isUnselectedFile = code === '// Select a file to edit';
-  const displayCode = isUnselectedFile ? DEFAULT_WELCOME_MESSAGE : code;
-  const isWelcomeScreen = isUnselectedFile;
-  
-  // Remove the problematic useEffect hook that was causing the loop
+  const [latestContent, setLatestContent] = useState(code);
+  const isWelcomeScreen = !currentFile;
+  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
 
-  const handleKeyDown = useCallback((e: monaco.IKeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
-      e.preventDefault();
-      console.log('Manual save triggered', { displayCode });
-      if (onSave && !isWelcomeScreen) {
-        onSave(displayCode);
-      }
-    }
-  }, [onSave, displayCode, isWelcomeScreen]);
+  useEffect(() => {
+    setLatestContent(code);
+  }, [code]);
 
   const handleChange = (value: string | undefined) => {
-    console.log('Editor content changed', { value });
-    if (!isWelcomeScreen) {
+    if (!isWelcomeScreen && value !== undefined) {
+      setLatestContent(value);
       onChange(value);
     }
   };
 
-  const handleEditorMount = useCallback((editor: any) => {
-    editor.onKeyDown(handleKeyDown);
-  }, [handleKeyDown]);
+  const handleKeyDown = useCallback((e: monaco.IKeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+      e.preventDefault();
+      if (!isWelcomeScreen && onSave) {
+        onSave(latestContent);
+      }
+    }
+  }, [onSave, latestContent, isWelcomeScreen]);
 
   return (
     <div className="h-full w-full">
@@ -85,7 +81,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         key={currentFile?.path || 'welcome'}
         value={displayCode}
         onChange={handleChange}
-        onMount={handleEditorMount}
+        onMount={(editor) => editor.onKeyDown(handleKeyDown)}
         options={{
           minimap: { enabled: false },
           fontSize: 14,
