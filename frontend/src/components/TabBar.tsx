@@ -17,6 +17,10 @@ interface TabBarProps {
 }
 
 const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarProps) => {
+  const handleTabClick = (file: FileNode) => {
+    onSelectFile(file);
+  };
+
   return (
     <div className="flex overflow-x-auto bg-gray-800 border-b border-gray-700">
       {openFiles.map((file) => (
@@ -32,7 +36,7 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarPro
               <TooltipTrigger asChild>
                 <span
                   className="text-sm"
-                  onClick={() => onSelectFile(file)}
+                  onClick={() => handleTabClick(file)}
                 >
                   {file.name}
                 </span>
@@ -44,7 +48,10 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarPro
           </TooltipProvider>
           <button
             className="opacity-50 hover:opacity-100"
-            onClick={() => onCloseFile(file)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCloseFile(file);
+            }}
           >
             <X className="h-4 w-4" />
           </button>

@@ -21,7 +21,7 @@ const DEFAULT_PROGRAM = `use arch_program::{
     program::{
         get_bitcoin_block_height, next_account_info, set_transaction_to_sign,
     },
-    program_error::ProgramError, pubkey::Pubkey, 
+    program_error::ProgramError, pubkey::Pubkey,
     transaction_to_sign::TransactionToSign,
     bitcoin::{self, Transaction, transaction::Version, absolute::LockTime}
 };
@@ -364,6 +364,20 @@ mod tests {
   }
 ];
 
+const addPathsToNodes = (nodes: FileNode[], parentPath: string = ''): FileNode[] => {
+    return nodes.map(node => {
+      const currentPath = parentPath ? `${parentPath}/${node.name}` : node.name;
+      if (node.type === 'directory' && node.children) {
+        return {
+          ...node,
+          path: currentPath,
+          children: addPathsToNodes(node.children, currentPath)
+        };
+      }
+      return { ...node, path: currentPath };
+    });
+  };
+
 export class ProjectService {
   private storage = localStorage;
 
@@ -372,7 +386,7 @@ export class ProjectService {
       id: uuidv4(),
       name,
       description,
-      files: [...PROGRAM_TEMPLATE],
+      files: addPathsToNodes([...PROGRAM_TEMPLATE]),
       created: new Date(),
       lastModified: new Date()
     };
@@ -387,11 +401,11 @@ export class ProjectService {
       projectName: project.name,
       filesCount: project.files.length
     });
-    
+
     const projects = this.getAllProjects();
     projects[project.id] = project;
     this.storage.setItem('projects', JSON.stringify(projects));
-    
+
     console.log('Project saved to storage');
   }
 
@@ -413,26 +427,26 @@ export class ProjectService {
 
   async compileProject(project: Project) {
     const files: { path: string, content: string }[] = [];
-  
+
     // Find the program directory
     const programDir = project.files.find(node =>
       node.type === 'directory' && node.name === 'program'
     );
-  
+
     if (!programDir?.type || !programDir.children) {
       throw new Error('Program directory not found or invalid');
     }
-  
+
     // Only collect required files from the program directory
     const requiredFiles = [
       'src/lib.rs',
       'Cargo.toml'
     ];
-  
+
     const collectRequiredFiles = (nodes: FileNode[], currentPath = '') => {
       for (const node of nodes) {
         const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
-        
+
         if (node.type === 'file' && requiredFiles.includes(nodePath)) {
           files.push({
             path: nodePath,
@@ -443,16 +457,16 @@ export class ProjectService {
         }
       }
     };
-  
+
     collectRequiredFiles(programDir.children);
-  
+
     // Verify we have all required files
     for (const requiredFile of requiredFiles) {
       if (!files.some(f => f.path === requiredFile)) {
         throw new Error(`Missing required file: ${requiredFile}`);
       }
     }
-  
+
     // Make API call to compile
     const response = await fetch('http://localhost:8080/compile', {
       method: 'POST',
@@ -461,7 +475,7 @@ export class ProjectService {
       },
       body: JSON.stringify({ files })
     });
-  
+
     return response.json();
   }
 }

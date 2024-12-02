@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { FileNode } from '../types';
 interface EditorProps {
@@ -52,25 +52,32 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   const isWelcomeScreen = !currentFile;
   const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
 
+  const editorRef = useRef<any>(null);
+
   useEffect(() => {
-    setLatestContent(code);
+    console.log('code changed', code);
+    // // if (code !== latestContent) {
+      setLatestContent(code);
+    // // }
   }, [code]);
 
-  const handleChange = (value: string | undefined) => {
+  const handleChange = useCallback((value: string | undefined) => {
     if (!isWelcomeScreen && value !== undefined) {
       setLatestContent(value);
       onChange(value);
     }
-  };
+  }, [isWelcomeScreen, onChange]);
 
   const handleKeyDown = useCallback((e: monaco.IKeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
       e.preventDefault();
-      if (!isWelcomeScreen && onSave) {
-        onSave(latestContent);
+      if (!isWelcomeScreen && onSave && editorRef.current) {
+        // Get the current value directly from the editor
+        const currentValue = editorRef.current.getValue();
+        onSave(currentValue);
       }
     }
-  }, [onSave, latestContent, isWelcomeScreen]);
+  }, [onSave, isWelcomeScreen]);
 
   return (
     <div className="h-full w-full">
@@ -81,7 +88,10 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         key={currentFile?.path || 'welcome'}
         value={displayCode}
         onChange={handleChange}
-        onMount={(editor) => editor.onKeyDown(handleKeyDown)}
+        onMount={(editor) => {
+          editorRef.current = editor;
+          editor.onKeyDown(handleKeyDown);
+        }}
         options={{
           minimap: { enabled: false },
           fontSize: 14,
