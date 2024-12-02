@@ -450,8 +450,15 @@ const App = () => {
     if (window.confirm('Are you sure you want to delete this project?')) {
       projectService.deleteProject(projectId);
       setProjects(projects.filter(p => p.id !== projectId));
+
+      // If deleting current project, clear all tabs and current file
       if (currentProject?.id === projectId) {
-        setCurrentProject(projects[0] || null);
+        setOpenFiles([]);  // Clear all open tabs
+        setCurrentFile(null);  // Clear current file
+
+        // Set new current project if available
+        const remainingProjects = projects.filter(p => p.id !== projectId);
+        setCurrentProject(remainingProjects[0] || null);
       }
     }
   };
