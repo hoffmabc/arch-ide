@@ -18,6 +18,7 @@ import SidePanel from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 
 const queryClient = new QueryClient();
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 interface Config {
   network: 'mainnet-beta' | 'devnet' | 'testnet';
@@ -81,7 +82,7 @@ const App = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8080/deploy', {
+      const response = await fetch(`${API_URL}/deploy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
