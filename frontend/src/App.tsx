@@ -191,6 +191,11 @@ const App = () => {
     const newProject = projectService.createProject(name, description);
     setProjects([...projects, newProject]);
     setCurrentProject(newProject);
+
+    // Clear all open tabs and current file when creating a new project
+    setOpenFiles([]);
+    setCurrentFile(null);
+    setIsNewProjectOpen(false);
   };
 
   const handleNewItem = (path: string[], type: 'file' | 'directory') => {
