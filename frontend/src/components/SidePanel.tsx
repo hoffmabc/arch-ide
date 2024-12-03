@@ -9,6 +9,8 @@ import VerticalResizeHandle from './VerticalResizeHandle';
 import { Config } from '../types/config';
 import type { ArchIdl } from '../types';
 
+type ExpandedFolders = Set<string>;
+
 interface SidePanelProps {
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
@@ -36,7 +38,8 @@ type View = 'explorer' | 'build';
 
 const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
-    const [width, setWidth] = useState(256); // Default width in pixels
+    const [width, setWidth] = useState(256);
+    const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -91,14 +94,16 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
       </div>
 
       <div className="flex-1 overflow-auto">
-        {currentView === 'explorer' ? (
-          <FileExplorer
-            files={files}
-            onFileSelect={onFileSelect}
-            onUpdateTree={onUpdateTree}
-            onNewItem={onNewItem}
-          />
-        ) : (
+          {currentView === 'explorer' ? (
+            <FileExplorer
+              files={files}
+              onFileSelect={onFileSelect}
+              onUpdateTree={onUpdateTree}
+              onNewItem={onNewItem}
+              expandedFolders={expandedFolders}
+              onExpandedFoldersChange={setExpandedFolders}
+            />
+          ) : (
           <BuildPanel
             onBuild={onBuild}
             onDeploy={onDeploy}

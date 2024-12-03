@@ -143,7 +143,7 @@ const App = () => {
     // Update the content immediately in state
     const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
 
-    console.log(`Updated files: ${JSON.stringify(updatedFiles)}`);
+    // console.log(`Updated files: ${JSON.stringify(updatedFiles)}`);
 
     console.log('Updated files:', {
       oldContent: currentFile.content,

@@ -99,13 +99,10 @@ const getFileIcon = (fileName: string) => {
 interface FileExplorerProps {
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
-  onUpdateTree: (
-    operation: 'create' | 'delete' | 'rename',
-    path: string[],
-    type?: 'file' | 'directory',
-    newName?: string
-  ) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
   onNewItem: (path: string[], type: 'file' | 'directory') => void;
+  expandedFolders: Set<string>;
+  onExpandedFoldersChange: (folders: Set<string>) => void;
 }
 
 interface FileContextMenuProps {
@@ -156,7 +153,9 @@ const FileExplorerItem = ({
   depth = 0,
   onSelect,
   onUpdateTree,
-  onNewItem
+  onNewItem,
+  expandedFolders,
+  onExpandedFoldersChange
 }: {
   node: FileNode;
   path?: string[];
@@ -164,8 +163,9 @@ const FileExplorerItem = ({
   onSelect: (file: FileNode) => void;
   onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
   onNewItem: (path: string[], type: 'file' | 'directory') => void;
+  expandedFolders: Set<string>;
+  onExpandedFoldersChange: (folders: Set<string>) => void;
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
 
   const handleNewFile = () => {
@@ -191,17 +191,27 @@ const FileExplorerItem = ({
           style={{ paddingLeft: `${depth * 12}px` }}
           onClick={() => {
             if (node.type === 'directory') {
-              setIsOpen(!isOpen);
+              const nodePath = getNodePath(node, path);
+              const newExpandedFolders = new Set(expandedFolders);
+              if (expandedFolders.has(nodePath)) {
+                newExpandedFolders.delete(nodePath);
+              } else {
+                newExpandedFolders.add(nodePath);
+              }
+              onExpandedFoldersChange(newExpandedFolders);
             } else {
+              const nodePath = getNodePath(node, path);
               onSelect({
                 ...node,
-                path: getNodePath(node, path)
+                path: nodePath
               });
             }
           }}
         >
           {node.type === 'directory' && (
-            isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+            expandedFolders.has(getNodePath(node, path)) ?
+              <ChevronDown size={16} /> :
+              <ChevronRight size={16} />
           )}
           {node.type === 'directory' ? (
             <Folder size={16} className="ml-1 text-blue-400" />
@@ -227,22 +237,26 @@ const FileExplorerItem = ({
           />
         </div>
       </div>
-      {isOpen && node.children?.map((child: FileNode, i: number) => (
-        <FileExplorerItem
-          key={i}
-          node={child}
-          path={[...path, node.name]}
-          depth={depth + 1}
-          onSelect={onSelect}
-          onUpdateTree={onUpdateTree}
-          onNewItem={onNewItem}
-        />
-      ))}
+      {node.type === 'directory' && node.children && expandedFolders.has(getNodePath(node, path)) && (
+        node.children.map((child: FileNode, i: number) => (
+          <FileExplorerItem
+            key={i}
+            node={child}
+            path={[...path, node.name]}
+            depth={depth + 1}
+            onSelect={onSelect}
+            onUpdateTree={onUpdateTree}
+            onNewItem={onNewItem}
+            expandedFolders={expandedFolders}
+            onExpandedFoldersChange={onExpandedFoldersChange}
+          />
+        ))
+      )}
     </div>
   );
 };
 
-const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem }: FileExplorerProps) => {
+const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange }: FileExplorerProps) => {
   return (
     <div className="bg-gray-800 w-full h-full overflow-y-auto border-r border-gray-700">
       <div className="p-2 border-b border-gray-700 font-medium">Explorer</div>
@@ -254,6 +268,8 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem }: FileExpl
           onSelect={onFileSelect}
           onUpdateTree={onUpdateTree}
           onNewItem={onNewItem}
+          expandedFolders={expandedFolders}
+          onExpandedFoldersChange={onExpandedFoldersChange}
         />
       ))}
     </div>
