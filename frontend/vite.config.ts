@@ -17,6 +17,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    minify: false
+    minify: true,
+    chunkSizeWarningLimit: 1000
+  },
+  server: {
+    port: 3000
   }
 });
