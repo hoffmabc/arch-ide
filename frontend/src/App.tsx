@@ -28,7 +28,84 @@ interface Config {
   automaticAirdrop: boolean;
 }
 
+// Types
+interface FileOperation {
+  type: 'create' | 'delete' | 'rename';
+  path: string[];
+  fileType?: 'file' | 'directory';
+  newName?: string;
+}
 
+// Separate path utilities
+const pathUtils = {
+  normalize: (parts: string[]): string => {
+    return parts.filter(Boolean).join('/');
+  },
+
+  getParentPath: (path: string[]): string[] => {
+    return path.slice(0, -1);
+  },
+
+  getFileName: (path: string[]): string => {
+    return path[path.length - 1];
+  }
+};
+
+// Separate file tree operations
+const fileTreeOperations = {
+  create: (nodes: FileNode[], path: string[], type: 'file' | 'directory'): FileNode[] => {
+    const parentPath = pathUtils.getParentPath(path);
+    const fileName = pathUtils.getFileName(path);
+    const fullPath = pathUtils.normalize(path);
+
+    const newNode: FileNode = {
+      name: fileName,
+      type: type,
+      content: type === 'file' ? '' : undefined,
+      children: type === 'directory' ? [] : undefined,
+      path: fullPath
+    };
+
+    return updateNodeInTree(nodes, parentPath, (parent) => ({
+      ...parent,
+      children: [...(parent.children || []), newNode]
+    }));
+  },
+
+  delete: (nodes: FileNode[], path: string[]): FileNode[] => {
+    const parentPath = pathUtils.getParentPath(path);
+    const fileName = pathUtils.getFileName(path);
+
+    return updateNodeInTree(nodes, parentPath, (parent) => ({
+      ...parent,
+      children: parent.children?.filter(child => child.name !== fileName)
+    }));
+  },
+
+  rename: (nodes: FileNode[], path: string[], newName: string): FileNode[] => {
+    const parentPath = pathUtils.getParentPath(path);
+    const fullPath = pathUtils.normalize([...parentPath, newName]);
+
+    return updateNodeInTree(nodes, path, (node) => ({
+      ...node,
+      name: newName,
+      path: fullPath
+    }));
+  }
+};
+
+const findNodeByPath = (nodes: FileNode[], targetPath: string[]): FileNode | null => {
+  if (targetPath.length === 0) return null;
+
+  const [current, ...rest] = targetPath;
+  const node = nodes.find(n => n.name === current);
+
+  if (!node) return null;
+  if (rest.length === 0) return node;
+  if (!node.children) return null;
+
+  return findNodeByPath(node.children, rest);
+};
 
 const App = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -137,38 +214,45 @@ const App = () => {
     // Create an updated version of the current file with new content
     const updatedCurrentFile = {
       ...currentFile,
-      content: newContent  // Update the content in the current file
+      content: newContent
     };
 
-    // Update the content immediately in state
+    // Update the content in project files
     const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
 
-    // console.log(`Updated files: ${JSON.stringify(updatedFiles)}`);
+    // Check if files were actually updated by comparing content
+    const filesUpdated = JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files);
 
     console.log('Updated files:', {
       oldContent: currentFile.content,
       newContent: newContent,
-      filesUpdated: JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files)
+      filesUpdated: filesUpdated
     });
 
-    const updatedProject = {
-      ...currentProject,
-      files: updatedFiles,
-      lastModified: new Date()
-    };
+    if (filesUpdated) {
+      const updatedProject = {
+        ...currentProject,
+        files: updatedFiles,
+        lastModified: new Date()
+      };
 
-    // Update both the current file and project state
-    setCurrentFile(updatedCurrentFile);
-    setCurrentProject(updatedProject);
+      // Update both the current file and project state
+      setCurrentFile(updatedCurrentFile);
+      setCurrentProject(updatedProject);
 
-    console.log('Saving project', updatedProject);
-    projectService.saveProject(updatedProject);
+      console.log('Saving project', updatedProject);
+      projectService.saveProject(updatedProject);
+    }
   }, [currentFile, currentProject]);
 
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
     if (newItemPath && newItemType) {
-      handleUpdateTree('create', [...newItemPath, name], newItemType);
+      handleUpdateTree({
+        type: 'create',
+        path: [...newItemPath, name],
+        fileType: newItemType
+      });
     }
   };
 
@@ -185,19 +269,26 @@ const App = () => {
 
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
-      // Always construct full path from current location
+      // Always use the full path from the file structure
       const filePath = file.path || constructFullPath(file, currentProject?.files || []);
 
-      // Find the most up-to-date version of this file in the current project
-      const currentProjectFile = currentProject ?
+      // First check if the file is in openFiles
+      const openFile = openFiles.find(f => f.path === filePath);
+
+      // Then check project files if not found in open files
+      const currentProjectFile = !openFile && currentProject ?
         findFileInProject(currentProject.files, filePath) : null;
 
-      // Use the current project's version of the file if available, otherwise use the provided file
-      const fileToUse = currentProjectFile || { ...file, path: filePath };
+      // Use openFile first, then project file, then create a new file object
+      const fileToUse = openFile || currentProjectFile || {
+        ...file,
+        path: filePath,
+        name: file.name // Ensure we keep the original filename
+      };
 
       setCurrentFile(fileToUse);
 
-      // Update openFiles if needed, using the current version of the file
+      // Update openFiles if needed
       if (!openFiles.some(f => f.path === filePath)) {
         setOpenFiles(prev => [...prev, fileToUse]);
       }
@@ -287,68 +378,42 @@ const App = () => {
     document.addEventListener('mouseup', handleMouseUp);
   }, [terminalHeight]);
 
-  const handleUpdateTree = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
+  const handleUpdateTree = (operation: FileOperation) => {
     if (!currentProject) return;
 
-    const updateFiles = (nodes: FileNode[], currentPath: string[]): FileNode[] => {
-      if (currentPath.length === 0) return nodes;
+    let updatedFiles: FileNode[];
 
-      const [current, ...rest] = currentPath;
-      const currentFullPath = currentPath.join('/');
+    switch (operation.type) {
+      case 'create':
+        updatedFiles = fileTreeOperations.create(
+          currentProject.files,
+          operation.path,
+          operation.fileType || 'file'
+        );
 
-      if (operation === 'create' && rest.length === 1) {
-        const targetNode = nodes.find(node => node.name === current);
-        if (targetNode && targetNode.type === 'directory') {
-          const newNodePath = `${currentFullPath}/${rest[0]}`;
-          const newNode: FileNode = {
-            name: rest[0],
-            type: type || 'file',
-            content: type === 'file' ? '' : undefined,
-            children: type === 'directory' ? [] : undefined,
-            path: newNodePath
-          };
-
-          if (type === 'file') {
+        // Handle UI updates after tree modification
+        if (operation.fileType === 'file') {
+          const newNode = findNodeByPath(updatedFiles, operation.path);
+          if (newNode) {
             setCurrentFile(newNode);
             setOpenFiles(prev => [...prev, newNode]);
           }
-
-          return nodes.map(node =>
-            node.name === current
-              ? {
-                  ...node,
-                  path: currentFullPath,
-                  children: [...(node.children || []), newNode]
-                }
-              : node
-          );
         }
-      }
+        break;
 
-      return nodes.map(node => {
-        if (node.name === current) {
-          const nodePath = currentPath.slice(0, -rest.length).join('/');
+      case 'delete':
+        updatedFiles = fileTreeOperations.delete(currentProject.files, operation.path);
+        break;
 
-          if (rest.length === 0) {
-            if (operation === 'delete') return null;
-            if (operation === 'rename' && newName) {
-              const newPath = currentPath.slice(0, -1).concat(newName).join('/');
-              return { ...node, name: newName, path: newPath };
-            }
-            return { ...node, path: nodePath };
-          }
+      case 'rename':
+        updatedFiles = fileTreeOperations.rename(
+          currentProject.files,
+          operation.path,
+          operation.newName || ''
+        );
+        break;
+    }
 
-          return {
-            ...node,
-            path: nodePath,
-            children: updateFiles(node.children || [], rest)
-          };
-        }
-        return node;
-      }).filter(Boolean) as FileNode[];
-    };
-
-    const updatedFiles = updateFiles(currentProject.files, path);
     const updatedProject = {
       ...currentProject,
       files: updatedFiles,
@@ -357,9 +422,9 @@ const App = () => {
 
     projectService.saveProject(updatedProject);
     setCurrentProject(updatedProject);
-    setProjects(projects.map(p =>
-      p.id === updatedProject.id ? updatedProject : p
-    ));
+    setProjects(prev =>
+      prev.map(p => p.id === updatedProject.id ? updatedProject : p)
+    );
   };
 
   const handleCompile = async () => {
@@ -518,6 +583,10 @@ const App = () => {
     }
   }, [isConnected, config.network, config.rpcUrl]);
 
+  const handleUpdateTreeAdapter = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
+    handleUpdateTree({ type: operation, path, fileType: type, newName });
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -539,7 +608,7 @@ const App = () => {
           <SidePanel
             files={currentProject?.files || []}
             onFileSelect={handleFileSelect}
-            onUpdateTree={handleUpdateTree}
+            onUpdateTree={handleUpdateTreeAdapter}
             onNewItem={handleNewItem}
             onBuild={handleCompile}
             onDeploy={handleDeploy}
@@ -612,41 +681,52 @@ const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: 
   // If target file has a path, use it for direct matching
   if (targetFile.path) {
     return nodes.map(node => {
+      // If this is the target file, update its content
       if (node.type === 'file' && node.path === targetFile.path) {
-        return { ...node, content: newContent };
+        return node.content !== newContent ? { ...node, content: newContent } : node;
       }
+
+      // If this is a directory, recursively check its children
       if (node.type === 'directory' && node.children) {
         const updatedChildren = updateFileContent(node.children, targetFile, newContent);
-        if (JSON.stringify(updatedChildren) !== JSON.stringify(node.children)) {
-          return { ...node, children: updatedChildren };
-        }
+        return JSON.stringify(updatedChildren) !== JSON.stringify(node.children)
+          ? { ...node, children: updatedChildren }
+          : node;
       }
+
       return node;
     });
   }
 
-  // Fallback to recursive path construction if no path exists
-  const updateNodeWithPath = (currentNodes: FileNode[], currentPath: string = ''): FileNode[] => {
-    return currentNodes.map(node => {
-      const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
+  // If no path exists, match by name only (should be avoided if possible)
+  return nodes.map(node => {
+    if (node.type === 'file' && node.name === targetFile.name) {
+      return node.content !== newContent ? { ...node, content: newContent } : node;
+    }
 
-      if (node.type === 'file' && nodePath === targetFile.name) {
-        return { ...node, content: newContent, path: nodePath };
-      }
+    if (node.type === 'directory' && node.children) {
+      const updatedChildren = updateFileContent(node.children, targetFile, newContent);
+      return JSON.stringify(updatedChildren) !== JSON.stringify(node.children)
+        ? { ...node, children: updatedChildren }
+        : node;
+    }
 
-      if (node.type === 'directory' && node.children) {
-        const updatedChildren = updateNodeWithPath(node.children, nodePath);
-        if (JSON.stringify(updatedChildren) !== JSON.stringify(node.children)) {
-          return { ...node, children: updatedChildren, path: nodePath };
-        }
-      }
-
-      return { ...node, path: nodePath };
-    });
-  };
-
-  return updateNodeWithPath(nodes);
+    return node;
+  });
 };
 
+const updateNodeInTree = (nodes: FileNode[], path: string[], updater: (node: FileNode) => FileNode): FileNode[] => {
+  if (path.length === 0) return nodes;
+
+  const [current, ...rest] = path;
+  return nodes.map(node => {
+    if (node.name !== current) return node;
+    if (rest.length === 0) return updater(node);
+    return {
+      ...node,
+      children: node.children ? updateNodeInTree(node.children, rest, updater) : []
+    };
+  });
+};
 
 export default App;
