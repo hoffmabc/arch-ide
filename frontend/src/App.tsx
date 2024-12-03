@@ -393,10 +393,17 @@ const App = () => {
 
         // Handle UI updates after tree modification
         if (operation.fileType === 'file') {
+          const fullPath = operation.path.join('/');
           const newNode = findNodeByPath(updatedFiles, operation.path);
           if (newNode) {
-            setCurrentFile(newNode);
-            setOpenFiles(prev => [...prev, newNode]);
+            // Ensure the new node has the correct path
+            const nodeWithPath = {
+              ...newNode,
+              path: fullPath,
+              content: '' // Initialize with empty content
+            };
+            setCurrentFile(nodeWithPath);
+            setOpenFiles(prev => [...prev, nodeWithPath]);
           }
         }
         break;
