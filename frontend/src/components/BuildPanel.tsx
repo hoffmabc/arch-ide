@@ -27,6 +27,7 @@ import {
     config: Config;
     onConfigChange?: (config: Config) => void;
     onConnectionStatusChange?: (connected: boolean) => void;
+    onProgramIdChange?: (programId: string) => void;
   }
 
   const BuildPanel = ({
@@ -39,7 +40,8 @@ import {
     onProgramBinaryChange,
     config,
     onConnectionStatusChange,
-    idl
+    idl,
+    onProgramIdChange
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
       const [currentAccount, setCurrentAccount] = useState<{
         privkey: string;
@@ -126,6 +128,7 @@ import {
         const connection = ArchConnection(new RpcConnection(config.rpcUrl));
         const account = await connection.createNewAccount();
         setCurrentAccount(account);
+        onProgramIdChange?.(account.pubkey);
         setIsNewKeypairDialogOpen(false);
       };
 
@@ -154,6 +157,7 @@ import {
         try {
           const account = JSON.parse(e.target?.result as string);
           setCurrentAccount(account);
+          onProgramIdChange?.(account.pubkey);
         } catch (error) {
           console.error('Failed to import keypair:', error);
         }

@@ -28,6 +28,7 @@ interface SidePanelProps {
   programId?: string;
   programBinary?: string | null;
   onProgramBinaryChange?: (binary: string | null) => void;
+  onProgramIdChange?: (programId: string) => void;
   programIdl: ArchIdl | null;
   config: Config;
   onConfigChange: (config: Config) => void;
@@ -36,7 +37,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
+const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
@@ -112,6 +113,7 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             programId={programId}
             programBinary={programBinary}
             onProgramBinaryChange={onProgramBinaryChange}
+            onProgramIdChange={onProgramIdChange}
             idl={programIdl}
             config={config}
             onConfigChange={onConfigChange}

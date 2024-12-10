@@ -18,7 +18,18 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     minify: true,
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'monaco-editor': ['@monaco-editor/react']
+        }
+      }
+    }
+  },
+  optimizeDeps: {
+    include: ['@monaco-editor/react']
   },
   server: {
     port: 3000

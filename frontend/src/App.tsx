@@ -147,6 +147,7 @@ const App = () => {
 
   const handleDeploy = async () => {
     if (!currentProject || !programId || !isConnected) {
+      console.log(currentProject, programId, isConnected);
       addOutputMessage('error', 'Cannot deploy: No connection to network');
       return;
     }
@@ -599,6 +600,10 @@ const App = () => {
     handleUpdateTree({ type: operation, path, fileType: type, newName });
   };
 
+  const handleProgramIdChange = (newProgramId: string) => {
+    setProgramId(newProgramId);
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -633,6 +638,7 @@ const App = () => {
             config={config}
             onConfigChange={setConfig}
             onConnectionStatusChange={setIsConnected}
+            onProgramIdChange={handleProgramIdChange}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">
