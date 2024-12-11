@@ -4,6 +4,11 @@ export interface Config {
   showTransactionDetails: boolean;
   improveErrors: boolean;
   automaticAirdrop: boolean;
+  regtestConfig?: {
+    url: string;
+    username: string;
+    password: string;
+  };
 }
 
 export interface FileNode {

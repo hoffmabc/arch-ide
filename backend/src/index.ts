@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { compileRoute } from './routes/compile';
 import { compiler } from './services/compiler';
-
+import { deployRoute } from './routes/deploy';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -15,7 +15,7 @@ compiler.init().catch(err => {
 app.use(cors());
 app.use(express.json());
 app.use('/compile', compileRoute);
-
+app.use('/deploy', deployRoute);
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Server error:', err);

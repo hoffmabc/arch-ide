@@ -33,11 +33,17 @@ interface SidePanelProps {
   config: Config;
   onConfigChange: (config: Config) => void;
   onConnectionStatusChange: (connected: boolean) => void;
+  currentAccount: {
+    privkey: string;
+    pubkey: string;
+    address: string;
+  } | null;
+  onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange }: SidePanelProps) => {
+const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange }: SidePanelProps) => {
     const [currentView, setCurrentView] = useState<View>('explorer');
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
@@ -118,6 +124,8 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             config={config}
             onConfigChange={onConfigChange}
             onConnectionStatusChange={onConnectionStatusChange}
+            currentAccount={currentAccount}
+            onAccountChange={onAccountChange}
           />
         )}
       </div>

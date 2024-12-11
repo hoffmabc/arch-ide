@@ -17,6 +17,8 @@ import { Settings } from 'lucide-react';
 import SidePanel from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 import type { ArchIdl } from './types';
+import BuildPanel from './components/BuildPanel';
+
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -127,6 +129,11 @@ const App = () => {
   const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [currentAccount, setCurrentAccount] = useState<{
+    privkey: string;
+    pubkey: string;
+    address: string;
+  } | null>(null);
 
   useEffect(() => {
     // Load projects on mount
@@ -146,30 +153,34 @@ const App = () => {
   });
 
   const handleDeploy = async () => {
-    if (!currentProject || !programId || !isConnected) {
-      console.log(currentProject, programId, isConnected);
-      addOutputMessage('error', 'Cannot deploy: No connection to network');
+    if (!currentProject || !programId || !isConnected || !currentAccount || !programBinary) {
+      addOutputMessage('error', 'Cannot deploy: Missing required data');
       return;
     }
 
     setIsDeploying(true);
-    if (config.showTransactionDetails) {
-      addOutputMessage('command', 'solana program deploy');
-      addOutputMessage('info', `Deploying to ${config.network}...`);
-      addOutputMessage('info', `Using program ID: ${programId}`);
-    }
-
     try {
+      const formData = new FormData();
+      formData.append('keypair', JSON.stringify(currentAccount));
+
+      // Convert base64 to Uint8Array
+      let binaryData: Uint8Array;
+      if (programBinary!.startsWith('data:')) {
+        const base64Content = programBinary!.split(',')[1];
+        const binaryString = window.atob(base64Content);
+        binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+      } else {
+        const binaryString = window.atob(programBinary!);
+        binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+      }
+
+      formData.append('binary', new Blob([binaryData]), 'program.so');
+      formData.append('network', config.network);
+      formData.append('rpcUrl', config.rpcUrl);
+
       const response = await fetch(`${API_URL}/deploy`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          program: programId,
-          network: config.network,
-          rpcUrl: config.rpcUrl
-        })
+        body: formData
       });
 
       const result = await response.json();
@@ -639,6 +650,8 @@ const App = () => {
             onConfigChange={setConfig}
             onConnectionStatusChange={setIsConnected}
             onProgramIdChange={handleProgramIdChange}
+            currentAccount={currentAccount}
+            onAccountChange={setCurrentAccount}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">

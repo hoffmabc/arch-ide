@@ -28,6 +28,12 @@ import {
     onConfigChange?: (config: Config) => void;
     onConnectionStatusChange?: (connected: boolean) => void;
     onProgramIdChange?: (programId: string) => void;
+    currentAccount: {
+      privkey: string;
+      pubkey: string;
+      address: string;
+    } | null;
+    onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
   }
 
   const BuildPanel = ({
@@ -41,13 +47,10 @@ import {
     config,
     onConnectionStatusChange,
     idl,
-    onProgramIdChange
+    onProgramIdChange,
+    currentAccount,
+    onAccountChange
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
-      const [currentAccount, setCurrentAccount] = useState<{
-        privkey: string;
-        pubkey: string;
-        address: string;
-      }>();
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
 
@@ -127,10 +130,10 @@ import {
     const handleNewKeypair = async () => {
         const connection = ArchConnection(new RpcConnection(config.rpcUrl));
         const account = await connection.createNewAccount();
-        setCurrentAccount(account);
+        onAccountChange(account);
         onProgramIdChange?.(account.pubkey);
         setIsNewKeypairDialogOpen(false);
-      };
+    };
 
     // Update the Plus button click handler
     const handleNewKeypairClick = () => {
@@ -156,7 +159,7 @@ import {
       reader.onload = (e) => {
         try {
           const account = JSON.parse(e.target?.result as string);
-          setCurrentAccount(account);
+          onAccountChange(account);
           onProgramIdChange?.(account.pubkey);
         } catch (error) {
           console.error('Failed to import keypair:', error);
