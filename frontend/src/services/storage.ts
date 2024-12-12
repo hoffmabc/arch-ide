@@ -13,7 +13,7 @@ interface ArchIDEDB {
   };
 }
 
-class StorageService {
+export class StorageService {
   private db: IDBPDatabase<ArchIDEDB> | null = null;
 
   async init() {

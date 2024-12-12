@@ -22,8 +22,8 @@ interface ProjectListProps {
   projects: Project[];
   currentProject?: Project;
   onSelectProject: (project: Project) => void;
-  onNewProject: () => void;
-  onDeleteProject: (projectId: string) => void;
+  onNewProject: () => Promise<void>;
+  onDeleteProject: (projectId: string) => Promise<void>;
   onProjectsChange: (projects: Project[]) => void;
 }
 
@@ -54,34 +54,50 @@ const ProjectList = ({
   };
 
   const handleImportProject = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files?.length) return;
 
     try {
-      const importedProject = await projectService.importProject(file);
+      let importedProject: Project;
+
+      if (files[0].webkitRelativePath) {
+        // Handling folder import
+        importedProject = await projectService.importFromFolder(files);
+      } else if (files[0].name.endsWith('.zip')) {
+        // Handling zip import
+        importedProject = await projectService.importProjectAsZip(files[0]);
+      } else {
+        // Handling JSON import
+        importedProject = await projectService.importProject(files[0]);
+      }
+
       onProjectsChange([...projects, importedProject]);
       onSelectProject(importedProject);
     } catch (error) {
       console.error('Failed to import project:', error);
-      // You might want to show an error message to the user here
+      // TODO: Show error message to user
     }
   };
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
       <Select
-        value={currentProject?.id}
+        value={currentProject?.id || ""}
         onValueChange={(value) => {
           const project = projects.find(p => p.id === value);
           if (project) onSelectProject(project);
         }}
       >
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className="w-[200px] bg-background text-foreground border-input">
           <SelectValue placeholder="Select a project" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="bg-background border-input">
           {projects.map((project) => (
-            <SelectItem key={project.id} value={project.id}>
+            <SelectItem
+              key={project.id}
+              value={project.id}
+              className="text-foreground"
+            >
               {project.name}
             </SelectItem>
           ))}
@@ -92,7 +108,10 @@ const ProjectList = ({
         type="file"
         id="import-project"
         className="hidden"
-        accept=".json"
+        accept=".zip,.json"
+        webkitdirectory=""
+        directory=""
+        multiple
         onChange={handleImportProject}
       />
 

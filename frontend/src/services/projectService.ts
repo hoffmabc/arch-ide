@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { FileNode, Project } from '../types';
 import JSZip from 'jszip';
+import { StorageService } from './storage';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 const CARGO_TOML_TEMPLATE = `[package]
@@ -381,50 +382,42 @@ const addPathsToNodes = (nodes: FileNode[], parentPath: string = ''): FileNode[]
   };
 
 export class ProjectService {
-  private storage = localStorage;
+  private storage = new StorageService();
 
-  createProject(name: string, description?: string): Project {
+  constructor() {
+    // Initialize the storage service when ProjectService is created
+    this.storage.init().catch(console.error);
+  }
+
+  async createProject(name: string, description?: string): Promise<Project> {
+    const uniqueName = await this.getUniqueProjectName(name);
     const project: Project = {
       id: uuidv4(),
-      name,
+      name: uniqueName,
       description,
       files: addPathsToNodes([...PROGRAM_TEMPLATE]),
       created: new Date(),
       lastModified: new Date()
     };
 
-    this.saveProject(project);
+    await this.storage.saveProject(project);
     return project;
   }
 
-  saveProject(project: Project) {
-    console.log('projectService.saveProject called', {
-      projectId: project.id,
-      projectName: project.name,
-      filesCount: project.files.length
-    });
-
-    const projects = this.getAllProjects();
-    projects[project.id] = project;
-    this.storage.setItem('projects', JSON.stringify(projects));
-
-    console.log('Project saved to storage');
+  async saveProject(project: Project): Promise<void> {
+    await this.storage.saveProject(project);
   }
 
-  getProject(id: string): Project | null {
-    const projects = this.getAllProjects();
-    return projects[id] || null;
+  async getProject(id: string): Promise<Project | null> {
+    return (await this.storage.getProject(id)) || null;
   }
 
-  getAllProjects(): Record<string, Project> {
-    const projectsStr = this.storage.getItem('projects');
-    return projectsStr ? JSON.parse(projectsStr) : {};
+  async getAllProjects(): Promise<Project[]> {
+    return await this.storage.getAllProjects();
   }
 
-  deleteProject(id: string) {
-    const projects = this.getAllProjects();
-    delete projects[id];
-    this.storage.setItem('projects', JSON.stringify(projects));
+  async deleteProject(id: string): Promise<void> {
+    await this.storage.deleteProject(id);
   }
 
   async compileProject(project: Project) {
@@ -491,10 +484,10 @@ export class ProjectService {
   }
 
   async importProject(file: File): Promise<Project> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const reader = new FileReader();
 
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const projectData = JSON.parse(e.target?.result as string);
 
@@ -510,7 +503,7 @@ export class ProjectService {
             lastModified: new Date(projectData.lastModified)
           };
 
-          this.saveProject(project);
+          await this.saveProject(project);
           resolve(project);
         } catch (error) {
           reject(new Error('Failed to parse project file'));
@@ -543,6 +536,142 @@ export class ProjectService {
 
     // Generate zip file
     return await zip.generateAsync({ type: "blob" });
+  }
+
+  async importFromFolder(files: FileList): Promise<Project> {
+    const fileNodes: FileNode[] = [];
+    const fileMap = new Map<string, FileNode>();
+
+    // Convert FileList to array and sort by path to ensure parents are created first
+    const fileArray = Array.from(files).sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
+
+    for (const file of fileArray) {
+      const parts = file.webkitRelativePath.split('/');
+      const projectName = parts[0]; // First folder name becomes project name
+      parts.shift(); // Remove project name from path
+
+      let currentPath = '';
+      for (const [index, part] of parts.entries()) {
+        const isFile = index === parts.length - 1;
+        const fullPath = currentPath + part;
+
+        if (!fileMap.has(fullPath)) {
+          const node: FileNode = {
+            name: part,
+            type: isFile ? 'file' : 'directory',
+            path: fullPath,
+            ...(isFile ? { content: await this.readFileContent(file) } : { children: [] })
+          };
+
+          fileMap.set(fullPath, node);
+
+          if (currentPath === '') {
+            fileNodes.push(node);
+          } else {
+            const parent = fileMap.get(currentPath.slice(0, -1));
+            parent?.children?.push(node);
+          }
+        }
+
+        if (!isFile) {
+          currentPath += part + '/';
+        }
+      }
+    }
+
+    // Handle name conflicts
+    const projectName = await this.getUniqueProjectName(files[0].webkitRelativePath.split('/')[0]);
+
+    const project = {
+      id: uuidv4(),
+      name: projectName,
+      files: fileNodes,
+      created: new Date(),
+      lastModified: new Date()
+    };
+
+    // Save to IndexedDB
+    await this.saveProject(project);
+    return project;
+  }
+
+  private async getUniqueProjectName(baseName: string): Promise<string> {
+    const projects = await this.storage.getAllProjects();
+    let name = baseName;
+    let counter = 1;
+
+    while (projects.some(p => p.name === name)) {
+      name = `${baseName} (${counter})`;
+      counter++;
+    }
+
+    return name;
+  }
+
+  private async readFileContent(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.readAsText(file);
+    });
+  }
+
+  async importProjectAsZip(file: File): Promise<Project> {
+    const zip = await JSZip.loadAsync(file);
+    const fileNodes: FileNode[] = [];
+    const fileMap = new Map<string, FileNode>()
+
+    // Get the root directory name from the zip
+    const rootDirName = Object.keys(zip.files)[0].split('/')[0];
+    const projectName = rootDirName || file.name.replace('.zip', '');
+    const uniqueName = await this.getUniqueProjectName(projectName);
+
+    for (const [path, zipEntry] of Object.entries(zip.files)) {
+      if (!zipEntry.dir) {
+        const content = await zipEntry.async('text');
+        const parts = path.split('/');
+        let currentPath = '';
+
+        for (const [index, part] of parts.entries()) {
+          const isFile = index === parts.length - 1;
+          const fullPath = currentPath + part;
+
+          if (!fileMap.has(fullPath)) {
+            const node: FileNode = {
+              name: part,
+              type: isFile ? 'file' : 'directory',
+              path: fullPath,
+              ...(isFile ? { content } : { children: [] })
+            };
+
+            fileMap.set(fullPath, node);
+
+            if (currentPath === '') {
+              fileNodes.push(node);
+            } else {
+              const parent = fileMap.get(currentPath.slice(0, -1));
+              parent?.children?.push(node);
+            }
+          }
+
+          if (!isFile) {
+            currentPath += part + '/';
+          }
+        }
+      }
+    }
+
+    const project = {
+      id: uuidv4(),
+      name: uniqueName,
+      files: fileNodes,
+      created: new Date(),
+      lastModified: new Date()
+    };
+
+    // Save to IndexedDB
+    await this.saveProject(project);
+    return project;
   }
 }
 

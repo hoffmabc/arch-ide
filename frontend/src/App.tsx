@@ -143,13 +143,28 @@ const App = () => {
   const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
 
   useEffect(() => {
-    // Load projects on mount
-    const loadedProjects = Object.values(projectService.getAllProjects());
-    setProjects(loadedProjects);
-    if (loadedProjects.length > 0) {
-      setCurrentProject(loadedProjects[0]);
-    }
+    const loadProjects = async () => {
+      const loadedProjects = await projectService.getAllProjects();
+      setProjects(loadedProjects);
+      if (loadedProjects.length > 0) {
+        setCurrentProject(loadedProjects[0]);
+      }
+    };
+
+    loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (currentProject) {
+      const updateProjects = async () => {
+        await projectService.saveProject(currentProject);
+        const updatedProjects = await projectService.getAllProjects();
+        setProjects(updatedProjects);
+      };
+
+      updateProjects();
+    }
+  }, [currentProject]);
 
   const [config, setConfig] = useState<Config>(() => {
     const savedConfig = storage.getConfig();
@@ -281,9 +296,10 @@ const App = () => {
     }
   };
 
-  const handleCreateProject = (name: string, description: string) => {
-    const newProject = projectService.createProject(name, description);
-    setProjects([...projects, newProject]);
+  const handleCreateProject = async (name: string, description: string) => {
+    const newProject = await projectService.createProject(name, description);
+    const updatedProjects = await projectService.getAllProjects();
+    setProjects(updatedProjects);
     setCurrentProject(newProject);
 
     // Clear all open tabs and current file when creating a new project
@@ -618,18 +634,15 @@ const App = () => {
     }]);
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('Are you sure you want to delete this project?')) {
-      projectService.deleteProject(projectId);
-      setProjects(projects.filter(p => p.id !== projectId));
+      await projectService.deleteProject(projectId);
+      const remainingProjects = await projectService.getAllProjects();
+      setProjects(remainingProjects);
 
-      // If deleting current project, clear all tabs and current file
       if (currentProject?.id === projectId) {
-        setOpenFiles([]);  // Clear all open tabs
-        setCurrentFile(null);  // Clear current file
-
-        // Set new current project if available
-        const remainingProjects = projects.filter(p => p.id !== projectId);
+        setOpenFiles([]);
+        setCurrentFile(null);
         setCurrentProject(remainingProjects[0] || null);
       }
     }

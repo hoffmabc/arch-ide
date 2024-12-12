@@ -19,44 +19,48 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
     onCreateProject(name, description);
     setName('');
     setDescription('');
-    onClose();
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] bg-[#1C1E26] border-gray-800">
+      <DialogContent className="bg-background border-input">
         <DialogHeader>
-          <DialogTitle>Create New Project</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-foreground">Create New Project</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
             Create a new Arch Network project with the basic template
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Project Name</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my-arch-project"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description of your project..."
-              rows={3}
-            />
+
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label htmlFor="name" className="text-foreground">
+                Project Name
+              </label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-background text-foreground border-input"
+              />
+            </div>
+            <div className="grid gap-2">
+              <label htmlFor="description" className="text-foreground">
+                Description
+              </label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-background text-foreground border-input"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name}>
-              Create Project
-            </Button>
+            <Button type="submit">Create Project</Button>
           </DialogFooter>
         </form>
       </DialogContent>
