@@ -41,7 +41,7 @@ export const IdlPanel = ({ idl }: IdlPanelProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-800 p-4 overflow-auto">
+    <div className="flex flex-col h-full bg-gray-800 p-4 overflow-auto custom-scrollbar">
       {/* Program Info with Download Button */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">

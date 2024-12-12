@@ -32,6 +32,17 @@ export default defineConfig({
     include: ['@monaco-editor/react']
   },
   server: {
-    port: 3000
+    port: 3000,
+    proxy: {
+      '/api/bitcoin': {
+        target: 'http://bitcoin-node.dev.aws.archnetwork.xyz:18443',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/bitcoin/, ''),
+        headers: {
+          'Authorization': `Basic ${Buffer.from('bitcoin:428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618').toString('base64')}`
+        }
+      }
+    }
   }
 });

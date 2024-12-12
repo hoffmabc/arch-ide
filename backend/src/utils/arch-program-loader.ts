@@ -1,6 +1,20 @@
 import { ArchDeployOptions, Message, Instruction, RuntimeTransaction, DeploymentResult } from './types';
 import { createMessage, signMessage, createTransaction, sendTransaction } from './transaction-utils';
 
+declare global {
+  interface Window {
+    bitcoin: {
+      connect: () => Promise<void>;
+      sendPayment: (info: {
+        network: string;
+        address: string;
+        amount: bigint;
+      }) => Promise<any>;
+    };
+  }
+}
+
+const NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:9002';
 const CHUNK_SIZE = 900; // Adjust based on network limits
 const SYSTEM_PROGRAM_ID = '0000000000000000000000000000000000000000000000000000000000000001';
 
@@ -180,7 +194,7 @@ export class ArchProgramLoader {
         const paymentInfo = {
           network: network === 'testnet' ? 'testnet' : 'mainnet',
           address: address,
-          amount: 5000n // 5000 sats
+          amount: BigInt(5000) // Changed from 5000n to BigInt(5000)
         };
 
         // Wait for payment confirmation

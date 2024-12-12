@@ -24,7 +24,7 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[500px] bg-[#1C1E26] border-gray-800">
         <DialogHeader>
           <DialogTitle>Create New Project</DialogTitle>
           <DialogDescription>

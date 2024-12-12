@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
-import { X, Globe, Link, Server, Key, Lock, Eye, AlertTriangle, Coins } from 'lucide-react';
+import { X, Globe, Link, Server, Key, Lock, Eye, AlertTriangle, Coins, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import type { Config } from '../types';
+import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
 
 interface ConfigPanelProps {
   isOpen: boolean;
@@ -15,6 +16,24 @@ interface ConfigPanelProps {
 }
 
 export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigPanelProps) => {
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'none' | 'success' | 'error'>('none');
+
+  const testRegtestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionStatus('none');
+
+    try {
+      const response = await bitcoinRpcRequest(config, 'getblockcount');
+      setConnectionStatus(response.result !== undefined ? 'success' : 'error');
+    } catch (error) {
+      console.error('Connection error:', error);
+      setConnectionStatus('error');
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleRegtestChange = (field: 'url' | 'username' | 'password', value: string) => {
@@ -29,9 +48,37 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
     });
   };
 
+  const connectionTestButton = (
+    <div className="mt-4">
+      <Button
+        onClick={testRegtestConnection}
+        disabled={testingConnection}
+        variant="secondary"
+        className="w-full"
+      >
+        {testingConnection ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Testing Connection...
+          </>
+        ) : (
+          'Test Connection'
+        )}
+      </Button>
+      {connectionStatus === 'success' && (
+        <p className="text-xs text-green-400 mt-1">Connection successful!</p>
+      )}
+      {connectionStatus === 'error' && (
+        <p className="text-xs text-red-400 mt-1">Connection failed. Please check your settings.</p>
+      )}
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg shadow-xl w-[600px] max-h-[80vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center" onClick={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}>
+      <div className="bg-gray-800 rounded-lg shadow-xl w-[600px] max-h-[80vh] overflow-y-auto custom-scrollbar">
         <div className="flex justify-between items-center p-6 border-b border-gray-700">
           <h3 className="text-lg font-medium">Configuration</h3>
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -85,7 +132,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
                   <div>
                     <h4 className="text-sm font-medium text-blue-400">Bitcoin Regtest Settings</h4>
                     <p className="text-xs text-gray-400 mt-1">
-                      These settings allow direct interaction with a local Bitcoin node, enabling transactions without a web wallet.
+                      These settings allow direct interaction with a Bitcoin node, enabling transactions without a web wallet.
                       Perfect for development and testing.
                     </p>
                   </div>
@@ -97,9 +144,9 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
                         Bitcoin RPC URL
                       </Label>
                       <Input
-                        value={config.regtestConfig?.url || ''}
+                        value={config.regtestConfig?.url || 'http://bitcoin-node.dev.aws.archnetwork.xyz:18443'}
                         onChange={(e) => handleRegtestChange('url', e.target.value)}
-                        placeholder="http://localhost:18443"
+                        placeholder="http://bitcoin-node.dev.aws.archnetwork.xyz:18443"
                       />
                     </div>
 
@@ -109,7 +156,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
                         RPC Username
                       </Label>
                       <Input
-                        value={config.regtestConfig?.username || ''}
+                        value={config.regtestConfig?.username || 'bitcoin'}
                         onChange={(e) => handleRegtestChange('username', e.target.value)}
                         placeholder="bitcoin"
                       />
@@ -121,11 +168,13 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
                         RPC Password
                       </Label>
                       <Input type="password"
-                        value={config.regtestConfig?.password || ''}
+                        value={config.regtestConfig?.password || '428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618'}
                         onChange={(e) => handleRegtestChange('password', e.target.value)}
-                        placeholder="bitcoin"
+                        placeholder="428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618"
                       />
                     </div>
+
+                    {connectionTestButton}
                   </div>
                 </div>
               )}

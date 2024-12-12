@@ -19,8 +19,8 @@ export const DEFAULT_CONFIG: Config = {
     improveErrors: true,
     automaticAirdrop: true,
     regtestConfig: {
-        url: 'http://localhost:18443',
+        url: 'http://bitcoin-node.dev.aws.archnetwork.xyz:18443',
         username: 'bitcoin',
-        password: 'bitcoin'
+        password: '428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618'
     }
 };
