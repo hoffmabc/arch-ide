@@ -611,8 +611,25 @@ export class ProjectService {
   private async readFileContent(file: File): Promise<string> {
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.readAsText(file);
+      const isText = file.type.startsWith('text/') ||
+        ['application/json', 'application/javascript', 'application/typescript']
+          .includes(file.type);
+
+      reader.onload = (e) => {
+        if (isText) {
+          resolve(e.target?.result as string);
+        } else {
+          // For binary files, always return as data URL
+          resolve(e.target?.result as string);
+        }
+      };
+
+      // Always read binary files as data URL
+      if (isText) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsDataURL(file);
+      }
     });
   }
 

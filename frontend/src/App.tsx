@@ -710,6 +710,14 @@ const App = () => {
     setProgramId(newProgramId);
   };
 
+  const handleProjectSelect = (project: Project) => {
+    // Clear all open tabs
+    setOpenFiles([]);
+    setCurrentFile(null);
+    // Set the new project
+    setCurrentProject(project);
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -718,7 +726,7 @@ const App = () => {
           <ProjectList
             projects={projects}
             currentProject={currentProject || undefined}
-            onSelectProject={setCurrentProject}
+            onSelectProject={handleProjectSelect}
             onNewProject={() => setIsNewProjectOpen(true)}
             onDeleteProject={handleDeleteProject}
             onProjectsChange={setProjects}

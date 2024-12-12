@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { FileNode } from '../types';
+
 interface EditorProps {
   code: string;
   onChange: (value: string | undefined) => void;
@@ -8,12 +9,64 @@ interface EditorProps {
   currentFile?: FileNode | null;
 }
 
+const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' => {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+
+  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'];
+  const videoExtensions = ['mp4', 'webm', 'ogg', 'mov'];
+  const audioExtensions = ['mp3', 'wav', 'ogg', 'aac'];
+
+  if (imageExtensions.includes(extension || '')) return 'image';
+  if (videoExtensions.includes(extension || '')) return 'video';
+  if (audioExtensions.includes(extension || '')) return 'audio';
+  return 'text';
+};
+
+const MediaViewer = ({ type, content }: { type: 'image' | 'video' | 'audio', content: string }) => {
+  // Use content directly as it should already be a data URL
+  const mediaContent = content;
+
+  switch (type) {
+    case 'image':
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-gray-900">
+          <img
+            src={mediaContent}
+            alt="Preview"
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      );
+    case 'video':
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-gray-900">
+          <video
+            controls
+            className="max-h-full max-w-full"
+          >
+            <source src={mediaContent} />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      );
+    case 'audio':
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-gray-900">
+          <audio controls className="w-3/4">
+            <source src={mediaContent} type="audio/mpeg" />
+            Your browser does not support the audio tag.
+          </audio>
+        </div>
+      );
+  }
+};
+
 const DEFAULT_WELCOME_MESSAGE = `
 //  █████╗ ██████╗  ██████╗██╗  ██╗    ███╗   ██╗███████╗████████╗██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
 // ██╔══██╗██╔══██╗██╔════╝██║  ██║    ████╗  ██║██╔════╝╚══██╔══╝██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
 // ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝
 // ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═██╗
-// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚████║███████╗   ██║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
+// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗   ██║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
 // ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 
 // Welcome to Arch Network Playground! 🚀
@@ -51,33 +104,42 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   const [latestContent, setLatestContent] = useState(code);
   const isWelcomeScreen = !currentFile;
   const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
-
   const editorRef = useRef<any>(null);
 
+  const fileType = currentFile ? getFileType(currentFile.name) : 'text';
+  const isMediaFile = fileType !== 'text';
+
   useEffect(() => {
-    console.log('code changed', code);
-    // // if (code !== latestContent) {
-      setLatestContent(code);
-    // // }
+    setLatestContent(code);
   }, [code]);
 
   const handleChange = useCallback((value: string | undefined) => {
-    if (!isWelcomeScreen && value !== undefined) {
+    if (!isWelcomeScreen && !isMediaFile && value !== undefined) {
       setLatestContent(value);
       onChange(value);
     }
-  }, [isWelcomeScreen, onChange]);
+  }, [isWelcomeScreen, isMediaFile, onChange]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (isMediaFile) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+      }
+      return;
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (!isWelcomeScreen && onSave && editorRef.current) {
-        // Get the current value directly from the editor
         const currentValue = editorRef.current.getValue();
         onSave(currentValue);
       }
     }
-  }, [onSave, isWelcomeScreen]);
+  }, [onSave, isWelcomeScreen, isMediaFile]);
+
+  if (fileType !== 'text' && currentFile) {
+    return <MediaViewer type={fileType} content={currentFile.content || ''} />;
+  }
 
   return (
     <div className="h-full w-full">
@@ -90,7 +152,6 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         onChange={handleChange}
         onMount={(editor) => {
           editorRef.current = editor;
-          // Convert KeyboardEvent to IKeyboardEvent for compatibility
           editor.onKeyDown((e) => {
             const keyboardEvent = e as unknown as KeyboardEvent;
             handleKeyDown(keyboardEvent);
@@ -103,7 +164,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           tabSize: 2,
-          readOnly: isWelcomeScreen
+          readOnly: isWelcomeScreen || isMediaFile
         }}
       />
     </div>
