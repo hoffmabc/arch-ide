@@ -17,7 +17,8 @@ import { Settings } from 'lucide-react';
 import SidePanel from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 import type { ArchIdl } from './types';
-import BuildPanel from './components/BuildPanel';
+import { ArchProgramLoader } from './utils/arch-program-loader';
+import { storage } from './utils/storage';
 
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -139,6 +140,7 @@ const App = () => {
     pubkey: string;
     address: string;
   } | null>(null);
+  const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
 
   useEffect(() => {
     // Load projects on mount
@@ -149,58 +151,128 @@ const App = () => {
     }
   }, []);
 
-  const [config, setConfig] = useState<Config>({
-    network: 'devnet',
-    rpcUrl: 'http://localhost:9002',
-    showTransactionDetails: false,
-    improveErrors: true,
-    automaticAirdrop: true,
-    regtestConfig: {
-      url: 'http://bitcoin-node.dev.aws.archnetwork.xyz:18443',
-      username: 'bitcoin',
-      password: '428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618'
-    }
+  const [config, setConfig] = useState<Config>(() => {
+    const savedConfig = storage.getConfig();
+    const defaultConfig = {
+      network: 'devnet',
+      rpcUrl: 'http://localhost:9002',
+      showTransactionDetails: false,
+      improveErrors: true,
+      automaticAirdrop: true,
+      regtestConfig: {
+        url: 'http://localhost:8010/proxy',
+        username: 'bitcoin',
+        password: '428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618'
+      }
+    };
+
+    if (!savedConfig) return defaultConfig;
+
+    return {
+      ...defaultConfig,
+      ...savedConfig,
+      regtestConfig: {
+        ...defaultConfig.regtestConfig,
+        ...(savedConfig.regtestConfig || {})
+      }
+    };
   });
+
+  useEffect(() => {
+    const savedBinary = storage.getProgramBinary();
+    if (savedBinary) {
+      setProgramBinary(savedBinary);
+    }
+
+    const savedProgramId = storage.getProgramId();
+    if (savedProgramId) {
+      setProgramId(savedProgramId);
+    }
+
+    const savedAccount = storage.getCurrentAccount();
+    if (savedAccount) {
+      setCurrentAccount(savedAccount);
+    }
+
+    const savedView = storage.getCurrentView();
+    if (savedView) {
+      setCurrentView(savedView);
+    }
+  }, []);
+
+  // Save config when it changes
+  useEffect(() => {
+    // Only save if config has been initialized
+    if (config) {
+      storage.saveConfig({
+        ...config,
+        regtestConfig: {
+          ...config.regtestConfig
+        }
+      });
+    }
+  }, [config]);
+
+  // Save program binary when it changes
+  useEffect(() => {
+    storage.saveProgramBinary(programBinary);
+  }, [programBinary]);
+
+  // Save program ID when it changes
+  useEffect(() => {
+    storage.saveProgramId(programId);
+  }, [programId]);
+
+  // Save current account when it changes
+  useEffect(() => {
+    storage.saveCurrentAccount(currentAccount);
+  }, [currentAccount]);
+
+  useEffect(() => {
+    console.log('Saving view:', currentView);
+    storage.saveCurrentView(currentView);
+  }, [currentView]);
 
   const handleDeploy = async () => {
     if (!currentProject || !programId || !isConnected || !currentAccount || !programBinary) {
-      addOutputMessage('error', 'Cannot deploy: Missing required data');
+      const missing = [];
+      if (!currentProject) missing.push('project');
+      if (!programId) missing.push('program ID');
+      if (!isConnected) missing.push('connection');
+      if (!currentAccount) missing.push('account/keypair');
+      if (!programBinary) missing.push('program binary');
+
+      addOutputMessage('error', `Cannot deploy: Missing ${missing.join(', ')}`);
       return;
     }
 
     setIsDeploying(true);
     try {
-      const formData = new FormData();
-      formData.append('keypair', JSON.stringify(currentAccount));
-
       // Convert base64 to Uint8Array
       let binaryData: Uint8Array;
-      if (programBinary!.startsWith('data:')) {
-        const base64Content = programBinary!.split(',')[1];
+      if (programBinary.startsWith('data:')) {
+        const base64Content = programBinary.split(',')[1];
         const binaryString = window.atob(base64Content);
         binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
       } else {
-        const binaryString = window.atob(programBinary!);
+        const binaryString = window.atob(programBinary);
         binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
       }
 
-      formData.append('binary', new Blob([binaryData]), 'program.so');
-      formData.append('network', config.network);
-      formData.append('rpcUrl', config.rpcUrl);
+      const deployOptions = {
+        rpcUrl: config.rpcUrl,
+        network: config.network,
+        programBinary: Buffer.from(binaryData),
+        keypair: currentAccount,
+        regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined
+      };
 
-      const response = await fetch(`${API_URL}/deploy`, {
-        method: 'POST',
-        body: formData
-      });
+      const result = await ArchProgramLoader.load(deployOptions);
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result.programId) {
         addOutputMessage('success', `Program deployed successfully`);
         addOutputMessage('info', `Program ID: ${result.programId}`);
         setProgramId(result.programId);
-      } else {
-        addOutputMessage('error', result.error || 'Deploy failed');
       }
     } catch (error: any) {
       addOutputMessage('error', `Deploy error: ${error.message}`);
@@ -644,6 +716,8 @@ const App = () => {
 
         <div className="flex flex-1 overflow-hidden">
           <SidePanel
+            currentView={currentView}
+            onViewChange={setCurrentView}
             files={currentProject?.files || []}
             onFileSelect={handleFileSelect}
             onUpdateTree={handleUpdateTreeAdapter}

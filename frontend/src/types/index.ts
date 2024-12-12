@@ -1,15 +1,5 @@
-export interface Config {
-  network: 'mainnet-beta' | 'devnet' | 'testnet';
-  rpcUrl: string;
-  showTransactionDetails: boolean;
-  improveErrors: boolean;
-  automaticAirdrop: boolean;
-  regtestConfig?: {
-    url: string;
-    username: string;
-    password: string;
-  };
-}
+import { Config } from './config';
+export type { Config };
 
 export interface FileNode {
   name: string;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Files, Hammer } from 'lucide-react';
 import { Button } from './ui/button';
 import FileExplorer from './FileExplorer';
@@ -8,10 +8,13 @@ import type { FileNode } from '../types';
 import VerticalResizeHandle from './VerticalResizeHandle';
 import { Config } from '../types/config';
 import type { ArchIdl } from '../types';
+import { storage } from '../utils/storage';
 
 type ExpandedFolders = Set<string>;
 
 interface SidePanelProps {
+  currentView: 'explorer' | 'build';
+  onViewChange: (view: 'explorer' | 'build') => void;
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
   onUpdateTree: (
@@ -25,10 +28,10 @@ interface SidePanelProps {
   onDeploy: () => void;
   isBuilding: boolean;
   isDeploying: boolean;
-  programId?: string;
-  programBinary?: string | null;
-  onProgramBinaryChange?: (binary: string | null) => void;
-  onProgramIdChange?: (programId: string) => void;
+  programId: string | undefined;
+  programBinary: string | null;
+  onProgramBinaryChange: (binary: string | null) => void;
+  onProgramIdChange: (programId: string) => void;
   programIdl: ArchIdl | null;
   config: Config;
   onConfigChange: (config: Config) => void;
@@ -43,8 +46,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange }: SidePanelProps) => {
-    const [currentView, setCurrentView] = useState<View>('explorer');
+const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
@@ -81,7 +83,7 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             'flex-1 rounded-none',
             currentView === 'explorer' && 'bg-gray-700'
           )}
-          onClick={() => setCurrentView('explorer')}
+          onClick={() => onViewChange('explorer')}
         >
           <Files className="h-4 w-4 mr-2" />
           Explorer
@@ -93,7 +95,7 @@ const SidePanel = ({ files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDe
             'flex-1 rounded-none',
             currentView === 'build' && 'bg-gray-700'
           )}
-          onClick={() => setCurrentView('build')}
+          onClick={() => onViewChange('build')}
         >
           <Hammer className="h-4 w-4 mr-2" />
           Build

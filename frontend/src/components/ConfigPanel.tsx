@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Dispatch, SetStateAction } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
@@ -12,7 +12,7 @@ interface ConfigPanelProps {
   isOpen: boolean;
   onClose: () => void;
   config: Config;
-  onConfigChange: (config: Config) => void;
+  onConfigChange: Dispatch<SetStateAction<Config>>;
 }
 
 export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigPanelProps) => {
@@ -24,7 +24,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
     setConnectionStatus('none');
 
     try {
-      const response = await bitcoinRpcRequest(config, 'getblockcount');
+      const response = await bitcoinRpcRequest(config.regtestConfig, 'getblockcount');
       setConnectionStatus(response.result !== undefined ? 'success' : 'error');
     } catch (error) {
       console.error('Connection error:', error);
@@ -37,15 +37,13 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
   if (!isOpen) return null;
 
   const handleRegtestChange = (field: 'url' | 'username' | 'password', value: string) => {
-    onConfigChange({
-      ...config,
+    onConfigChange(prevConfig => ({
+      ...prevConfig,
       regtestConfig: {
-        url: config.regtestConfig?.url || '',
-        username: config.regtestConfig?.username || '',
-        password: config.regtestConfig?.password || '',
+        ...prevConfig.regtestConfig,
         [field]: value
       }
-    });
+    }));
   };
 
   const connectionTestButton = (

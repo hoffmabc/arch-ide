@@ -35,12 +35,22 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api/bitcoin': {
-        target: 'http://bitcoin-node.dev.aws.archnetwork.xyz:18443',
+        target: 'http://localhost:8010/proxy',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api\/bitcoin/, ''),
-        headers: {
-          'Authorization': `Basic ${Buffer.from('bitcoin:428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618').toString('base64')}`
+        rewrite: (path) => {
+          const url = new URL(path, 'http://localhost:8010');
+          const wallet = url.searchParams.get('wallet');
+          return wallet ? `/proxy/wallet/${wallet}` : '/proxy';
+        },
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            const auth = Buffer.from('bitcoin:428bae8f3c94f8c39c50757fc89c39bc7e6ebc70ebf8f618').toString('base64');
+            proxyReq.setHeader('Authorization', `Basic ${auth}`);
+          });
         }
       }
     }

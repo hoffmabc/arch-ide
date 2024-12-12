@@ -4,7 +4,7 @@ export interface Config {
     showTransactionDetails: boolean;
     improveErrors: boolean;
     automaticAirdrop: boolean;
-    regtestConfig?: {
+    regtestConfig: {
         url: string;
         username: string;
         password: string;

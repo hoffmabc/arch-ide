@@ -1,11 +1,19 @@
 import type { Config } from '../../types/config';
 
-export async function bitcoinRpcRequest(config: Config, method: string, params: any[] = []) {
+export async function bitcoinRpcRequest(
+  config: { url: string; username: string; password: string },
+  method: string,
+  params: any[] = [],
+  wallet?: string
+) {
   try {
-    const response = await fetch('/api/bitcoin', {
+    console.log('wallet', wallet);
+    console.log('config', config);
+    const response = await fetch('http://localhost:8010/proxy', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + btoa(`${config.username}:${config.password}`)
       },
       body: JSON.stringify({
         jsonrpc: '2.0',

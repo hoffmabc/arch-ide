@@ -32,6 +32,7 @@ export class ArchProgramLoader {
       options.network,
       options.regtestConfig
     );
+    console.log('createAccountInstruction', createAccountInstruction);
 
     const createAccountTxid = await this.sendInstruction(
       options.rpcUrl,
