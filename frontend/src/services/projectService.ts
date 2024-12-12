@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { FileNode, Project } from '../types';
+import JSZip from 'jszip';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 const CARGO_TOML_TEMPLATE = `[package]
@@ -481,6 +482,67 @@ export class ProjectService {
       });
 
     return response.json();
+  }
+
+  exportProject(project: Project): Blob {
+    // Convert project to a JSON string with proper formatting
+    const projectData = JSON.stringify(project, null, 2);
+    return new Blob([projectData], { type: 'application/json' });
+  }
+
+  async importProject(file: File): Promise<Project> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const projectData = JSON.parse(e.target?.result as string);
+
+          // Validate the imported data has required Project properties
+          if (!projectData.id || !projectData.name || !projectData.files) {
+            throw new Error('Invalid project file format');
+          }
+
+          // Ensure dates are properly converted
+          const project: Project = {
+            ...projectData,
+            created: new Date(projectData.created),
+            lastModified: new Date(projectData.lastModified)
+          };
+
+          this.saveProject(project);
+          resolve(project);
+        } catch (error) {
+          reject(new Error('Failed to parse project file'));
+        }
+      };
+
+      reader.onerror = () => reject(new Error('Failed to read project file'));
+      reader.readAsText(file);
+    });
+  }
+
+  async exportProjectAsZip(project: Project): Promise<Blob> {
+    const zip = new JSZip();
+
+    const addToZip = (nodes: FileNode[], currentPath: string = '') => {
+      for (const node of nodes) {
+        const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
+
+        if (node.type === 'file') {
+          // Add file content to zip
+          zip.file(nodePath, node.content || '');
+        } else if (node.type === 'directory' && node.children) {
+          // Recursively add directory contents
+          addToZip(node.children, nodePath);
+        }
+      }
+    };
+
+    addToZip(project.files);
+
+    // Generate zip file
+    return await zip.generateAsync({ type: "blob" });
   }
 }
 

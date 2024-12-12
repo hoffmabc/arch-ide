@@ -708,8 +708,9 @@ const App = () => {
             onSelectProject={setCurrentProject}
             onNewProject={() => setIsNewProjectOpen(true)}
             onDeleteProject={handleDeleteProject}
+            onProjectsChange={setProjects}
           />
-          <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(!isConfigOpen)}>
+          <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
             <Settings className="h-5 w-5" />
           </Button>
         </nav>
