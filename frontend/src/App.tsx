@@ -19,6 +19,7 @@ import { StatusBar } from './components/StatusBar';
 import type { ArchIdl } from './types';
 import { ArchProgramLoader } from './utils/arch-program-loader';
 import { storage } from './utils/storage';
+import { FileChange } from './types/types';
 
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -115,6 +116,17 @@ const findNodeByPath = (nodes: FileNode[], targetPath: string[]): FileNode | nul
   return findNodeByPath(node.children, rest);
 };
 
+const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null => {
+  for (const file of nodes) {
+    if (file.path === targetPath) return file;
+    if (file.children) {
+      const found = findFileByPath(file.children, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
 const App = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
@@ -134,6 +146,8 @@ const App = () => {
   const [programBinary, setProgramBinary] = useState<string | null>(null);
   const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState<Map<string, FileChange>>(new Map());
+  const [isSaving, setIsSaving] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<{
     privkey: string;
     pubkey: string;
@@ -330,26 +344,17 @@ const App = () => {
       content: newContent
     }));
 
-    // Update project files
-    const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
-
-    // Only update if content actually changed
-    if (JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files)) {
-      const updatedProject = {
-        ...currentProject,
-        files: updatedFiles,
-        lastModified: new Date()
-      };
-
-      setCurrentProject(updatedProject);
-      setProjects(prev => prev.map(p =>
-        p.id === updatedProject.id ? updatedProject : p
-      ));
-
-      // Use the debounced save
-      debouncedSave(updatedProject);
-    }
-  }, [currentFile, currentProject, debouncedSave]);
+    // Queue the change
+    setPendingChanges(prev => {
+      const newMap = new Map(prev);
+      newMap.set(currentFile.path || currentFile.name, {
+        path: currentFile.path || currentFile.name,
+        content: newContent,
+        timestamp: Date.now()
+      });
+      return newMap;
+    });
+  }, [currentFile, currentProject]);
 
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
@@ -604,16 +609,18 @@ const App = () => {
 
   const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('Are you sure you want to delete this project?')) {
-      await projectService.deleteProject(projectId);
-      const remainingProjects = await projectService.getAllProjects();
-      setProjects(remainingProjects);
+      return projectService.deleteProject(projectId).then(async () => {
+        const remainingProjects = await projectService.getAllProjects();
+        setProjects(remainingProjects);
 
-      if (currentProject?.id === projectId) {
-        setOpenFiles([]);
-        setCurrentFile(null);
-        setCurrentProject(remainingProjects[0] || null);
-      }
+        if (currentProject?.id === projectId) {
+          setOpenFiles([]);
+          setCurrentFile(null);
+          setCurrentProject(remainingProjects[0] || null);
+        }
+      });
     }
+    return Promise.resolve();
   };
 
   const handleSaveFile = useCallback((newContent: string) => {
@@ -687,13 +694,60 @@ const App = () => {
     setProgramId(newProgramId);
   };
 
-  const handleProjectSelect = (project: Project) => {
+  const handleProjectSelect = async (project: Project) => {
     // Clear all open tabs
     setOpenFiles([]);
     setCurrentFile(null);
     // Set the new project
     setCurrentProject(project);
+    return Promise.resolve();
   };
+
+  // Add this effect to handle batched saves
+  useEffect(() => {
+    if (pendingChanges.size === 0 || !currentProject || isSaving) return;
+
+    const saveTimeout = setTimeout(async () => {
+      setIsSaving(true);
+
+      try {
+        // Convert pending changes to an array and sort by timestamp
+        const changes = Array.from(pendingChanges.values())
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        // Apply changes in order
+        let updatedFiles = currentProject.files;
+        for (const change of changes) {
+          const fileToUpdate = findFileByPath(updatedFiles, change.path);
+          if (fileToUpdate) {
+            updatedFiles = updateFileContent(updatedFiles, fileToUpdate, change.content);
+          }
+        }
+
+        const updatedProject = {
+          ...currentProject,
+          files: updatedFiles,
+          lastModified: new Date()
+        };
+
+        // Save to IndexedDB
+        await projectService.saveProject(updatedProject);
+
+        // Update state
+        setCurrentProject(updatedProject);
+        setProjects(prev => prev.map(p =>
+          p.id === updatedProject.id ? updatedProject : p
+        ));
+
+        // Clear pending changes
+        setPendingChanges(new Map());
+      } finally {
+        setIsSaving(false);
+      }
+    }, 2000); // Batch saves every 2 seconds
+
+    return () => clearTimeout(saveTimeout);
+  }, [pendingChanges, currentProject, isSaving]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -767,6 +821,8 @@ const App = () => {
           config={config}
           isConnected={isConnected}
           onConnectionStatusChange={setIsConnected}
+          pendingChanges={pendingChanges}
+          isSaving={isSaving}
         />
 
         <NewProjectDialog
@@ -807,6 +863,7 @@ const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: 
 
       // If this is a directory, only recurse if the path starts with this directory's path
       if (node.type === 'directory' && node.children &&
+          targetFile.path && node.path &&
           targetFile.path.startsWith(node.path + '/')) {
         const updatedChildren = updateFileContent(node.children, targetFile, newContent);
         return updatedChildren === node.children ? node : { ...node, children: updatedChildren };

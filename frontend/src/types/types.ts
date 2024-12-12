@@ -28,3 +28,9 @@ export interface ArchIdl {
       type: string;
     }>;
   };
+
+  export interface FileChange {
+    path: string;
+    content: string;
+    timestamp: number;
+  }

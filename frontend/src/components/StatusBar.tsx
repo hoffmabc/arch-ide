@@ -7,6 +7,8 @@ interface StatusBarProps {
   config: Config;
   isConnected: boolean;
   onConnectionStatusChange: (connected: boolean) => void;
+  pendingChanges: Map<string, FileChange>;
+  isSaving: boolean;
 }
 
 export const StatusBar = ({ config, isConnected, onConnectionStatusChange }: StatusBarProps) => {

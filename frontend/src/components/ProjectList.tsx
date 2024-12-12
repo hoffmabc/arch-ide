@@ -22,7 +22,7 @@ interface ProjectListProps {
   projects: Project[];
   currentProject?: Project;
   onSelectProject: (project: Project) => void;
-  onNewProject: () => Promise<void>;
+  onNewProject: () => void;
   onDeleteProject: (projectId: string) => Promise<void>;
   onProjectsChange: (projects: Project[]) => void;
 }
