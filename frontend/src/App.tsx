@@ -133,7 +133,6 @@ const App = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [programBinary, setProgramBinary] = useState<string | null>(null);
   const [programIdl, setProgramIdl] = useState<ArchIdl | null>(null);
-  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<{
     privkey: string;
@@ -141,6 +140,13 @@ const App = () => {
     address: string;
   } | null>(null);
   const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
+
+  const debouncedSave = useCallback(
+    debounce((projectToSave: Project) => {
+      projectService.saveProject(projectToSave);
+    }, 2000),
+    []
+  );
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -315,50 +321,35 @@ const App = () => {
     setIsNewFileDialogOpen(true);
   };
 
-
-  // Modify your handleFileChange function
   const handleFileChange = useCallback((newContent: string | undefined) => {
-    console.log('handleFileChange called', {
-      newContent: newContent,
-      currentFile: currentFile?.name,
-      hasCurrentProject: !!currentProject
-    });
-
     if (!newContent || !currentFile || !currentProject) return;
 
-    // Create an updated version of the current file with new content
-    const updatedCurrentFile = {
-      ...currentFile,
+    // Update UI immediately
+    setCurrentFile(prev => ({
+      ...prev!,
       content: newContent
-    };
+    }));
 
-    // Update the content in project files
+    // Update project files
     const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
 
-    // Check if files were actually updated by comparing content
-    const filesUpdated = JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files);
-
-    console.log('Updated files:', {
-      oldContent: currentFile.content,
-      newContent: newContent,
-      filesUpdated: filesUpdated
-    });
-
-    if (filesUpdated) {
+    // Only update if content actually changed
+    if (JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files)) {
       const updatedProject = {
         ...currentProject,
         files: updatedFiles,
         lastModified: new Date()
       };
 
-      // Update both the current file and project state
-      setCurrentFile(updatedCurrentFile);
       setCurrentProject(updatedProject);
+      setProjects(prev => prev.map(p =>
+        p.id === updatedProject.id ? updatedProject : p
+      ));
 
-      console.log('Saving project', updatedProject);
-      projectService.saveProject(updatedProject);
+      // Use the debounced save
+      debouncedSave(updatedProject);
     }
-  }, [currentFile, currentProject]);
+  }, [currentFile, currentProject, debouncedSave]);
 
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
@@ -425,53 +416,30 @@ const App = () => {
     return findPath(files, file) || file.name;
   };
 
-  const handleCloseFile = (file: FileNode) => {
-    // First ensure any pending changes are saved for the file being closed
-    if (currentFile && currentFile.path === file.path && currentProject) {
-      // Only save if there's actual content
-      if (currentFile.content !== undefined) {
-        // Create an updated version of the current file with new content
-        const updatedCurrentFile = {
-          ...currentFile,
-          content: currentFile.content  // Update the content in the current file
-        };
+  const handleCloseFile = useCallback((fileToClose: FileNode) => {
+    // Batch state updates using a single setState call
+    setOpenFiles(prevFiles => {
+      const newFiles = prevFiles.filter(f =>
+        (f.path || f.name) !== (fileToClose.path || fileToClose.name)
+      );
 
-        // Ensure currentFile is not null before passing it to updateFileContent
-        const updatedFiles = updateFileContent(currentProject.files, currentFile, currentFile.content);
-        const updatedProject = {
-          ...currentProject,
-          files: updatedFiles,
-          lastModified: new Date()
-        };
-        projectService.saveProject(updatedProject);
-
-        // Update state
-        setCurrentProject(updatedProject);
-        setProjects(prev => prev.map(p =>
-          p.id === updatedProject.id ? updatedProject : p
-        ));
+      // Update current file if needed
+      if (currentFile &&
+          (currentFile.path || currentFile.name) === (fileToClose.path || fileToClose.name)) {
+        // Set current file to the last remaining file or null
+        setCurrentFile(newFiles.length > 0 ? newFiles[newFiles.length - 1] : null);
       }
-    }
 
-    // Remove file from openFiles
-    const newOpenFiles = openFiles.filter(f => f.path !== file.path);
-    setOpenFiles(newOpenFiles);
+      return newFiles;
+    });
 
-    if (newOpenFiles.length === 0) {
-      // If closing the last tab, just clear currentFile
-      setCurrentFile(null);
-    } else if (currentFile?.path === file.path) {
-      // If closing current file but other tabs exist, switch to last remaining tab
-      const nextFile = newOpenFiles[newOpenFiles.length - 1];
-      setCurrentFile(nextFile);
-    }
+    const timeoutId = setTimeout(() => {
+      if (currentProject) {
+        projectService.saveProject(currentProject);
+      }
+    }, 1000);
 
-    // Clear any pending auto-save timeout
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-      setSaveTimeout(null);
-    }
-  };
+  }, [currentFile, currentProject]);
 
   const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -657,6 +625,15 @@ const App = () => {
 
     if (!currentFile || !currentProject) return;
 
+    // Check if the file is a media type
+    const extension = currentFile.name.split('.').pop()?.toLowerCase();
+    const mediaExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'mp4', 'webm', 'ogg', 'mov', 'mp3', 'wav', 'aac', 'svg'];
+
+    // Skip saving if it's a media file
+    if (mediaExtensions.includes(extension || '')) {
+      return;
+    }
+
     // Create an updated version of the current file with new content
     const updatedCurrentFile = {
       ...currentFile,
@@ -815,20 +792,24 @@ const App = () => {
 };
 
 const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: string): FileNode[] => {
+  // Early return if content hasn't changed
+  if (targetFile.content === newContent) {
+    return nodes;
+  }
+
   // If target file has a path, use it for direct matching
   if (targetFile.path) {
     return nodes.map(node => {
       // If this is the target file, update its content
       if (node.type === 'file' && node.path === targetFile.path) {
-        return node.content !== newContent ? { ...node, content: newContent } : node;
+        return { ...node, content: newContent };
       }
 
-      // If this is a directory, recursively check its children
-      if (node.type === 'directory' && node.children) {
+      // If this is a directory, only recurse if the path starts with this directory's path
+      if (node.type === 'directory' && node.children &&
+          targetFile.path.startsWith(node.path + '/')) {
         const updatedChildren = updateFileContent(node.children, targetFile, newContent);
-        return JSON.stringify(updatedChildren) !== JSON.stringify(node.children)
-          ? { ...node, children: updatedChildren }
-          : node;
+        return updatedChildren === node.children ? node : { ...node, children: updatedChildren };
       }
 
       return node;
@@ -838,14 +819,12 @@ const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: 
   // If no path exists, match by name only (should be avoided if possible)
   return nodes.map(node => {
     if (node.type === 'file' && node.name === targetFile.name) {
-      return node.content !== newContent ? { ...node, content: newContent } : node;
+      return { ...node, content: newContent };
     }
 
     if (node.type === 'directory' && node.children) {
       const updatedChildren = updateFileContent(node.children, targetFile, newContent);
-      return JSON.stringify(updatedChildren) !== JSON.stringify(node.children)
-        ? { ...node, children: updatedChildren }
-        : node;
+      return updatedChildren === node.children ? node : { ...node, children: updatedChildren };
     }
 
     return node;
@@ -865,5 +844,23 @@ const updateNodeInTree = (nodes: FileNode[], path: string[], updater: (node: Fil
     };
   });
 };
+
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+
+  return (...args: Parameters<T>) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    timeout = setTimeout(() => {
+      func(...args);
+      timeout = null;
+    }, wait);
+  };
+}
 
 export default App;

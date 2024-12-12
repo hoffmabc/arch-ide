@@ -1,5 +1,5 @@
 // src/components/FileExplorer.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Folder,
   File,
@@ -21,7 +21,8 @@ import {
   FileSearch,
   FileKey,
   FileSpreadsheet,
-  Package
+  Package,
+  Upload
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -100,20 +101,34 @@ interface FileExplorerProps {
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
   onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
-  onNewItem: (path: string[], type: 'file' | 'directory') => void;
+  onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
 }
 
 interface FileContextMenuProps {
   node: FileNode;
-  onNewFile?: () => void;
+  onNewFile?: (fileName: string, content: string) => void;
   onNewFolder?: () => void;
   onDelete?: () => void;
   onRename?: () => void;
 }
 
 const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: FileContextMenuProps) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onNewFile) return;
+
+    try {
+      const content = await readFileContent(file);
+      onNewFile(file.name, content);
+    } catch (error) {
+      console.error('Failed to read file:', error);
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -132,6 +147,10 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
               <Folder size={16} className="mr-2" />
               New Folder
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+              <Upload size={16} className="mr-2" />
+              Import File
+            </DropdownMenuItem>
           </>
         )}
         <DropdownMenuItem onClick={onRename}>
@@ -143,6 +162,12 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
           Delete
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </DropdownMenu>
   );
 };
@@ -162,15 +187,20 @@ const FileExplorerItem = ({
   depth?: number;
   onSelect: (file: FileNode) => void;
   onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
-  onNewItem: (path: string[], type: 'file' | 'directory') => void;
+  onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
 
-  const handleNewFile = () => {
-    console.log('handleNewFile called with path:', path);
-    onNewItem([...path, node.name], 'file');
+  const handleNewFile = (fileName?: string, content?: string) => {
+    if (fileName) {
+      // Direct file import
+      onNewItem([...path, node.name], 'file', fileName, content);
+    } else {
+      // Regular new file creation
+      onNewItem([...path, node.name], 'file');
+    }
   };
 
   const handleNewFolder = () => {
@@ -274,6 +304,36 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFo
       ))}
     </div>
   );
+};
+
+const readFileContent = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const content = e.target?.result;
+      if (typeof content === 'string') {
+        resolve(content);
+      } else if (content instanceof ArrayBuffer) {
+        // For binary files, convert to base64
+        const base64 = btoa(
+          new Uint8Array(content)
+            .reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
+        resolve(`data:${file.type};base64,${base64}`);
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Failed to read file'));
+
+    if (file.type.startsWith('text/') ||
+        ['application/json', 'application/javascript', 'application/typescript']
+          .includes(file.type)) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  });
 };
 
 export default FileExplorer;

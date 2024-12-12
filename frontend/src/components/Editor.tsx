@@ -9,24 +9,43 @@ interface EditorProps {
   currentFile?: FileNode | null;
 }
 
-const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' => {
+const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' | 'svg' => {
   const extension = fileName.split('.').pop()?.toLowerCase();
 
   const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'];
   const videoExtensions = ['mp4', 'webm', 'ogg', 'mov'];
   const audioExtensions = ['mp3', 'wav', 'ogg', 'aac'];
 
+  if (extension === 'svg') return 'svg';
   if (imageExtensions.includes(extension || '')) return 'image';
   if (videoExtensions.includes(extension || '')) return 'video';
   if (audioExtensions.includes(extension || '')) return 'audio';
   return 'text';
 };
-
-const MediaViewer = ({ type, content }: { type: 'image' | 'video' | 'audio', content: string }) => {
+const MediaViewer = ({ type, content }: { type: 'image' | 'video' | 'audio' | 'svg', content: string }) => {
   // Use content directly as it should already be a data URL
   const mediaContent = content;
 
   switch (type) {
+    case 'svg':
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-gray-900">
+          {content.startsWith('<?xml') || content.startsWith('<svg') ? (
+            // If content is SVG markup, render it directly
+            <div
+              className="max-h-full max-w-full"
+              dangerouslySetInnerHTML={{ __html: content }}
+            />
+          ) : (
+            // If content is a data URL or file path
+            <img
+              src={mediaContent}
+              alt="SVG Preview"
+              className="max-h-full max-w-full object-contain"
+            />
+          )}
+        </div>
+      );
     case 'image':
       return (
         <div className="h-full w-full flex items-center justify-center bg-gray-900">
@@ -66,7 +85,7 @@ const DEFAULT_WELCOME_MESSAGE = `
 // ██╔══██╗██╔══██╗██╔════╝██║  ██║    ████╗  ██║██╔════╝╚══██╔══╝██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
 // ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝
 // ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═██╗
-// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗   ██║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
+// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗   █║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
 // ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 
 // Welcome to Arch Network Playground! 🚀
@@ -108,6 +127,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
 
   const fileType = currentFile ? getFileType(currentFile.name) : 'text';
   const isMediaFile = fileType !== 'text';
+  const isSvgFile = fileType === 'svg';
 
   useEffect(() => {
     setLatestContent(code);
@@ -145,7 +165,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
-        defaultLanguage="rust"
+        defaultLanguage={isSvgFile ? 'xml' : 'rust'}
         theme="vs-dark"
         key={currentFile?.path || 'welcome'}
         value={displayCode}
