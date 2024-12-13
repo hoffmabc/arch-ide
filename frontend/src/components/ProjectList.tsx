@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Select,
   SelectContent,
@@ -35,6 +35,21 @@ const ProjectList = ({
   onDeleteProject,
   onProjectsChange
 }: ProjectListProps) => {
+  const [selectedId, setSelectedId] = useState(currentProject?.id || '');
+
+  useEffect(() => {
+    setSelectedId(currentProject?.id || '');
+  }, [currentProject]);
+
+  const handleProjectSelect = (value: string) => {
+    setSelectedId(value);
+
+    const project = projects.find(p => p.id === value);
+    if (project) {
+      onSelectProject(project);
+    }
+  };
+
   const handleExportProject = async () => {
     if (!currentProject) return;
 
@@ -82,11 +97,8 @@ const ProjectList = ({
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
       <Select
-        value={currentProject?.id || ""}
-        onValueChange={(value) => {
-          const project = projects.find(p => p.id === value);
-          if (project) onSelectProject(project);
-        }}
+        value={selectedId}
+        onValueChange={handleProjectSelect}
       >
         <SelectTrigger className="w-[200px] bg-background text-foreground border-input">
           <SelectValue placeholder="Select a project" />

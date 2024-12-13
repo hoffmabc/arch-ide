@@ -127,9 +127,28 @@ const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null 
   return null;
 };
 
+// Add these new utility functions at the top level
+const stripProjectContent = (project: Project): Project => {
+  // Only keep essential metadata and stripped file structure
+  return {
+    ...project,
+    files: stripFileContent(project.files)
+  };
+};
+
+const stripFileContent = (files: FileNode[]): FileNode[] => {
+  return files.map(file => ({
+    ...file,
+    // Only keep content for small files or remove entirely
+    content: file.type === 'file' ? '' : undefined,
+    children: file.children ? stripFileContent(file.children) : undefined,
+    path: file.path
+  }));
+};
+
 const App = () => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [fullCurrentProject, setFullCurrentProject] = useState<Project | null>(null);
   const [currentFile, setCurrentFile] = useState<FileNode | null>(null);
   const [output, setOutput] = useState('');
   const [isCompiling, setIsCompiling] = useState(false);
@@ -165,9 +184,11 @@ const App = () => {
   useEffect(() => {
     const loadProjects = async () => {
       const loadedProjects = await projectService.getAllProjects();
-      setProjects(loadedProjects);
+      // Store stripped versions in the projects list
+      setProjects(loadedProjects.map(stripProjectContent));
       if (loadedProjects.length > 0) {
-        setCurrentProject(loadedProjects[0]);
+        // Store the full version of the first project
+        setFullCurrentProject(loadedProjects[0]);
       }
     };
 
@@ -175,16 +196,16 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (currentProject) {
+    if (fullCurrentProject) {
       const updateProjects = async () => {
-        await projectService.saveProject(currentProject);
+        await projectService.saveProject(fullCurrentProject);
         const updatedProjects = await projectService.getAllProjects();
-        setProjects(updatedProjects);
+        setProjects(updatedProjects.map(stripProjectContent));
       };
 
       updateProjects();
     }
-  }, [currentProject]);
+  }, [fullCurrentProject]);
 
   const [config, setConfig] = useState<Config>(() => {
     const savedConfig = storage.getConfig();
@@ -269,9 +290,9 @@ const App = () => {
   }, [currentView]);
 
   const handleDeploy = async () => {
-    if (!currentProject || !programId || !isConnected || !currentAccount || !programBinary) {
+    if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
       const missing = [];
-      if (!currentProject) missing.push('project');
+      if (!fullCurrentProject) missing.push('project');
       if (!programId) missing.push('program ID');
       if (!isConnected) missing.push('connection');
       if (!currentAccount) missing.push('account/keypair');
@@ -319,8 +340,8 @@ const App = () => {
   const handleCreateProject = async (name: string, description: string) => {
     const newProject = await projectService.createProject(name, description);
     const updatedProjects = await projectService.getAllProjects();
-    setProjects(updatedProjects);
-    setCurrentProject(newProject);
+    setProjects(updatedProjects.map(stripProjectContent));
+    setFullCurrentProject(newProject);
 
     // Clear all open tabs and current file when creating a new project
     setOpenFiles([]);
@@ -336,7 +357,7 @@ const App = () => {
   };
 
   const handleFileChange = useCallback((newContent: string | undefined) => {
-    if (!newContent || !currentFile || !currentProject) return;
+    if (!newContent || !currentFile || !fullCurrentProject) return;
 
     // Update UI immediately
     setCurrentFile(prev => ({
@@ -354,7 +375,7 @@ const App = () => {
       });
       return newMap;
     });
-  }, [currentFile, currentProject]);
+  }, [currentFile, fullCurrentProject]);
 
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
@@ -381,14 +402,14 @@ const App = () => {
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
       // Always use the full path from the file structure
-      const filePath = file.path || constructFullPath(file, currentProject?.files || []);
+      const filePath = file.path || constructFullPath(file, fullCurrentProject?.files || []);
 
       // First check if the file is in openFiles
       const openFile = openFiles.find(f => f.path === filePath);
 
       // Then check project files if not found in open files
-      const currentProjectFile = !openFile && currentProject ?
-        findFileInProject(currentProject.files, filePath) : null;
+      const currentProjectFile = !openFile && fullCurrentProject ?
+        findFileInProject(fullCurrentProject.files, filePath) : null;
 
       // Use openFile first, then project file, then create a new file object
       const fileToUse = openFile || currentProjectFile || {
@@ -439,12 +460,12 @@ const App = () => {
     });
 
     const timeoutId = setTimeout(() => {
-      if (currentProject) {
-        projectService.saveProject(currentProject);
+      if (fullCurrentProject) {
+        projectService.saveProject(fullCurrentProject);
       }
     }, 1000);
 
-  }, [currentFile, currentProject]);
+  }, [currentFile, fullCurrentProject]);
 
   const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -467,14 +488,14 @@ const App = () => {
   }, [terminalHeight]);
 
   const handleUpdateTree = (operation: FileOperation) => {
-    if (!currentProject) return;
+    if (!fullCurrentProject) return;
 
     let updatedFiles: FileNode[];
 
     switch (operation.type) {
       case 'create':
         updatedFiles = fileTreeOperations.create(
-          currentProject.files,
+          fullCurrentProject.files,
           operation.path,
           operation.fileType || 'file'
         );
@@ -497,12 +518,12 @@ const App = () => {
         break;
 
       case 'delete':
-        updatedFiles = fileTreeOperations.delete(currentProject.files, operation.path);
+        updatedFiles = fileTreeOperations.delete(fullCurrentProject.files, operation.path);
         break;
 
       case 'rename':
         updatedFiles = fileTreeOperations.rename(
-          currentProject.files,
+          fullCurrentProject.files,
           operation.path,
           operation.newName || ''
         );
@@ -510,27 +531,27 @@ const App = () => {
     }
 
     const updatedProject = {
-      ...currentProject,
+      ...fullCurrentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
 
     projectService.saveProject(updatedProject);
-    setCurrentProject(updatedProject);
+    setFullCurrentProject(updatedProject);
     setProjects(prev =>
       prev.map(p => p.id === updatedProject.id ? updatedProject : p)
     );
   };
 
   const handleCompile = async () => {
-    if (!currentProject) return;
+    if (!fullCurrentProject) return;
 
     setIsCompiling(true);
     addOutputMessage('command', 'cargo build-sbf');
 
     try {
       // Find the program directory
-      const programDir = currentProject.files.find(node =>
+      const programDir = fullCurrentProject.files.find(node =>
         node.type === 'directory' && node.name === 'program'
       );
 
@@ -608,29 +629,48 @@ const App = () => {
   };
 
   const handleDeleteProject = async (projectId: string) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      return projectService.deleteProject(projectId).then(async () => {
-        const remainingProjects = await projectService.getAllProjects();
-        setProjects(remainingProjects);
-
-        if (currentProject?.id === projectId) {
-          setOpenFiles([]);
-          setCurrentFile(null);
-          setCurrentProject(remainingProjects[0] || null);
-        }
-      });
+    if (!window.confirm('Are you sure you want to delete this project?')) {
+      return Promise.resolve();
     }
-    return Promise.resolve();
+
+    try {
+      // First, update UI state to show deletion is in progress
+      const isCurrentProject = fullCurrentProject?.id === projectId;
+
+      if (isCurrentProject) {
+        // Clear editor state first
+        setCurrentFile(null);
+        setOpenFiles([]);
+      }
+
+      // Delete from storage
+      await projectService.deleteProject(projectId);
+
+      // Batch state updates
+      const remainingProjects = await projectService.getAllProjects();
+
+      // Update projects list and current project in one render cycle
+      setProjects(remainingProjects.map(stripProjectContent));
+
+      if (isCurrentProject) {
+        // Set new current project if available
+        setFullCurrentProject(remainingProjects.length > 0 ? remainingProjects[0] : null);
+      }
+
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      // Optionally show error message to user
+    }
   };
 
   const handleSaveFile = useCallback((newContent: string) => {
     console.log('handleSaveFile called', {
       newContent: newContent,
       currentFile: currentFile?.path,
-      hasCurrentProject: !!currentProject
+      hasCurrentProject: !!fullCurrentProject
     });
 
-    if (!currentFile || !currentProject) return;
+    if (!currentFile || !fullCurrentProject) return;
 
     // Check if the file is a media type
     const extension = currentFile.name.split('.').pop()?.toLowerCase();
@@ -648,25 +688,25 @@ const App = () => {
     };
 
     // Update the file content in the project files
-    const updatedFiles = updateFileContent(currentProject.files, currentFile, newContent);
+    const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
 
     console.log('Updated files:', updatedFiles);
 
     console.log('Updated files:', {
       oldContent: currentFile.content,
       newContent: newContent,
-      filesUpdated: JSON.stringify(updatedFiles) !== JSON.stringify(currentProject.files)
+      filesUpdated: JSON.stringify(updatedFiles) !== JSON.stringify(fullCurrentProject.files)
     });
 
     // Create an updated project with the modified files and a new last modified date
     const updatedProject = {
-      ...currentProject,
+      ...fullCurrentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
 
     setCurrentFile(updatedCurrentFile);
-    setCurrentProject(updatedProject);
+    setFullCurrentProject(updatedProject);
 
     // Save to storage
     projectService.saveProject(updatedProject);
@@ -676,7 +716,7 @@ const App = () => {
       p.id === updatedProject.id ? updatedProject : p
     ));
 
-  }, [currentFile, currentProject]);
+  }, [currentFile, fullCurrentProject]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -695,17 +735,21 @@ const App = () => {
   };
 
   const handleProjectSelect = async (project: Project) => {
-    // Clear all open tabs
+    // Clear editor state
     setOpenFiles([]);
     setCurrentFile(null);
-    // Set the new project
-    setCurrentProject(project);
+
+    // Load the full project data
+    const fullProject = await projectService.getProject(project.id);
+    if (fullProject) {
+      setFullCurrentProject(fullProject);
+    }
     return Promise.resolve();
   };
 
   // Add this effect to handle batched saves
   useEffect(() => {
-    if (pendingChanges.size === 0 || !currentProject || isSaving) return;
+    if (pendingChanges.size === 0 || !fullCurrentProject || isSaving) return;
 
     const saveTimeout = setTimeout(async () => {
       setIsSaving(true);
@@ -716,7 +760,7 @@ const App = () => {
           .sort((a, b) => a.timestamp - b.timestamp);
 
         // Apply changes in order
-        let updatedFiles = currentProject.files;
+        let updatedFiles = fullCurrentProject.files;
         for (const change of changes) {
           const fileToUpdate = findFileByPath(updatedFiles, change.path);
           if (fileToUpdate) {
@@ -725,7 +769,7 @@ const App = () => {
         }
 
         const updatedProject = {
-          ...currentProject,
+          ...fullCurrentProject,
           files: updatedFiles,
           lastModified: new Date()
         };
@@ -734,7 +778,7 @@ const App = () => {
         await projectService.saveProject(updatedProject);
 
         // Update state
-        setCurrentProject(updatedProject);
+        setFullCurrentProject(updatedProject);
         setProjects(prev => prev.map(p =>
           p.id === updatedProject.id ? updatedProject : p
         ));
@@ -747,7 +791,7 @@ const App = () => {
     }, 2000); // Batch saves every 2 seconds
 
     return () => clearTimeout(saveTimeout);
-  }, [pendingChanges, currentProject, isSaving]);
+  }, [pendingChanges, fullCurrentProject, isSaving]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -756,7 +800,7 @@ const App = () => {
           <h1 className="text-xl font-bold">Arch Network Playground</h1>
           <ProjectList
             projects={projects}
-            currentProject={currentProject || undefined}
+            currentProject={fullCurrentProject || undefined}
             onSelectProject={handleProjectSelect}
             onNewProject={() => setIsNewProjectOpen(true)}
             onDeleteProject={handleDeleteProject}
@@ -771,7 +815,7 @@ const App = () => {
           <SidePanel
             currentView={currentView}
             onViewChange={setCurrentView}
-            files={currentProject?.files || []}
+            files={fullCurrentProject?.files || []}
             onFileSelect={handleFileSelect}
             onUpdateTree={handleUpdateTreeAdapter}
             onNewItem={handleNewItem}

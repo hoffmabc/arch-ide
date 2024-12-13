@@ -84,9 +84,9 @@ const DEFAULT_WELCOME_MESSAGE = `
 //  █████╗ ██████╗  ██████╗██╗  ██╗    ███╗   ██╗███████╗████████╗██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
 // ██╔══██╗██╔══██╗██╔════╝██║  ██║    ████╗  ██║██╔════╝╚══██╔══╝██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
 // ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝
-// ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═██╗
-// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗   █║   ╚███╔███╔╝╚██████╔╝██║  ██║██║  ██╗
-// ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+// ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═█╗
+// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗     █║     ╚███╔█╔╝╚██████╔╝██║  ██║██║  ██╗
+// ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
 
 // Welcome to Arch Network Playground! 🚀
 
@@ -119,10 +119,24 @@ const DEFAULT_WELCOME_MESSAGE = `
  */
 `;
 
+const decodeContent = (content: string): string => {
+  if (content.startsWith('data:') && content.includes(';base64,')) {
+    try {
+      const base64Content = content.split(';base64,')[1];
+      return atob(base64Content);
+    } catch (e) {
+      console.error('Failed to decode base64 content:', e);
+      return content;
+    }
+  }
+  return content;
+};
+
 const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
-  const [latestContent, setLatestContent] = useState(code);
+  const decodedCode = decodeContent(code);
+  const [latestContent, setLatestContent] = useState(decodedCode);
   const isWelcomeScreen = !currentFile;
-  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
+  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodedCode;
   const editorRef = useRef<any>(null);
 
   const fileType = currentFile ? getFileType(currentFile.name) : 'text';
@@ -130,8 +144,8 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   const isSvgFile = fileType === 'svg';
 
   useEffect(() => {
-    setLatestContent(code);
-  }, [code]);
+    setLatestContent(decodedCode);
+  }, [decodedCode]);
 
   const handleChange = useCallback((value: string | undefined) => {
     if (!isWelcomeScreen && !isMediaFile && value !== undefined) {
