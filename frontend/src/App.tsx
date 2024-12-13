@@ -76,6 +76,12 @@ const fileTreeOperations = {
       path: fullPath
     };
 
+    // If parentPath is empty, this is a top-level node
+    if (parentPath.length === 0) {
+      return [...nodes, newNode];
+    }
+
+    // Otherwise, update the tree normally
     return updateNodeInTree(nodes, parentPath, (parent) => ({
       ...parent,
       children: [...(parent.children || []), newNode]
@@ -532,6 +538,7 @@ const App = () => {
     if (!fullCurrentProject) return;
 
     let updatedFiles: FileNode[];
+    let projectToUpdate: Project;
 
     switch (operation.type) {
       case 'create':
@@ -541,27 +548,10 @@ const App = () => {
           operation.fileType || 'file',
           operation.content
         );
-
-        // Handle UI updates after tree modification
-        if (operation.fileType === 'file') {
-          const fullPath = operation.path.join('/');
-          const newNode = findNodeByPath(updatedFiles, operation.path);
-          if (newNode) {
-            const nodeWithPath = {
-              ...newNode,
-              path: fullPath,
-              content: operation.content || '' // Use provided content
-            };
-            setCurrentFile(nodeWithPath);
-            setOpenFiles(prev => [...prev, nodeWithPath]);
-          }
-        }
         break;
-
       case 'delete':
         updatedFiles = fileTreeOperations.delete(fullCurrentProject.files, operation.path);
         break;
-
       case 'rename':
         updatedFiles = fileTreeOperations.rename(
           fullCurrentProject.files,
@@ -571,17 +561,16 @@ const App = () => {
         break;
     }
 
-    const updatedProject = {
+    projectToUpdate = {
       ...fullCurrentProject,
       files: updatedFiles,
       lastModified: new Date()
     };
 
-    projectService.saveProject(updatedProject);
-    setFullCurrentProject(updatedProject);
-    setProjects(prev =>
-      prev.map(p => p.id === updatedProject.id ? updatedProject : p)
-    );
+    setFullCurrentProject(projectToUpdate);
+    projectService.saveProject(projectToUpdate).catch(error => {
+      console.error('Failed to save project:', error);
+    });
   };
 
   const handleCompile = async () => {

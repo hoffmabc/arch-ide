@@ -163,7 +163,10 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
           <Pencil size={16} className="mr-2" />
           Rename
         </DropdownMenuItem>
-        <DropdownMenuItem className="text-red-400" onClick={onDelete}>
+        <DropdownMenuItem className="text-red-400" onClick={() => {
+          console.log('Delete clicked for:', node.name);
+          onDelete?.();
+        }}>
           <Trash2 size={16} className="mr-2" />
           Delete
         </DropdownMenuItem>
@@ -256,7 +259,10 @@ const FileExplorerItem = ({
             node={node}
             onNewFile={handleNewFile}
             onNewFolder={handleNewFolder}
-            onDelete={() => onUpdateTree('delete', [...path, node.name])}
+            onDelete={() => {
+              console.log('Delete triggered for path:', [...path, node.name]);
+              onUpdateTree('delete', [...path, node.name]);
+            }}
             onRename={() => setIsRenaming(true)}
           />
           <RenameDialog
@@ -288,9 +294,49 @@ const FileExplorerItem = ({
 };
 
 const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange }: FileExplorerProps) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await readFileContent(file);
+      onNewItem([], 'file', file.name, content);
+    } catch (error) {
+      console.error('Failed to read file:', error);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="bg-gray-800 w-full h-full overflow-y-auto border-r border-gray-700">
-      <div className="p-2 border-b border-gray-700 font-medium">Explorer</div>
+      <div className="p-2 border-b border-gray-700 font-medium flex justify-between items-center">
+        <span>Explorer</span>
+        <div className="flex gap-1">
+          <button
+            className="hover:bg-gray-700 p-1 rounded"
+            onClick={() => onNewItem([], 'file')}
+          >
+            <Plus size={16} />
+          </button>
+          <button
+            className="hover:bg-gray-700 p-1 rounded"
+            onClick={() => onNewItem([], 'directory')}
+          >
+            <Folder size={16} />
+          </button>
+          <button
+            className="hover:bg-gray-700 p-1 rounded"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={16} />
+          </button>
+        </div>
+      </div>
       {files.map((file, i) => (
         <FileExplorerItem
           key={i}
@@ -303,6 +349,12 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFo
           onExpandedFoldersChange={onExpandedFoldersChange}
         />
       ))}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </div>
   );
 };
