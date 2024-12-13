@@ -350,14 +350,42 @@ const App = () => {
     setIsNewProjectOpen(false);
   };
 
+  const generateUniqueName = (baseName: string, existingFiles: FileNode[]): string => {
+    // Split name and extension
+    const lastDotIndex = baseName.lastIndexOf('.');
+    const nameWithoutExt = lastDotIndex === -1 ? baseName : baseName.slice(0, lastDotIndex);
+    const extension = lastDotIndex === -1 ? '' : baseName.slice(lastDotIndex);
+
+    let counter = 1;
+    let newName = baseName;
+
+    // Check if file exists and increment counter until we find a unique name
+    while (existingFiles.some(file => file.name === newName)) {
+      newName = `${nameWithoutExt} (${counter})${extension}`;
+      counter++;
+    }
+
+    return newName;
+  };
+
   const handleNewItem = (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => {
     console.log('handleNewItem called with:', { path, type, fileName, content });
 
+    if (!fullCurrentProject) return;
+
+    // Find the target directory where the new item will be created
+    const targetDir = path.length === 0
+      ? fullCurrentProject.files
+      : findNodeByPath(fullCurrentProject.files, path)?.children || [];
+
     if (fileName && content !== undefined) {
+      // Generate unique name if needed
+      const uniqueName = generateUniqueName(fileName, targetDir);
+
       // Direct file import with content
       handleUpdateTree({
         type: 'create',
-        path: [...path, fileName],
+        path: [...path, uniqueName],
         fileType: type,
         content: content
       });
