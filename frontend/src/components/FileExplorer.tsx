@@ -135,6 +135,17 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
     }
   };
 
+  const handleDelete = () => {
+    if (node.type === 'directory') {
+      const message = `Are you sure you want to delete the folder "${node.name}" and all its contents?`;
+      if (window.confirm(message)) {
+        onDelete?.();
+      }
+    } else {
+      onDelete?.();
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -163,10 +174,7 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
           <Pencil size={16} className="mr-2" />
           Rename
         </DropdownMenuItem>
-        <DropdownMenuItem className="text-red-400" onClick={() => {
-          console.log('Delete clicked for:', node.name);
-          onDelete?.();
-        }}>
+        <DropdownMenuItem className="text-red-400" onClick={handleDelete}>
           <Trash2 size={16} className="mr-2" />
           Delete
         </DropdownMenuItem>

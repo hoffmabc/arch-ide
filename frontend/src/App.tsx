@@ -92,6 +92,12 @@ const fileTreeOperations = {
     const parentPath = pathUtils.getParentPath(path);
     const fileName = pathUtils.getFileName(path);
 
+    // If we're deleting from root level
+    if (parentPath.length === 0) {
+      return nodes.filter(node => node.name !== fileName);
+    }
+
+    // Otherwise, update the tree normally
     return updateNodeInTree(nodes, parentPath, (parent) => ({
       ...parent,
       children: parent.children?.filter(child => child.name !== fileName)
