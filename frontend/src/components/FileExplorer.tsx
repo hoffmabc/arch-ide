@@ -123,9 +123,15 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
 
     try {
       const content = await readFileContent(file);
+      console.log('File content read:', content);
+      // Pass the original filename and content directly
       onNewFile(file.name, content);
     } catch (error) {
       console.error('Failed to read file:', error);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -139,7 +145,7 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
       <DropdownMenuContent>
         {node.type === 'directory' && (
           <>
-            <DropdownMenuItem onClick={onNewFile}>
+            <DropdownMenuItem onClick={() => onNewFile?.('New File', '')}>
               <Plus size={16} className="mr-2" />
               New File
             </DropdownMenuItem>
@@ -193,14 +199,9 @@ const FileExplorerItem = ({
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
 
-  const handleNewFile = (fileName?: string, content?: string) => {
-    if (fileName) {
-      // Direct file import
-      onNewItem([...path, node.name], 'file', fileName, content);
-    } else {
-      // Regular new file creation
-      onNewItem([...path, node.name], 'file');
-    }
+  const handleNewFile = async (fileName: string, content: string) => {
+    console.log('handleNewFile called with:', { fileName, content });
+    onNewItem([...path, node.name], 'file', fileName, content);
   };
 
   const handleNewFolder = () => {

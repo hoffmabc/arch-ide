@@ -38,12 +38,13 @@ interface Config {
 }
 
 // Types
-interface FileOperation {
+type FileOperation = {
   type: 'create' | 'delete' | 'rename';
   path: string[];
   fileType?: 'file' | 'directory';
   newName?: string;
-}
+  content?: string;
+};
 
 // Separate path utilities
 const pathUtils = {
@@ -62,15 +63,15 @@ const pathUtils = {
 
 // Separate file tree operations
 const fileTreeOperations = {
-  create: (nodes: FileNode[], path: string[], type: 'file' | 'directory'): FileNode[] => {
-    const parentPath = pathUtils.getParentPath(path);
-    const fileName = pathUtils.getFileName(path);
-    const fullPath = pathUtils.normalize(path);
+  create: (nodes: FileNode[], path: string[], type: 'file' | 'directory', content?: string): FileNode[] => {
+    const parentPath = path.slice(0, -1);
+    const fileName = path[path.length - 1];
+    const fullPath = path.join('/');
 
     const newNode: FileNode = {
       name: fileName,
       type: type,
-      content: type === 'file' ? '' : undefined,
+      content: type === 'file' ? (content || '') : undefined,
       children: type === 'directory' ? [] : undefined,
       path: fullPath
     };
@@ -349,11 +350,23 @@ const App = () => {
     setIsNewProjectOpen(false);
   };
 
-  const handleNewItem = (path: string[], type: 'file' | 'directory') => {
-    console.log('handleNewItem called with:', { path, type });
-    setNewItemPath(path);
-    setNewItemType(type);
-    setIsNewFileDialogOpen(true);
+  const handleNewItem = (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => {
+    console.log('handleNewItem called with:', { path, type, fileName, content });
+
+    if (fileName && content !== undefined) {
+      // Direct file import with content
+      handleUpdateTree({
+        type: 'create',
+        path: [...path, fileName],
+        fileType: type,
+        content: content
+      });
+    } else {
+      // Regular new file/folder creation via dialog
+      setNewItemPath(path);
+      setNewItemType(type);
+      setIsNewFileDialogOpen(true);
+    }
   };
 
   const handleFileChange = useCallback((newContent: string | undefined) => {
@@ -497,7 +510,8 @@ const App = () => {
         updatedFiles = fileTreeOperations.create(
           fullCurrentProject.files,
           operation.path,
-          operation.fileType || 'file'
+          operation.fileType || 'file',
+          operation.content
         );
 
         // Handle UI updates after tree modification
@@ -505,11 +519,10 @@ const App = () => {
           const fullPath = operation.path.join('/');
           const newNode = findNodeByPath(updatedFiles, operation.path);
           if (newNode) {
-            // Ensure the new node has the correct path
             const nodeWithPath = {
               ...newNode,
               path: fullPath,
-              content: '' // Initialize with empty content
+              content: operation.content || '' // Use provided content
             };
             setCurrentFile(nodeWithPath);
             setOpenFiles(prev => [...prev, nodeWithPath]);
