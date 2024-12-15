@@ -708,15 +708,6 @@ const App = () => {
 
     if (!currentFile || !fullCurrentProject) return;
 
-    // Check if the file is a media type
-    const extension = currentFile.name.split('.').pop()?.toLowerCase();
-    const mediaExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'mp4', 'webm', 'ogg', 'mov', 'mp3', 'wav', 'aac', 'svg'];
-
-    // Skip saving if it's a media file
-    if (mediaExtensions.includes(extension || '')) {
-      return;
-    }
-
     // Create an updated version of the current file with new content
     const updatedCurrentFile = {
       ...currentFile,

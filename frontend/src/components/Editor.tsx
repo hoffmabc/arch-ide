@@ -133,35 +133,23 @@ const decodeContent = (content: string): string => {
 };
 
 const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
-  const decodedCode = decodeContent(code);
-  const [latestContent, setLatestContent] = useState(decodedCode);
+  const [latestContent, setLatestContent] = useState(code);
   const isWelcomeScreen = !currentFile;
-  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodedCode;
+  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
   const editorRef = useRef<any>(null);
 
-  const fileType = currentFile ? getFileType(currentFile.name) : 'text';
-  const isMediaFile = fileType !== 'text';
-  const isSvgFile = fileType === 'svg';
-
   useEffect(() => {
-    setLatestContent(decodedCode);
-  }, [decodedCode]);
+    setLatestContent(code);
+  }, [code]);
 
   const handleChange = useCallback((value: string | undefined) => {
-    if (!isWelcomeScreen && !isMediaFile && value !== undefined) {
+    if (!isWelcomeScreen && value !== undefined) {
       setLatestContent(value);
       onChange(value);
     }
-  }, [isWelcomeScreen, isMediaFile, onChange]);
+  }, [isWelcomeScreen, onChange]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (isMediaFile) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-      }
-      return;
-    }
-
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (!isWelcomeScreen && onSave && editorRef.current) {
@@ -169,17 +157,13 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         onSave(currentValue);
       }
     }
-  }, [onSave, isWelcomeScreen, isMediaFile]);
-
-  if (fileType !== 'text' && currentFile) {
-    return <MediaViewer type={fileType} content={currentFile.content || ''} />;
-  }
+  }, [onSave, isWelcomeScreen]);
 
   return (
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
-        defaultLanguage={isSvgFile ? 'xml' : 'rust'}
+        defaultLanguage="rust"
         theme="vs-dark"
         key={currentFile?.path || 'welcome'}
         value={displayCode}
@@ -198,7 +182,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           tabSize: 2,
-          readOnly: isWelcomeScreen || isMediaFile
+          readOnly: isWelcomeScreen
         }}
       />
     </div>

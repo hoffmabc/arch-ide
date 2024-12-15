@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import RenameDialog from './RenameDialog';
+import { cn } from '../lib/utils';
 import type { FileNode } from '../types';
 const getNodePath = (node: FileNode, path: string[] = []): string => {
   return [...path, node.name].join('/');
@@ -104,6 +105,7 @@ interface FileExplorerProps {
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
+  currentFile: FileNode | null;
 }
 
 interface FileContextMenuProps {
@@ -197,7 +199,8 @@ const FileExplorerItem = ({
   onUpdateTree,
   onNewItem,
   expandedFolders,
-  onExpandedFoldersChange
+  onExpandedFoldersChange,
+  currentFile
 }: {
   node: FileNode;
   path?: string[];
@@ -207,6 +210,7 @@ const FileExplorerItem = ({
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
+  currentFile: FileNode | null;
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
 
@@ -225,11 +229,16 @@ const FileExplorerItem = ({
     setIsRenaming(false);
   };
 
+  const isSelected = currentFile?.path === getNodePath(node, path);
+
   return (
     <div className="select-none">
       <div className="flex items-center group">
         <div
-          className="flex-1 flex items-center hover:bg-gray-700 px-2 py-1 cursor-pointer"
+          className={cn(
+            "flex-1 flex items-center hover:bg-gray-700 px-2 py-1 cursor-pointer",
+            isSelected && "bg-gray-700"
+          )}
           style={{ paddingLeft: `${depth * 12}px` }}
           onClick={() => {
             if (node.type === 'directory') {
@@ -251,9 +260,9 @@ const FileExplorerItem = ({
           }}
         >
           {node.type === 'directory' && (
-            expandedFolders.has(getNodePath(node, path)) ?
-              <ChevronDown size={16} /> :
-              <ChevronRight size={16} />
+            expandedFolders.has(getNodePath(node, path))
+              ? <ChevronDown size={16} />
+              : <ChevronRight size={16} />
           )}
           {node.type === 'directory' ? (
             <Folder size={16} className="ml-1 text-blue-400" />
@@ -294,6 +303,7 @@ const FileExplorerItem = ({
             onNewItem={onNewItem}
             expandedFolders={expandedFolders}
             onExpandedFoldersChange={onExpandedFoldersChange}
+            currentFile={currentFile}
           />
         ))
       )}
@@ -301,7 +311,7 @@ const FileExplorerItem = ({
   );
 };
 
-const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange }: FileExplorerProps) => {
+const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile }: FileExplorerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,6 +365,7 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFo
           onNewItem={onNewItem}
           expandedFolders={expandedFolders}
           onExpandedFoldersChange={onExpandedFoldersChange}
+          currentFile={currentFile}
         />
       ))}
       <input
@@ -371,66 +382,31 @@ const readFileContent = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    // Expanded list of text file extensions
-    const textExtensions = [
-      'txt', 'rs', 'toml', 'json', 'js', 'ts', 'tsx', 'jsx',
-      'md', 'css', 'scss', 'html', 'xml', 'yaml', 'yml',
-      'sh', 'bash', 'zsh', 'fish', 'py', 'rb', 'php', 'java',
-      'c', 'cpp', 'h', 'hpp', 'go', 'swift', 'kt', 'lock',
-      'cargo', 'gitignore', 'env', 'toml', 'json', 'js', 'ts', 'tsx', 'jsx',
-      'md', 'css', 'scss', 'html', 'xml', 'yaml', 'yml',
-      'sh', 'bash', 'zsh', 'fish', 'py', 'rb', 'php', 'java',
-      'c', 'cpp', 'h', 'hpp', 'go', 'swift', 'kt', 'lock',
-      'cargo', 'gitignore', 'env', 'toml', 'json', 'js', 'ts', 'tsx', 'jsx',
-      'md', 'css', 'scss', 'html', 'xml', 'yaml', 'yml',
-      'sh', 'bash', 'zsh', 'fish', 'py', 'rb', 'php', 'java',
-      'c', 'cpp', 'h', 'hpp', 'go', 'swift', 'kt', 'lock',
-      'cargo', 'gitignore', 'env'
-    ];
-
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    const isTextFile = textExtensions.includes(extension || '') ||
-                      file.type.startsWith('text/') ||
-                      ['application/json', 'application/javascript',
-                       'application/typescript', 'application/toml',
-                       'application/x-toml'].includes(file.type) ||
-                      !file.type;  // Treat unknown types as text by default
-
     reader.onload = (e) => {
-      const content = e.target?.result;
-
-      // Always return text content for text files
-      if (isTextFile) {
-        if (content instanceof ArrayBuffer) {
-          // Convert ArrayBuffer to string if needed
-          const decoder = new TextDecoder('utf-8');
-          resolve(decoder.decode(content));
-        } else {
-          resolve(content as string);
-        }
+      if (e.target?.result) {
+        resolve(e.target.result as string);
       } else {
-        // Handle binary files
-        if (content instanceof ArrayBuffer) {
-          const base64 = btoa(
-            new Uint8Array(content)
-              .reduce((data, byte) => data + String.fromCharCode(byte), '')
-          );
-          resolve(`data:${file.type || 'application/octet-stream'};base64,${base64}`);
-        } else {
-          resolve(content as string);
-        }
+        reject(new Error('Failed to read file'));
       }
     };
 
     reader.onerror = () => reject(new Error('Failed to read file'));
-
-    // Always try to read as text first for text files
-    if (isTextFile) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
+    reader.readAsText(file);
   });
+};
+
+const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' | 'svg' => {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+
+  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'];
+  const videoExtensions = ['mp4', 'webm', 'ogg', 'mov'];
+  const audioExtensions = ['mp3', 'wav', 'ogg', 'aac'];
+
+  if (extension === 'svg') return 'svg';
+  if (imageExtensions.includes(extension || '')) return 'image';
+  if (videoExtensions.includes(extension || '')) return 'video';
+  if (audioExtensions.includes(extension || '')) return 'audio';
+  return 'text';
 };
 
 export default FileExplorer;

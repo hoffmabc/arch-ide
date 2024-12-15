@@ -28,12 +28,12 @@ export class CompilerService {
   async compile(files: { path: string, content: string }[]) {
     try {
       this.validateFiles(files);
-      const projectDir = path.join(this.tempDir, `project_${Date.now()}`);      
-      
+      const projectDir = path.join(this.tempDir, `project_${Date.now()}`);
+
       // Create project structure
       await fs.mkdir(path.join(projectDir, 'program/src'), { recursive: true });
       await fs.mkdir(path.join(projectDir, 'crates'), { recursive: true });
-  
+
       // Write all program files first
       for (const file of files) {
         if (!file.path) {
@@ -45,12 +45,12 @@ export class CompilerService {
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, file.content);
       }
-  
+
       // Debug: List files in program directory
       console.log('Files in program directory:');
       const programFiles = await fs.readdir(path.join(projectDir, 'program'), { recursive: true });
       console.log(programFiles);
-  
+
       // Copy SDK and other crates, but not program
       await this.copyCrate('sdk', projectDir);
       await this.copyCrate('bip322', projectDir);
@@ -72,7 +72,7 @@ export class CompilerService {
       );
 
       console.log('Program directory:', path.join(projectDir, 'program'));
-  
+
       // Compile using cargo build-sbf
       const { stdout, stderr } = await execAsync('cargo build-sbf --offline', {
         cwd: path.join(projectDir, 'program')
@@ -81,7 +81,7 @@ export class CompilerService {
       // Read the compiled .so file
       const soFile = path.join(projectDir, 'target/sbf-solana-solana/release/arch_program.so');
       let programBytes = null;
-      
+
       try {
         programBytes = await fs.readFile(soFile);
       } catch (err) {
@@ -128,21 +128,21 @@ export class CompilerService {
     if (files.length > MAX_FILE_AMOUNT) {
       throw new Error(`Exceeded maximum file amount (${MAX_FILE_AMOUNT})`);
     }
-  
+
     // Validate each file
     for (const file of files) {
       if (!file.path) {
         throw new Error('File missing path');
       }
-  
+
       if (file.path.length > MAX_PATH_LENGTH) {
         throw new Error(`File path exceeds maximum length (${MAX_PATH_LENGTH})`);
       }
-  
+
       if (!ALLOWED_PATH_REGEX.test(file.path)) {
         throw new Error(`Invalid file path: ${file.path}`);
       }
-  
+
       if (file.path.includes('..') || file.path.includes('//')) {
         throw new Error(`Unsafe file path: ${file.path}`);
       }
