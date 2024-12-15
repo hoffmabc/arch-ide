@@ -432,12 +432,16 @@ const App = () => {
 
   const handleCreateNewItem = (name: string) => {
     console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
-    if (newItemPath && newItemType) {
+
+    // Check only newItemType since newItemPath can be an empty array for root level
+    if (newItemType) {
       handleUpdateTree({
         type: 'create',
-        path: [...newItemPath, name],
-        fileType: newItemType
+        path: [...newItemPath, name], // newItemPath might be empty array for root level
+        fileType: newItemType,
+        content: newItemType === 'file' ? '' : undefined // Initialize files with empty content
       });
+      setIsNewFileDialogOpen(false); // Ensure dialog closes after creation
     }
   };
 
