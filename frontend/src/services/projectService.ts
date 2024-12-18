@@ -397,11 +397,21 @@ export class ProjectService {
       description,
       files: addPathsToNodes([...PROGRAM_TEMPLATE]),
       created: new Date(),
-      lastModified: new Date()
+      lastModified: new Date(),
+      account: undefined
     };
 
     await this.storage.saveProject(project);
     return project;
+  }
+
+  async updateProjectAccount(projectId: string, account: ProjectAccount): Promise<void> {
+    const project = await this.storage.getProject(projectId);
+    if (project) {
+      project.account = account;
+      project.lastModified = new Date();
+      await this.storage.saveProject(project);
+    }
   }
 
   async saveProject(project: Project): Promise<void> {

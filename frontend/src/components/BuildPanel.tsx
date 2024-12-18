@@ -15,6 +15,7 @@ import {
   import { ArchIdl } from '../types/idl';
   import { Config } from '../types/config';
   import { ConnectionStatus } from './ConnectionStatus';
+  import { Project, ProjectAccount } from '../types';
 
   interface BuildPanelProps {
     onBuild: () => void;
@@ -34,6 +35,8 @@ import {
       address: string;
     } | null;
     onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
+    project: Project;
+    onProjectAccountChange: (account: ProjectAccount) => void;
   }
 
   const BuildPanel = ({
@@ -49,7 +52,9 @@ import {
     idl,
     onProgramIdChange,
     currentAccount,
-    onAccountChange
+    onAccountChange,
+    project,
+    onProjectAccountChange
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
@@ -60,6 +65,15 @@ import {
               setBinaryFileName('arch_program.so');
           }
       }, [programBinary]);
+
+      useEffect(() => {
+        if (project?.account && !currentAccount) {
+          onAccountChange(project.account);
+          onProgramIdChange?.(project.account.pubkey);
+        }
+        // Clear binary filename when project changes
+        setBinaryFileName(null);
+      }, [project, currentAccount, onAccountChange, onProgramIdChange]);
 
       const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
           const file = event.target.files?.[0];
@@ -128,11 +142,12 @@ import {
     };
 
     const handleNewKeypair = async () => {
-        const connection = ArchConnection(new RpcConnection(config.rpcUrl));
-        const account = await connection.createNewAccount();
-        onAccountChange(account);
-        onProgramIdChange?.(account.pubkey);
-        setIsNewKeypairDialogOpen(false);
+      const connection = ArchConnection(new RpcConnection(config.rpcUrl));
+      const account = await connection.createNewAccount();
+      onAccountChange(account);
+      onProgramIdChange?.(account.pubkey);
+      onProjectAccountChange(account);
+      setIsNewKeypairDialogOpen(false);
     };
 
     // Update the Plus button click handler
@@ -161,6 +176,7 @@ import {
           const account = JSON.parse(e.target?.result as string);
           onAccountChange(account);
           onProgramIdChange?.(account.pubkey);
+          onProjectAccountChange(account);
         } catch (error) {
           console.error('Failed to import keypair:', error);
         }

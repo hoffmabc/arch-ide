@@ -6,7 +6,7 @@ import { Output } from './components/Output';
 import ProjectList from './components/ProjectList';
 import NewProjectDialog from './components/NewProjectDialog';
 import { projectService } from './services/projectService';
-import type { Project, FileNode } from './types';
+import type { Project, FileNode, ProjectAccount } from './types';
 import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
@@ -356,7 +356,13 @@ const App = () => {
     setProjects(updatedProjects.map(stripProjectContent));
     setFullCurrentProject(newProject);
 
-    // Clear all open tabs and current file when creating a new project
+    // Clear all program-related states
+    setCurrentAccount(null);
+    setProgramId(undefined);
+    setProgramBinary(null);
+    setProgramIdl(null);
+
+    // Clear all open tabs and current file
     setOpenFiles([]);
     setCurrentFile(null);
     setIsNewProjectOpen(false);
@@ -765,25 +771,39 @@ const App = () => {
     setProgramId(newProgramId);
   };
 
-  const handleProjectSelect = async (project: Project, clearOpenFiles?: boolean) => {
-    // Update lastAccessed time
+  const handleProjectAccountChange = async (account: ProjectAccount) => {
+    if (!fullCurrentProject) return;
+
+    // Update the project with the new account
     const updatedProject = {
-      ...project,
-      lastAccessed: new Date()
+      ...fullCurrentProject,
+      account,
+      lastModified: new Date()
     };
 
-    setFullCurrentProject(updatedProject);
+    // Save the updated project
     await projectService.saveProject(updatedProject);
 
-    // Clear open files if requested (for folder imports)
-    if (clearOpenFiles) {
-      setOpenFiles([]);
-      setCurrentFile(null);
-    }
+    // Update state
+    setFullCurrentProject(updatedProject);
+    setProjects(prev => prev.map(p =>
+      p.id === updatedProject.id ? updatedProject : p
+    ));
 
-    // Update projects list with new lastAccessed time
-    const updatedProjects = await projectService.getAllProjects();
-    setProjects(updatedProjects.map(stripProjectContent));
+    // Also update current account state for immediate use
+    setCurrentAccount(account);
+  };
+
+  const handleProjectSelect = async (project: Project) => {
+    const fullProject = await projectService.getProject(project.id);
+    if (!fullProject) return;
+
+    setFullCurrentProject(fullProject);
+    setCurrentAccount(fullProject.account || null);
+    setProgramId(fullProject.account?.pubkey);
+    setProgramBinary(null);
+    setOpenFiles([]);
+    setCurrentFile(null);
   };
 
   // Add this effect to handle batched saves
@@ -873,6 +893,8 @@ const App = () => {
             onProgramIdChange={handleProgramIdChange}
             currentAccount={currentAccount}
             onAccountChange={setCurrentAccount}
+            project={fullCurrentProject!}
+            onProjectAccountChange={handleProjectAccountChange}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">

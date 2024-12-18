@@ -9,6 +9,12 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface ProjectAccount {
+  privkey: string;
+  pubkey: string;
+  address: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -17,6 +23,7 @@ export interface Project {
   created: Date;
   lastModified: Date;
   lastAccessed?: Date;
+  account?: ProjectAccount;
 }
 
 export interface ArchInstruction {

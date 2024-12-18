@@ -9,6 +9,7 @@ import VerticalResizeHandle from './VerticalResizeHandle';
 import { Config } from '../types/config';
 import type { ArchIdl } from '../types';
 import { storage } from '../utils/storage';
+import { Project, ProjectAccount } from '../types';
 
 type ExpandedFolders = Set<string>;
 
@@ -43,11 +44,13 @@ interface SidePanelProps {
   } | null;
   onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
   currentFile: FileNode | null;
+  project: Project;
+  onProjectAccountChange: (account: ProjectAccount) => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile }: SidePanelProps) => {
+const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
@@ -70,6 +73,8 @@ const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTre
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }, [width]);
+
+    const activeAccount = project?.account || currentAccount;
 
     return (
         <div
@@ -128,8 +133,10 @@ const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTre
             config={config}
             onConfigChange={onConfigChange}
             onConnectionStatusChange={onConnectionStatusChange}
-            currentAccount={currentAccount}
+            currentAccount={activeAccount}
             onAccountChange={onAccountChange}
+            project={project}
+            onProjectAccountChange={onProjectAccountChange}
           />
         )}
       </div>
