@@ -4,7 +4,8 @@ module.exports = {
   content: [
     './src/**/*.{ts,tsx}',
     './src/components/**/*.{ts,tsx}',
-    './src/app/**/*.{ts,tsx}'
+    './src/app/**/*.{ts,tsx}',
+    './index.html'
   ],
   theme: {
   	container: {
@@ -14,6 +15,7 @@ module.exports = {
   			'2xl': '1400px'
   		}
   	},
+
   	extend: {
   		keyframes: {
   			'accordion-down': {
