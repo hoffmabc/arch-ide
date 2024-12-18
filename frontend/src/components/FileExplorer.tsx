@@ -99,6 +99,7 @@ const getFileIcon = (fileName: string) => {
 };
 
 interface FileExplorerProps {
+  hasProjects: boolean;
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
   onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
@@ -311,7 +312,7 @@ const FileExplorerItem = ({
   );
 };
 
-const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile }: FileExplorerProps) => {
+const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile }: FileExplorerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -336,20 +337,23 @@ const FileExplorer = ({ files, onFileSelect, onUpdateTree, onNewItem, expandedFo
         <span>Explorer</span>
         <div className="flex gap-1">
           <button
-            className="hover:bg-gray-700 p-1 rounded"
+            className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => onNewItem([], 'file')}
+            disabled={!hasProjects}
           >
             <Plus size={16} />
           </button>
           <button
-            className="hover:bg-gray-700 p-1 rounded"
+            className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => onNewItem([], 'directory')}
+            disabled={!hasProjects}
           >
             <Folder size={16} />
           </button>
           <button
-            className="hover:bg-gray-700 p-1 rounded"
+            className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => fileInputRef.current?.click()}
+            disabled={!hasProjects}
           >
             <Upload size={16} />
           </button>

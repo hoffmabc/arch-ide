@@ -18,6 +18,7 @@ import {
   import { Project, ProjectAccount } from '../types';
 
   interface BuildPanelProps {
+    hasProjects: boolean;
     onBuild: () => void;
     onDeploy: () => void;
     isBuilding: boolean;
@@ -40,6 +41,7 @@ import {
   }
 
   const BuildPanel = ({
+    hasProjects,
     onBuild,
     onDeploy,
     isBuilding,
@@ -193,7 +195,7 @@ import {
           <Button
             className="w-full mb-4 bg-pink-500 hover:bg-pink-600"
             onClick={onBuild}
-            disabled={isBuilding}
+            disabled={isBuilding || !hasProjects}
           >
             {isBuilding ? 'Building...' : 'Build'}
           </Button>
@@ -343,7 +345,7 @@ import {
           <Button
             className="w-full mt-4"
             onClick={onDeploy}
-            disabled={isDeploying || !currentAccount}
+            disabled={isDeploying || !currentAccount || !hasProjects}
           >
             {isDeploying ? 'Deploying...' : 'Deploy'}
           </Button>

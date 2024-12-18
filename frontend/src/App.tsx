@@ -20,6 +20,7 @@ import type { ArchIdl } from './types';
 import { ArchProgramLoader } from './utils/arch-program-loader';
 import { storage } from './utils/storage';
 import { FileChange } from './types/types';
+import { Plus, FolderPlus, Download } from 'lucide-react';
 
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -872,6 +873,7 @@ const App = () => {
 
         <div className="flex flex-1 overflow-hidden">
           <SidePanel
+            hasProjects={projects.length > 0}
             currentView={currentView}
             onViewChange={setCurrentView}
             currentFile={currentFile}

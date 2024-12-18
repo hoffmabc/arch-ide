@@ -14,6 +14,7 @@ import { Project, ProjectAccount } from '../types';
 type ExpandedFolders = Set<string>;
 
 interface SidePanelProps {
+  hasProjects: boolean;
   currentView: 'explorer' | 'build';
   onViewChange: (view: 'explorer' | 'build') => void;
   files: FileNode[];
@@ -50,7 +51,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
@@ -111,6 +112,7 @@ const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTre
       <div className="flex-1 overflow-auto">
           {currentView === 'explorer' ? (
             <FileExplorer
+              hasProjects={hasProjects}
               files={files}
               onFileSelect={onFileSelect}
               onUpdateTree={onUpdateTree}
@@ -121,6 +123,7 @@ const SidePanel = ({ currentView, onViewChange, files, onFileSelect, onUpdateTre
             />
           ) : (
           <BuildPanel
+            hasProjects={hasProjects}
             onBuild={onBuild}
             onDeploy={onDeploy}
             isBuilding={isBuilding}
