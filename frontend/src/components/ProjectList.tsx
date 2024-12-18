@@ -41,12 +41,22 @@ const ProjectList = ({
     setSelectedId(currentProject?.id || '');
   }, [currentProject]);
 
+  const sortedProjects = [...projects].sort((a, b) => {
+    const dateA = a.lastAccessed || a.lastModified;
+    const dateB = b.lastAccessed || b.lastModified;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
   const handleProjectSelect = (value: string) => {
     setSelectedId(value);
 
     const project = projects.find(p => p.id === value);
     if (project) {
-      onSelectProject(project);
+      const updatedProject = {
+        ...project,
+        lastAccessed: new Date()
+      };
+      onSelectProject(updatedProject);
     }
   };
 
@@ -104,7 +114,7 @@ const ProjectList = ({
           <SelectValue placeholder="Select a project" />
         </SelectTrigger>
         <SelectContent className="bg-background border-input">
-          {projects.map((project) => (
+          {sortedProjects.map((project) => (
             <SelectItem
               key={project.id}
               value={project.id}

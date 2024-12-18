@@ -82,7 +82,8 @@ export class StorageService {
     await this.db!.put('projects', {
       ...project,
       files: encodeFileNodes(project.files),
-      lastModified: new Date()
+      lastModified: new Date(),
+      lastAccessed: project.lastAccessed || new Date()
     });
   }
 

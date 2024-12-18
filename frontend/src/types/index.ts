@@ -16,6 +16,7 @@ export interface Project {
   files: FileNode[];
   created: Date;
   lastModified: Date;
+  lastAccessed?: Date;
 }
 
 export interface ArchInstruction {
