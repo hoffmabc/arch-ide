@@ -9,13 +9,21 @@ import {
   import { useEffect, useState } from "react";
   import { X } from "lucide-react";
 
+  const MODAL_PREFERENCE_KEY = 'connection-modal-dismissed';
+
   interface ConnectionErrorModalProps {
     isOpen: boolean;
     onClose: () => void;
     network: string;
+    persistDismissal?: boolean;
   }
 
-  export const ConnectionErrorModal = ({ isOpen, onClose, network }: ConnectionErrorModalProps) => {
+  export const ConnectionErrorModal = ({
+    isOpen,
+    onClose,
+    network,
+    persistDismissal = true
+  }: ConnectionErrorModalProps) => {
     const isLocalnet = network === 'devnet';
     const [os, setOs] = useState<'mac' | 'linux' | 'windows' | 'unknown'>('unknown');
     const [copied, setCopied] = useState(false);
@@ -60,8 +68,24 @@ import {
       setTimeout(() => setCopied(false), 2000);
     };
 
+    const handleClose = () => {
+      if (persistDismissal) {
+        localStorage.setItem(MODAL_PREFERENCE_KEY, 'true');
+      }
+      onClose();
+    };
+
+    // Check if modal was previously dismissed
+    const shouldShow = () => {
+      if (!persistDismissal) return isOpen;
+      const dismissed = localStorage.getItem(MODAL_PREFERENCE_KEY);
+      return isOpen && !dismissed;
+    };
+
+    if (!shouldShow()) return null;
+
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={true} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-[600px] bg-[#1C1E26] border-gray-800">
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="text-xl font-mono text-white">

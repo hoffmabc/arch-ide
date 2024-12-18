@@ -113,6 +113,7 @@ export const ConnectionStatus = ({
         isOpen={showErrorModal}
         onClose={() => setShowErrorModal(false)}
         network={network}
+        persistDismissal={true}
       />
     </>
   );
