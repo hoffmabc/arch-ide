@@ -34,3 +34,27 @@ export interface ArchIdl {
     content: string;
     timestamp: number;
   }
+
+  export interface ProjectAccount {
+    privkey: string;
+    pubkey: string;
+    address: string;
+  }
+
+  export interface Message {
+    signers: string[];
+    instructions: Instruction[];
+    hash?: string;
+  }
+
+  export interface Instruction {
+    programId: string;
+    accounts: AccountMeta[];
+    data: Buffer;
+  }
+
+  export interface AccountMeta {
+    pubkey: string;
+    isSigner: boolean;
+    isWritable: boolean;
+  }

@@ -2,6 +2,7 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { Config } from '../types/config';
 import { WifiOff, Wifi } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { FileChange } from '../types/types';
 
 interface StatusBarProps {
   config: Config;
