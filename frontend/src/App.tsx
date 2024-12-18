@@ -766,16 +766,18 @@ const App = () => {
   };
 
   const handleProjectSelect = async (project: Project) => {
-    // Clear editor state
-    setOpenFiles([]);
-    setCurrentFile(null);
+    // Update lastAccessed time
+    const updatedProject = {
+      ...project,
+      lastAccessed: new Date()
+    };
 
-    // Load the full project data
-    const fullProject = await projectService.getProject(project.id);
-    if (fullProject) {
-      setFullCurrentProject(fullProject);
-    }
-    return Promise.resolve();
+    setFullCurrentProject(updatedProject);
+    await projectService.saveProject(updatedProject);
+
+    // Update projects list with new lastAccessed time
+    const updatedProjects = await projectService.getAllProjects();
+    setProjects(updatedProjects.map(stripProjectContent));
   };
 
   // Add this effect to handle batched saves
@@ -846,6 +848,7 @@ const App = () => {
           <SidePanel
             currentView={currentView}
             onViewChange={setCurrentView}
+            currentFile={currentFile}
             files={fullCurrentProject?.files || []}
             onFileSelect={handleFileSelect}
             onUpdateTree={handleUpdateTreeAdapter}
