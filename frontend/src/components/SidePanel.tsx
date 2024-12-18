@@ -47,11 +47,12 @@ interface SidePanelProps {
   currentFile: FileNode | null;
   project: Project;
   onProjectAccountChange: (account: ProjectAccount) => void;
+  onNewProject: () => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
@@ -120,6 +121,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               expandedFolders={expandedFolders}
               onExpandedFoldersChange={setExpandedFolders}
               currentFile={currentFile}
+              onNewProject={onNewProject}
             />
           ) : (
           <BuildPanel

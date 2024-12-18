@@ -33,6 +33,8 @@ import {
 import RenameDialog from './RenameDialog';
 import { cn } from '../lib/utils';
 import type { FileNode } from '../types';
+import { Button } from '@/components/ui/button';
+
 const getNodePath = (node: FileNode, path: string[] = []): string => {
   return [...path, node.name].join('/');
 };
@@ -107,6 +109,7 @@ interface FileExplorerProps {
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
+  onNewProject?: () => void;
 }
 
 interface FileContextMenuProps {
@@ -312,7 +315,7 @@ const FileExplorerItem = ({
   );
 };
 
-const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile }: FileExplorerProps) => {
+const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile, onNewProject }: FileExplorerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -359,19 +362,34 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
           </button>
         </div>
       </div>
-      {files.map((file, i) => (
-        <FileExplorerItem
-          key={i}
-          node={file}
-          path={[]}
-          onSelect={onFileSelect}
-          onUpdateTree={onUpdateTree}
-          onNewItem={onNewItem}
-          expandedFolders={expandedFolders}
-          onExpandedFoldersChange={onExpandedFoldersChange}
-          currentFile={currentFile}
-        />
-      ))}
+
+      {!hasProjects ? (
+        <div className="flex flex-col items-center justify-center h-[calc(100%-48px)] gap-4 text-gray-400">
+          <p className="text-sm">No projects found</p>
+          <Button
+            variant="default"
+            onClick={onNewProject}
+            className="bg-pink-500 hover:bg-pink-600 text-white"
+          >
+            Create New Project
+          </Button>
+        </div>
+      ) : (
+        files.map((file, i) => (
+          <FileExplorerItem
+            key={i}
+            node={file}
+            path={[]}
+            onSelect={onFileSelect}
+            onUpdateTree={onUpdateTree}
+            onNewItem={onNewItem}
+            expandedFolders={expandedFolders}
+            onExpandedFoldersChange={onExpandedFoldersChange}
+            currentFile={currentFile}
+          />
+        ))
+      )}
+
       <input
         type="file"
         ref={fileInputRef}

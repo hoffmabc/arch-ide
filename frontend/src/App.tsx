@@ -853,6 +853,10 @@ const App = () => {
     return () => clearTimeout(saveTimeout);
   }, [pendingChanges, fullCurrentProject, isSaving]);
 
+  const handleNewProject = () => {
+    setIsNewProjectOpen(true);
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -862,7 +866,7 @@ const App = () => {
             projects={projects}
             currentProject={fullCurrentProject || undefined}
             onSelectProject={handleProjectSelect}
-            onNewProject={() => setIsNewProjectOpen(true)}
+            onNewProject={handleNewProject}
             onDeleteProject={handleDeleteProject}
             onProjectsChange={setProjects}
           />
@@ -897,6 +901,7 @@ const App = () => {
             onAccountChange={setCurrentAccount}
             project={fullCurrentProject!}
             onProjectAccountChange={handleProjectAccountChange}
+            onNewProject={handleNewProject}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">
