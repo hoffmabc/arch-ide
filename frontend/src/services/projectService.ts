@@ -492,15 +492,17 @@ export class ProjectService {
           const projectData = JSON.parse(e.target?.result as string);
 
           // Validate the imported data has required Project properties
-          if (!projectData.id || !projectData.name || !projectData.files) {
+          if (!projectData.name || !projectData.files) {
             throw new Error('Invalid project file format');
           }
 
-          // Ensure dates are properly converted
+          // Generate a new ID for the reimported project
           const project: Project = {
             ...projectData,
-            created: new Date(projectData.created),
-            lastModified: new Date(projectData.lastModified)
+            id: uuidv4(), // Always generate a new ID
+            created: new Date(), // Reset creation date
+            lastModified: new Date(),
+            name: await this.getUniqueProjectName(projectData.name) // Ensure unique name
           };
 
           await this.saveProject(project);
@@ -542,18 +544,37 @@ export class ProjectService {
     const fileNodes: FileNode[] = [];
     const fileMap = new Map<string, FileNode>();
 
-    // Convert FileList to array and sort by path to ensure parents are created first
-    const fileArray = Array.from(files).sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
+    console.log('Starting import with files:', Array.from(files).map(f => f.webkitRelativePath));
 
+    // Convert FileList to array and sort by path
+    const fileArray = Array.from(files).sort((a, b) =>
+      a.webkitRelativePath.localeCompare(b.webkitRelativePath)
+    );
+
+    console.log('Sorted file array:', fileArray.map(f => f.webkitRelativePath));
+
+    // Get base project name from first file
+    const baseProjectName = files[0].webkitRelativePath.split('/')[0];
+    const projectName = await this.getUniqueProjectName(baseProjectName);
+
+    console.log('Project name:', projectName);
+
+    // Process each file
     for (const file of fileArray) {
-      const parts = file.webkitRelativePath.split('/');
-      const projectName = parts[0]; // First folder name becomes project name
-      parts.shift(); // Remove project name from path
-
+      console.log('\nProcessing file:', file.webkitRelativePath);
+      const pathParts = file.webkitRelativePath.split('/');
+      console.log('Path parts:', pathParts);
       let currentPath = '';
-      for (const [index, part] of parts.entries()) {
-        const isFile = index === parts.length - 1;
+
+      // Skip the first part as it's the root folder name
+      for (let i = 1; i < pathParts.length; i++) {
+        const part = pathParts[i];
+        const isFile = i === pathParts.length - 1;
         const fullPath = currentPath + part;
+
+        console.log(`Processing part: ${part} (${isFile ? 'file' : 'directory'})`);
+        console.log('Current path:', currentPath);
+        console.log('Full path:', fullPath);
 
         if (!fileMap.has(fullPath)) {
           const node: FileNode = {
@@ -563,13 +584,27 @@ export class ProjectService {
             ...(isFile ? { content: await this.readFileContent(file) } : { children: [] })
           };
 
+          console.log('Created node:', {
+            name: node.name,
+            type: node.type,
+            path: node.path,
+            hasContent: isFile ? 'yes' : 'no',
+            hasChildren: !isFile ? 'yes' : 'no'
+          });
+
           fileMap.set(fullPath, node);
 
           if (currentPath === '') {
+            console.log('Adding to root fileNodes:', node.name);
             fileNodes.push(node);
           } else {
             const parent = fileMap.get(currentPath.slice(0, -1));
-            parent?.children?.push(node);
+            if (parent && parent.children) {
+              console.log(`Adding to parent "${parent.name}":`, node.name);
+              parent.children.push(node);
+            } else {
+              console.warn('Could not find parent for path:', currentPath.slice(0, -1));
+            }
           }
         }
 
@@ -579,8 +614,13 @@ export class ProjectService {
       }
     }
 
-    // Handle name conflicts
-    const projectName = await this.getUniqueProjectName(files[0].webkitRelativePath.split('/')[0]);
+    console.log('\nFinal file structure:', {
+      fileNodes: fileNodes.map(node => ({
+        name: node.name,
+        type: node.type,
+        children: node.children?.map(child => child.name)
+      }))
+    });
 
     const project = {
       id: uuidv4(),
@@ -590,7 +630,6 @@ export class ProjectService {
       lastModified: new Date()
     };
 
-    // Save to IndexedDB
     await this.saveProject(project);
     return project;
   }
@@ -611,20 +650,21 @@ export class ProjectService {
   private async readFileContent(file: File): Promise<string> {
     return new Promise((resolve) => {
       const reader = new FileReader();
-      const isText = file.type.startsWith('text/') ||
-        ['application/json', 'application/javascript', 'application/typescript']
-          .includes(file.type);
+      // Use the storage service's isTextFile check instead of relying on MIME type
+      const isText = this.storage.isTextFile(file.name) ||
+                    file.type.startsWith('text/') ||
+                    ['application/json', 'application/javascript', 'application/typescript']
+                      .includes(file.type);
 
       reader.onload = (e) => {
         if (isText) {
           resolve(e.target?.result as string);
         } else {
-          // For binary files, always return as data URL
+          // Only use data URL for actual binary files
           resolve(e.target?.result as string);
         }
       };
 
-      // Always read binary files as data URL
       if (isText) {
         reader.readAsText(file);
       } else {

@@ -765,7 +765,7 @@ const App = () => {
     setProgramId(newProgramId);
   };
 
-  const handleProjectSelect = async (project: Project) => {
+  const handleProjectSelect = async (project: Project, clearOpenFiles?: boolean) => {
     // Update lastAccessed time
     const updatedProject = {
       ...project,
@@ -774,6 +774,12 @@ const App = () => {
 
     setFullCurrentProject(updatedProject);
     await projectService.saveProject(updatedProject);
+
+    // Clear open files if requested (for folder imports)
+    if (clearOpenFiles) {
+      setOpenFiles([]);
+      setCurrentFile(null);
+    }
 
     // Update projects list with new lastAccessed time
     const updatedProjects = await projectService.getAllProjects();

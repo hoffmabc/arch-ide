@@ -21,7 +21,7 @@ import { projectService } from '../services/projectService';
 interface ProjectListProps {
   projects: Project[];
   currentProject?: Project;
-  onSelectProject: (project: Project) => void;
+  onSelectProject: (project: Project, clearOpenFiles?: boolean) => void;
   onNewProject: () => void;
   onDeleteProject: (projectId: string) => Promise<void>;
   onProjectsChange: (projects: Project[]) => void;
@@ -88,16 +88,21 @@ const ProjectList = ({
       if (files[0].webkitRelativePath) {
         // Handling folder import
         importedProject = await projectService.importFromFolder(files);
+        // Clear open files and current file when importing a folder
+        onProjectsChange([...projects, importedProject]);
+        // Pass additional parameter to indicate this is a folder import
+        onSelectProject(importedProject, true);
       } else if (files[0].name.endsWith('.zip')) {
         // Handling zip import
         importedProject = await projectService.importProjectAsZip(files[0]);
+        onProjectsChange([...projects, importedProject]);
+        onSelectProject(importedProject, true);
       } else {
         // Handling JSON import
         importedProject = await projectService.importProject(files[0]);
+        onProjectsChange([...projects, importedProject]);
+        onSelectProject(importedProject, true);
       }
-
-      onProjectsChange([...projects, importedProject]);
-      onSelectProject(importedProject);
     } catch (error) {
       console.error('Failed to import project:', error);
       // TODO: Show error message to user

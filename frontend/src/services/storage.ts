@@ -25,7 +25,7 @@ export class StorageService {
     });
   }
 
-  private isTextFile(fileName: string): boolean {
+  isTextFile(fileName: string): boolean {
     const textExtensions = [
       'txt', 'rs', 'toml', 'json', 'js', 'ts', 'tsx', 'jsx',
       'md', 'css', 'scss', 'html', 'xml', 'yaml', 'yml',
