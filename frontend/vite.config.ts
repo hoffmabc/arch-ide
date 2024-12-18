@@ -14,6 +14,9 @@ export default defineConfig({
       '@hooks': path.resolve(__dirname, './src/hooks')
     }
   },
+  define: {
+    global: 'globalThis',
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,
@@ -29,7 +32,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['@monaco-editor/react']
+    include: ['@monaco-editor/react', 'buffer']
   },
   server: {
     port: 3000,
