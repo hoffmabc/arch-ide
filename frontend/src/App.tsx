@@ -637,7 +637,7 @@ const App = () => {
 
       console.log('Sending files to compile:', programFiles); // Debug log
 
-      const response = await fetch('http://localhost:8080/compile', {
+      const response = await fetch(`${API_URL}/compile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
