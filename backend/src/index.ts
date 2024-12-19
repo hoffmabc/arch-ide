@@ -6,13 +6,25 @@ import { deployRoute } from './routes/deploy';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Configure CORS with environment variable
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://localhost:3000'];
+
+const corsOptions = {
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
 // Initialize compiler
 compiler.init().catch(err => {
   console.error('Failed to initialize compiler:', err);
   process.exit(1);
 });
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/compile', compileRoute);
 app.use('/deploy', deployRoute);

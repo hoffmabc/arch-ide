@@ -21,6 +21,8 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'ALLOWED_ORIGINS=https://arch-ide.vercel.app'
 
 images:
   - 'gcr.io/$PROJECT_ID/arch-backend'
