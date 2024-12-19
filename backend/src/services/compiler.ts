@@ -17,7 +17,7 @@ export class CompilerService {
 
   constructor() {
     this.tempDir = path.join(process.cwd(), 'temp');
-    this.cratesPath = path.join(process.cwd(), '../crates');
+    this.cratesPath = path.join(process.cwd(), 'crates');
     this.idlGenerator = new IdlGenerator();
   }
 
@@ -74,7 +74,7 @@ export class CompilerService {
       console.log('Program directory:', path.join(projectDir, 'program'));
 
       // Compile using cargo build-sbf
-      const { stdout, stderr } = await execAsync('cargo build-sbf --offline', {
+      const { stdout, stderr } = await execAsync('cargo build-sbf', {
         cwd: path.join(projectDir, 'program')
       });
 
