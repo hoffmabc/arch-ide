@@ -16,6 +16,7 @@ import {
   import { Config } from '../types/config';
   import { ConnectionStatus } from './ConnectionStatus';
   import { Project, ProjectAccount } from '../types';
+  import { useToast } from "@/components/ui/use-toast";
 
   interface BuildPanelProps {
     hasProjects: boolean;
@@ -60,6 +61,8 @@ import {
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
+      const [isUploading, setIsUploading] = useState(false);
+      const { toast } = useToast();
 
       // Update effect to handle both uploaded and compiled binaries
       useEffect(() => {
@@ -77,26 +80,55 @@ import {
         setBinaryFileName(null);
       }, [project, currentAccount, onAccountChange, onProgramIdChange]);
 
-      const handleImportBinary = (event: React.ChangeEvent<HTMLInputElement>) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
+      const handleImportBinary = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
 
-          if (!file.name.endsWith('.so')) {
-              console.error('Only .so files are allowed');
-              return;
-          }
+        // Validate file type
+        if (!file.name.endsWith('.so')) {
+          toast({
+            title: "Invalid file type",
+            description: "Please upload a .so binary file",
+            variant: "destructive"
+          });
+          return;
+        }
 
+        try {
+          setIsUploading(true);
           const reader = new FileReader();
-          reader.onload = (e) => {
-              try {
-                  const binary = e.target?.result as string;
-                  onProgramBinaryChange?.(binary);
-                  setBinaryFileName(file.name);
-              } catch (error) {
-                  console.error('Failed to import binary:', error);
-              }
+
+          reader.onload = async (e) => {
+            const binary = e.target?.result;
+            if (binary) {
+              setBinaryFileName(file.name);
+              onProgramBinaryChange?.(binary as string);
+              toast({
+                title: "Success",
+                description: "Program binary loaded successfully",
+              });
+            }
           };
+
+          reader.onerror = () => {
+            toast({
+              title: "Error",
+              description: "Failed to read binary file",
+              variant: "destructive"
+            });
+          };
+
           reader.readAsDataURL(file);
+
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: error instanceof Error ? error.message : "Failed to load binary",
+            variant: "destructive"
+          });
+        } finally {
+          setIsUploading(false);
+        }
       };
 
     const handleExportBinary = () => {
@@ -291,7 +323,7 @@ import {
                   <h3 className="text-sm font-medium">Program binary</h3>
                   <div className="flex gap-1">
                     <TooltipProvider>
-                      <Tooltip>
+                    <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             size="icon"
@@ -324,13 +356,15 @@ import {
                     </TooltipProvider>
                   </div>
                 </div>
-                <input
-                  type="file"
-                  id="import-binary"
-                  className="hidden"
-                  accept=".so"
-                  onChange={handleImportBinary}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    id="import-binary"
+                    accept=".so"
+                    className="hidden"
+                    onChange={handleImportBinary}
+                  />
+                </div>
                 <div className="text-xs bg-gray-900 p-2 rounded">
                   {binaryFileName || 'Import your program binary (.so)'}
                 </div>
