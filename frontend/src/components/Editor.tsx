@@ -135,7 +135,7 @@ const decodeContent = (content: string): string => {
 const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   const [latestContent, setLatestContent] = useState(code);
   const isWelcomeScreen = !currentFile;
-  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : code;
+  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeContent(code);
   const editorRef = useRef<any>(null);
 
   useEffect(() => {
