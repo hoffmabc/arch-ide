@@ -8,3 +8,9 @@ backend/temp
 # VS Code
 .vscode
 .vercel
+
+# progrsm folder in rust-server
+rust-server/programs/*
+
+# target folder in rust-server
+rust-server/target/*
