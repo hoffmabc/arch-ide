@@ -37,6 +37,11 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/rpc': {
+        target: 'http://localhost:9002',
+        changeOrigin: true,
+        secure: false
+      },
       '/api/bitcoin': {
         target: 'http://localhost:8010/proxy',
         changeOrigin: true,

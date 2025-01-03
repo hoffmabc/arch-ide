@@ -29,7 +29,7 @@ export const ConnectionStatus = ({
     if (isConnecting) return false;
 
     try {
-      const connection = ArchConnection(new RpcConnection(rpcUrl));
+      const connection = ArchConnection(new RpcConnection('/rpc'));
       const block_count = await connection.getBlockCount();
 
       if (!block_count) {
