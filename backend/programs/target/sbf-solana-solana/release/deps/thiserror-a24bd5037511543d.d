@@ -1,0 +1,10 @@
+/Users/brianhoffman/Projects/arch-ide/backend/programs/target/sbf-solana-solana/release/deps/libthiserror-a24bd5037511543d.rmeta: /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/lib.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/aserror.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/display.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/var.rs
+
+/Users/brianhoffman/Projects/arch-ide/backend/programs/target/sbf-solana-solana/release/deps/libthiserror-a24bd5037511543d.rlib: /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/lib.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/aserror.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/display.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/var.rs
+
+/Users/brianhoffman/Projects/arch-ide/backend/programs/target/sbf-solana-solana/release/deps/thiserror-a24bd5037511543d.d: /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/lib.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/aserror.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/display.rs /Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/var.rs
+
+/Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/lib.rs:
+/Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/aserror.rs:
+/Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/display.rs:
+/Users/brianhoffman/.cargo/registry/src/index.crates.io-6f17d22bba15001f/thiserror-2.0.8/src/var.rs:

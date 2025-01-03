@@ -1,4 +1,4 @@
 declare module 'tree-sitter-rust' {
-    const rust: () => any;
-    export default rust;
-  }
+  const Rust: any;
+  export default Rust;
+}

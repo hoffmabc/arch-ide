@@ -46,10 +46,9 @@ pub(crate) fn arch_validate_utxo_ownership(_utxo: *const UtxoMeta, _owner: *cons
 }
 pub(crate) fn arch_get_account_script_pubkey(_buf: &mut [u8; 34], _pubkey: &Pubkey) {}
 
-pub(crate) fn sol_invoke_signed(
+pub(crate) fn sol_invoke_signed_rust(
     _instruction_addr: &Instruction,
     _account_infos: &[AccountInfo],
-    _signers_seeds: &[&[&[u8]]],
 ) -> ProgramResult {
     sol_log("SyscallStubs: sol_invoke_signed() not available");
     Ok(())

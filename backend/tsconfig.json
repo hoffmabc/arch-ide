@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    "target": "es6",
     "module": "commonjs",
-    "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": "./",
+    "paths": {
+      "*": ["src/types/*"]
+    }
   },
-  "include": ["src/**/*", "../frontend/src/types/idl.ts", "src/types/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "src/types/*.d.ts"]
 }

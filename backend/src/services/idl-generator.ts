@@ -1,42 +1,49 @@
-import { Query } from 'tree-sitter';
-import Parser from 'tree-sitter';
+import Parser, { Query, SyntaxNode, Tree } from 'tree-sitter';
 import Rust from 'tree-sitter-rust';
 import { ArchInstruction, ArchIdl, ArchAccountType, ArchTypeDefinition, ArchError, ComplexType } from '../types/idl';
 
 export class IdlGenerator {
     private parser: Parser;
-  
+
     constructor() {
-      this.parser = new Parser();
-      this.parser.setLanguage(Rust);
+        console.log('Initializing parser...');
+        this.parser = new Parser();
+        console.log('Setting Rust language...');
+        this.parser.setLanguage(Rust);
+        console.log('Parser initialization complete');
     }
-  
+
     generateIdl(sourceCode: string): ArchIdl {
-      const tree = this.parser.parse(sourceCode);
-      
-      // Get the name from the process_instruction function or default
-      const name = this.extractProgramName(tree);
+        try {
+            const tree = this.parser.parse(sourceCode);
 
-      return {
-        version: "0.1.0",
-        name,
-        instructions: this.parseInstructions(tree),
-        accounts: this.parseAccounts(tree),
-        types: this.parseTypes(tree),
-        errors: this.parseErrors(tree)
-      };
+            // Get the name from the process_instruction function or default
+            const name = this.extractProgramName(tree);
+
+            return {
+                version: "0.1.0",
+                name,
+                instructions: this.parseInstructions(tree),
+                accounts: this.parseAccounts(tree),
+                types: this.parseTypes(tree),
+                errors: this.parseErrors(tree)
+            };
+        } catch (error) {
+            console.error('Failed to generate IDL:', error);
+            throw new Error('Failed to generate IDL from source code');
+        }
     }
 
-    private extractProgramName(tree: Parser.Tree): string {
+    private extractProgramName(tree: Tree): string {
       // Look for the process_instruction function
       const fnQuery = new Query(Rust, `
         (function_item
           name: (identifier) @name
         ) @function
       `);
-      
+
       const matches = fnQuery.matches(tree.rootNode);
-      const processInstruction = matches.find(match => 
+      const processInstruction = matches.find(match =>
         match.captures.find(c => c.name === 'name')?.node.text === 'process_instruction'
       );
 
@@ -45,16 +52,16 @@ export class IdlGenerator {
         const modQuery = new Query(Rust, `(mod_item name: (identifier) @mod_name)`);
         const modMatches = modQuery.matches(tree.rootNode);
         const modName = modMatches[0]?.captures.find(c => c.name === 'mod_name')?.node.text;
-        
+
         return modName ? `${modName}_program` : "solana_program";
       }
 
       return "solana_program";
     }
 
-    private parseInstructions(tree: Parser.Tree): ArchInstruction[] {
+    private parseInstructions(tree: Tree): ArchInstruction[] {
       const instructions: ArchInstruction[] = [];
-      
+
       // Find the entrypoint function
       const fnQuery = new Query(Rust, `
         (function_item
@@ -75,7 +82,7 @@ export class IdlGenerator {
 
       // Find all struct definitions that are used as instruction parameters
       const paramStructs = this.findInstructionParamStructs(tree);
-      
+
       for (const paramStruct of paramStructs) {
         const name = paramStruct.nameNode.text.replace('Params', '');
         const accounts = this.extractAccountsFromFunction(entrypointFunction);
@@ -91,9 +98,9 @@ export class IdlGenerator {
       return instructions;
     }
 
-    private findInstructionParamStructs(tree: Parser.Tree): { nameNode: Parser.SyntaxNode, fieldsNode: Parser.SyntaxNode }[] {
-      const results: { nameNode: Parser.SyntaxNode, fieldsNode: Parser.SyntaxNode }[] = [];
-      
+    private findInstructionParamStructs(tree: Tree): { nameNode: SyntaxNode, fieldsNode: SyntaxNode }[] {
+      const results: { nameNode: SyntaxNode, fieldsNode: SyntaxNode }[] = [];
+
       const structQuery = new Query(Rust, `
         (
           (attribute_item
@@ -107,7 +114,7 @@ export class IdlGenerator {
       `);
 
       const matches = structQuery.matches(tree.rootNode);
-      
+
       for (const match of matches) {
         const deriveArgs = match.captures.find(c => c.name === 'derive_args')?.node?.text;
         if (!deriveArgs?.includes('BorshSerialize') || !deriveArgs?.includes('BorshDeserialize')) {
@@ -116,7 +123,7 @@ export class IdlGenerator {
 
         const nameNode = match.captures.find(c => c.name === 'name')?.node;
         const fieldsNode = match.captures.find(c => c.name === 'fields')?.node;
-        
+
         if (nameNode && fieldsNode) {
           results.push({ nameNode, fieldsNode });
         }
@@ -128,36 +135,36 @@ export class IdlGenerator {
     private extractAccountsFromFunction(match: any): { name: string, isMut: boolean, isSigner: boolean }[] {
       const accounts: { name: string, isMut: boolean, isSigner: boolean }[] = [];
       const body = match.captures.find((c: { name: string }) => c.name === 'body')?.node;
-      
+
       if (!body) return [];
 
       // Look for account assertions and checks
       const assertions = body.descendantsOfType('macro_invocation')
-        .filter((node: Parser.SyntaxNode) => node.text.includes('assert!'));
-      
+        .filter((node: SyntaxNode) => node.text.includes('assert!'));
+
       const accountChecks = assertions
-        .filter((assert: Parser.SyntaxNode) => assert.text.includes('is_writable') || assert.text.includes('is_signer'));
+        .filter((assert: SyntaxNode) => assert.text.includes('is_writable') || assert.text.includes('is_signer'));
 
       // Default account from next_account_info
       accounts.push({
         name: 'account',
-        isMut: accountChecks.some((check: Parser.SyntaxNode) => check.text.includes('is_writable')),
-        isSigner: accountChecks.some((check: Parser.SyntaxNode) => check.text.includes('is_signer'))
+        isMut: accountChecks.some((check: SyntaxNode) => check.text.includes('is_writable')),
+        isSigner: accountChecks.some((check: SyntaxNode) => check.text.includes('is_signer'))
       });
 
       return accounts;
     }
 
-    private parseStructFields(fieldsNode: Parser.SyntaxNode): { name: string, type: string | ComplexType }[] {
+    private parseStructFields(fieldsNode: SyntaxNode): { name: string, type: string | ComplexType }[] {
       const fields: { name: string, type: string | ComplexType }[] = [];
-      
+
       for (const field of fieldsNode.children) {
         if (field.type === 'field_declaration') {
           const nameNode = field.descendantsOfType('field_identifier')[0];
-          const typeNode = field.descendantsOfType('primitive_type')[0] || 
+          const typeNode = field.descendantsOfType('primitive_type')[0] ||
                           field.descendantsOfType('type_identifier')[0] ||
                           field.descendantsOfType('generic_type')[0];
-          
+
           if (nameNode && typeNode) {
             fields.push({
               name: this.camelCase(nameNode.text),
@@ -166,11 +173,11 @@ export class IdlGenerator {
           }
         }
       }
-      
+
       return fields;
     }
 
-    private parseComplexType(typeNode: Parser.SyntaxNode): string | ComplexType {
+    private parseComplexType(typeNode: SyntaxNode): string | ComplexType {
       if (typeNode.type === 'primitive_type') {
         return typeNode.text;
       }
@@ -187,7 +194,7 @@ export class IdlGenerator {
       return typeNode.text;
     }
 
-    private parseAccounts(tree: Parser.Tree): ArchAccountType[] {
+    private parseAccounts(tree: Tree): ArchAccountType[] {
       // Look for account state structs
       const structQuery = new Query(Rust, `
         (struct_item
@@ -202,7 +209,7 @@ export class IdlGenerator {
       for (const match of matches) {
         const nameNode = match.captures.find(c => c.name === 'name')?.node;
         const fieldsNode = match.captures.find(c => c.name === 'fields')?.node;
-        
+
         if (nameNode && fieldsNode && !seen.has(nameNode.text)) {
           seen.add(nameNode.text);
           accounts.push({
@@ -218,15 +225,15 @@ export class IdlGenerator {
       return accounts;
     }
 
-    private parseFields(fieldsNode: Parser.SyntaxNode): { name: string, type: string }[] {
+    private parseFields(fieldsNode: SyntaxNode): { name: string, type: string }[] {
       const fields: { name: string, type: string }[] = [];
-      
+
       for (const field of fieldsNode.children) {
         if (field.type === 'field_declaration') {
           const nameNode = field.descendantsOfType('field_identifier')[0];
-          const typeNode = field.descendantsOfType('primitive_type')[0] || 
+          const typeNode = field.descendantsOfType('primitive_type')[0] ||
                           field.descendantsOfType('type_identifier')[0];
-          
+
           if (nameNode && typeNode) {
             fields.push({
               name: this.camelCase(nameNode.text),
@@ -235,14 +242,14 @@ export class IdlGenerator {
           }
         }
       }
-      
+
       return fields;
     }
 
-    private parseTypes(tree: Parser.Tree): ArchTypeDefinition[] {
+    private parseTypes(tree: Tree): ArchTypeDefinition[] {
       const types: ArchTypeDefinition[] = [];
       const seen = new Set<string>();
-      
+
       // Find all structs and enums with BorshSerialize/Deserialize
       const query = new Query(Rust, `
         [
@@ -256,11 +263,11 @@ export class IdlGenerator {
       `);
 
       const matches = query.matches(tree.rootNode);
-      
+
       for (const match of matches) {
         const structName = match.captures.find(c => c.name === 'struct_name')?.node?.text;
         const enumName = match.captures.find(c => c.name === 'enum_name')?.node?.text;
-        
+
         if (structName && !seen.has(structName)) {
           seen.add(structName);
           const fieldsNode = match.captures.find(c => c.name === 'struct_fields')?.node;
@@ -279,16 +286,16 @@ export class IdlGenerator {
       return types;
     }
 
-    private parseErrors(tree: Parser.Tree): ArchError[] {
+    private parseErrors(tree: Tree): ArchError[] {
       const errors: ArchError[] = [];
-      
+
       // Look for custom error codes in the process_instruction function
       const errorQuery = new Query(Rust, `
         (integer_literal) @error_code
       `);
 
       const matches = errorQuery.matches(tree.rootNode);
-      
+
       for (const match of matches) {
         const errorCode = parseInt(match.captures[0].node.text);
         if (errorCode > 500) { // Custom error codes are typically > 500
@@ -303,7 +310,7 @@ export class IdlGenerator {
       return errors;
     }
 
-    private parseStructType(name: string, fieldsNode: Parser.SyntaxNode): ArchTypeDefinition {
+    private parseStructType(name: string, fieldsNode: SyntaxNode): ArchTypeDefinition {
       return {
         name,
         type: {
@@ -313,7 +320,7 @@ export class IdlGenerator {
       };
     }
 
-    private parseEnumType(name: string, variantsNode: Parser.SyntaxNode): ArchTypeDefinition {
+    private parseEnumType(name: string, variantsNode: SyntaxNode): ArchTypeDefinition {
       return {
         name,
         type: {
@@ -327,15 +334,15 @@ export class IdlGenerator {
       return str.charAt(0).toLowerCase() + str.slice(1);
     }
 
-    private parseComplexEnumVariants(variantsNode: Parser.SyntaxNode): { name: string, fields?: { name: string, type: string | ComplexType }[] }[] {
+    private parseComplexEnumVariants(variantsNode: SyntaxNode): { name: string, fields?: { name: string, type: string | ComplexType }[] }[] {
         const variants: { name: string, fields?: { name: string, type: string | ComplexType }[] }[] = [];
-        
+
         for (const variant of variantsNode.children) {
           if (variant.type === 'enum_variant') {
             const name = variant.child(0)?.text;
             const tupleFields = variant.descendantsOfType('tuple_field')[0];
             const structFields = variant.descendantsOfType('field_declaration_list')[0];
-            
+
             if (name) {
               variants.push({
                 name,
@@ -346,23 +353,23 @@ export class IdlGenerator {
             }
           }
         }
-        
+
         return variants;
       }
-  
-      private parseComplexFields(fieldsNode: Parser.SyntaxNode): { name: string, type: string | ComplexType }[] {
+
+      private parseComplexFields(fieldsNode: SyntaxNode): { name: string, type: string | ComplexType }[] {
         const fields: { name: string, type: string | ComplexType }[] = [];
-        
+
         for (const field of fieldsNode.children) {
           if (field.type === 'field_declaration') {
             // Get the field identifier (name) after any visibility modifier
             const nameNode = field.descendantsOfType('field_identifier')[0];
-            
+
             // Get the complete type node
-            const typeNode = field.descendantsOfType('type_identifier')[0] || 
+            const typeNode = field.descendantsOfType('type_identifier')[0] ||
                             field.descendantsOfType('primitive_type')[0] ||
                             field.descendantsOfType('generic_type')[0];
-            
+
             if (nameNode && typeNode) {
               // Convert snake_case to camelCase for field names
               fields.push({
@@ -372,16 +379,16 @@ export class IdlGenerator {
             }
           }
         }
-        
+
         return fields;
       }
 
-      
 
-      private parseTupleFields(tupleFields: Parser.SyntaxNode): { name: string, type: string | ComplexType }[] {
+
+      private parseTupleFields(tupleFields: SyntaxNode): { name: string, type: string | ComplexType }[] {
         const fields: { name: string, type: string | ComplexType }[] = [];
         let index = 0;
-        
+
         // Handle each field in the tuple
         for (const field of tupleFields.children) {
           // Skip parentheses and commas
@@ -392,7 +399,7 @@ export class IdlGenerator {
               : field.descendantsOfType('type_identifier')[0] ||
                 field.descendantsOfType('primitive_type')[0] ||
                 field.descendantsOfType('generic_type')[0];
-      
+
             if (typeNode) {
               fields.push({
                 name: `field${index}`,
@@ -402,7 +409,7 @@ export class IdlGenerator {
             }
           }
         }
-        
+
         return fields;
       }
     }

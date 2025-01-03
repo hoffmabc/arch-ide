@@ -1,25 +1,72 @@
 steps:
-  # Build the container image
+  # Pull the latest image for caching
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/arch-backend', '.']
+    args: ['pull', 'gcr.io/$PROJECT_ID/arch-compiler:latest']
+    continue-on-error: true  # Don't fail if image doesn't exist yet
 
-  # Push the container image to Container Registry
+  # Build using the cached image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/arch-backend']
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/arch-compiler:latest',
+      '--cache-from', 'gcr.io/$PROJECT_ID/arch-compiler:latest',
+      '-f', 'Dockerfile.compiler',
+      '.'
+    ]
 
-  # Deploy container image to Cloud Run
+  # Push the new image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/arch-compiler:latest']
+
+  # Modified step to initialize Rust environment
+  - name: 'gcr.io/$PROJECT_ID/arch-compiler'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        source "$HOME/.cargo/env" && \
+        cargo build-sbf
+
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'arch-backend'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/arch-backend'
+      - run
+      - deploy
+      - arch-compiler
+      - --image
+      - gcr.io/$PROJECT_ID/arch-compiler:latest
       - '--region'
-      - 'us-central1'
+      - us-central1
       - '--platform'
-      - 'managed'
+      - managed
+      - '--memory'
+      - '2048Mi'
+      - '--timeout'
+      - '540s'
       - '--allow-unauthenticated'
+
+  # Build and deploy the main backend service
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/arch-backend', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/arch-backend']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - arch-backend
+      - --image
+      - gcr.io/$PROJECT_ID/arch-backend
+      - '--region'
+      - us-central1
+      - '--platform'
+      - managed
+      - '--allow-unauthenticated'
+
 images:
+  - 'gcr.io/$PROJECT_ID/arch-compiler:latest'
   - 'gcr.io/$PROJECT_ID/arch-backend'

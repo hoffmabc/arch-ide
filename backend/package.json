@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn src/index.ts",
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
     "watch": "tsc -w",
     "gcp-build": "tsc",
     "deploy": "gcloud run deploy arch-backend --source ."
@@ -16,6 +16,9 @@
   "license": "ISC",
   "dependencies": {
     "@bitcoinerlab/secp256k1": "^1.1.1",
+    "@google-cloud/cloudbuild": "^4.7.0",
+    "@google-cloud/functions-framework": "^3.4.3",
+    "@google-cloud/storage": "^7.14.0",
     "@saturnbtcio/arch-sdk": "^0.0.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -28,6 +31,7 @@
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
+    "tar": "^7.4.3",
     "tree-sitter": "^0.20.6",
     "tree-sitter-rust": "^0.20.4",
     "ts-node": "^10.9.2",
@@ -35,6 +39,7 @@
   },
   "devDependencies": {
     "@types/multer": "^1.4.12",
+    "@types/tar": "^6.1.13",
     "ts-node-dev": "^2.0.0"
   }
 }

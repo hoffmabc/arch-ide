@@ -1,45 +1,45 @@
-# Use Node.js base image
-FROM node:18-slim
+FROM ubuntu:22.04 AS rust
 
-# Install basic build dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
+ARG DEBIAN_FRONTEND="noninteractive"
+ENV HOME="/root"
+
+# Install build dependencies
+RUN apt-get update -qq && apt-get upgrade -qq && apt-get install -qq \
+    build-essential \
     curl \
-    git \
     pkg-config \
-    libudev-dev \
     libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libudev-dev \
+    gcc-multilib \
+    libc6-dev-i386
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Rust with specific version
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.72.0
+ENV PATH="${HOME}/.cargo/bin:${PATH}"
 
-# Install Solana CLI and cargo-build-sbf
-RUN sh -c "$(curl -sSfL https://release.solana.com/v1.17.0/install)" && \
-    /root/.local/share/solana/install/active_release/bin/cargo-build-sbf --version
-ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+# Install Solana with newer version that includes newer Rust
+ARG SOLANA_VERSION="1.18.0"
+RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+ENV PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
 
-# Set working directory
+# Set up working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy program files and crates
+COPY programs programs
+COPY crates crates
 
-# Install dependencies and generate package-lock.json
-RUN npm install && \
-    npm install -g typescript
+# Build the default program
+RUN cargo-build-sbf --manifest-path programs/Cargo.toml
 
-# Copy source code
+# Copy server files
 COPY . .
 
-# Build TypeScript code
-RUN npm run build
+# Build server
+RUN cargo build --release
 
 # Expose port
 EXPOSE 8080
 
-# Start the server
-CMD ["npm", "start"]
+# Start server
+CMD ["./target/release/backend"]

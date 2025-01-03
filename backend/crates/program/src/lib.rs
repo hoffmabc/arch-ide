@@ -24,7 +24,7 @@ pub mod system_instruction;
 pub mod transaction_to_sign;
 pub mod utxo;
 
-pub const MAX_BTC_TX_SIZE: usize = 1024;
+pub const MAX_BTC_TX_SIZE: usize = 3976;
 
 // Helper Funtions
 pub fn next_account_info<'a, 'b, I: Iterator<Item = &'a AccountInfo<'b>>>(

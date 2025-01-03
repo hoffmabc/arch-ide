@@ -1,5 +1,5 @@
+use crate::instruction::Instruction;
 use crate::pubkey::Pubkey;
-use crate::{instruction::Instruction, msg};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -30,12 +30,7 @@ impl Message {
     pub fn from_slice(data: &[u8]) -> Self {
         let mut size = 0;
 
-        msg!("data: {:?}", data);
-
         let signers_len = data[size] as usize;
-
-        msg!("signers_len: {}", signers_len);
-
         size += 1;
         let mut signers = Vec::with_capacity(signers_len);
         for _ in 0..signers_len {
@@ -44,11 +39,9 @@ impl Message {
         }
 
         let instructions_len = data[size] as usize;
-        msg!("instructions_len: {}", instructions_len);
         size += 1;
         let mut instructions = Vec::with_capacity(instructions_len);
         for _ in 0..instructions_len {
-            msg!("size: {}", size);
             instructions.push(Instruction::from_slice(&data[size..]));
             size += instructions.last().unwrap().serialize().len();
         }
