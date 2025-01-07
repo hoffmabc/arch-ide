@@ -23,7 +23,15 @@ export const ConnectionStatus = ({
 }: ConnectionStatusProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Base delay of 2 seconds
+  const BASE_DELAY = 2000;
+  // Maximum delay of 1 minute
+  const MAX_DELAY = 60000;
+  // When connected, check every 30 seconds
+  const CONNECTED_CHECK_INTERVAL = 30000;
 
   const checkConnection = async () => {
     if (isConnecting) return false;
@@ -42,6 +50,7 @@ export const ConnectionStatus = ({
       const currentTime = new Date();
       onPingUpdate(currentTime);
       setShowErrorModal(false);
+      setRetryCount(0); // Reset retry count on successful connection
       return true;
     } catch (error) {
       console.error('Connection error:', error);
@@ -52,11 +61,29 @@ export const ConnectionStatus = ({
     }
   };
 
+  const scheduleNextCheck = (wasConnected: boolean) => {
+    if (intervalRef.current) {
+      clearTimeout(intervalRef.current);
+    }
+
+    if (wasConnected) {
+      // If we were connected, use the standard interval
+      intervalRef.current = setTimeout(() => handleConnect(), CONNECTED_CHECK_INTERVAL);
+    } else {
+      // If we weren't connected, use exponential backoff
+      const delay = Math.min(BASE_DELAY * Math.pow(2, retryCount), MAX_DELAY);
+      setRetryCount(prev => prev + 1);
+      intervalRef.current = setTimeout(() => handleConnect(), delay);
+    }
+  };
+
   const handleConnect = async () => {
     if (isConnecting) return;
     setIsConnecting(true);
+
     try {
       const success = await checkConnection();
+      scheduleNextCheck(success);
       if (success) {
         onConnect();
       }
@@ -65,32 +92,15 @@ export const ConnectionStatus = ({
     }
   };
 
+  // Initial connection check
   useEffect(() => {
-    if (isConnected && !isConnecting) {
-      checkConnection();
-
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-
-      // Set new interval only if connected
-      intervalRef.current = setInterval(checkConnection, 5000);
-    } else {
-      // Clear interval if we're not connected or are connecting
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
+    handleConnect();
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+        clearTimeout(intervalRef.current);
       }
     };
-  }, [isConnected, isConnecting, rpcUrl]);
+  }, []);
 
   return (
     <>
