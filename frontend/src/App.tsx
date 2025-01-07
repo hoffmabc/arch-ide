@@ -232,6 +232,7 @@ const App = () => {
   } | null>(null);
   const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
   const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -470,8 +471,8 @@ const App = () => {
 
     // Prevent creation at root level
     if (path.length === 0) {
-      console.warn('Cannot create items at root level');
-      return;
+      // If at root level, default to src directory
+      path = ['src'];
     }
 
     // Ensure we're under the src directory
@@ -481,26 +482,41 @@ const App = () => {
       return;
     }
 
-    // Find the target directory where the new item will be created
-    const targetDir = findNodeByPath(fullCurrentProject.files, path)?.children || [];
+    // First, ensure the parent folder is expanded
+    const parentPath = path.join('/');
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
 
-    if (fileName && content !== undefined) {
-      // Generate unique name if needed
-      const uniqueName = generateUniqueName(fileName, targetDir);
+      // Add all parent paths to expanded set
+      let currentPath = '';
+      for (const segment of path) {
+        currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+        newSet.add(currentPath);
+      }
 
-      // Direct file import with content
-      handleUpdateTree({
-        type: 'create',
-        path: [...path, uniqueName],
-        fileType: type,
-        content: content
-      });
-    } else {
-      // Regular new file/folder creation via dialog
-      setNewItemPath(path);
-      setNewItemType(type);
-      setIsNewFileDialogOpen(true);
-    }
+      return newSet;
+    });
+
+    // Wait for the next render cycle to ensure folder is expanded
+    setTimeout(() => {
+      if (fileName && content !== undefined) {
+        // Handle direct file import with content
+        const targetDir = findNodeByPath(fullCurrentProject.files, path)?.children || [];
+        const uniqueName = generateUniqueName(fileName, targetDir);
+
+        handleUpdateTree({
+          type: 'create',
+          path: [...path, uniqueName],
+          fileType: type,
+          content: content
+        });
+      } else {
+        // Open modal for new file/folder creation
+        setNewItemPath(path);
+        setNewItemType(type);
+        setIsNewFileDialogOpen(true);
+      }
+    }, 0);
   };
 
   const handleFileChange = useCallback((newContent: string | undefined) => {

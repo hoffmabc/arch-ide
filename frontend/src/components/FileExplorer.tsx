@@ -162,7 +162,7 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
       <DropdownMenuContent>
         {node.type === 'directory' && (
           <>
-            <DropdownMenuItem onClick={() => onNewFile?.('New File', '')}>
+            <DropdownMenuItem onClick={() => onNewFile?.('', '')}>
               <Plus size={16} className="mr-2" />
               New File
             </DropdownMenuItem>
@@ -221,14 +221,42 @@ const FileExplorerItem = ({
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
 
+  // Helper to ensure parent folders are expanded
+  const ensureParentFoldersExpanded = (itemPath: string[]) => {
+    const newExpandedFolders = new Set(expandedFolders);
+
+    // Build paths for each level and add to expanded set
+    let currentPath = '';
+    for (const segment of itemPath) {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      newExpandedFolders.add(currentPath);
+    }
+
+    onExpandedFoldersChange(newExpandedFolders);
+  };
+
   const handleNewFile = async (fileName: string, content: string) => {
     console.log('handleNewFile called with:', { fileName, content });
-    onNewItem([...path, node.name], 'file', fileName, content);
+    // Ensure the parent folder is expanded before creating the file
+    const parentPath = [...path, node.name];
+    ensureParentFoldersExpanded(parentPath);
+
+    // Wait for the next render cycle to ensure folder is expanded
+    setTimeout(() => {
+      onNewItem(parentPath, 'file', fileName, content);
+    }, 0);
   };
 
   const handleNewFolder = () => {
     console.log('handleNewFolder called with path:', path);
-    onNewItem([...path, node.name], 'directory');
+    // Ensure the parent folder is expanded before creating the folder
+    const parentPath = [...path, node.name];
+    ensureParentFoldersExpanded(parentPath);
+
+    // Wait for the next render cycle to ensure folder is expanded
+    setTimeout(() => {
+      onNewItem(parentPath, 'directory');
+    }, 0);
   };
 
   const handleRename = (newName: string) => {
