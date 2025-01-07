@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import wasm from 'vite-plugin-wasm';
+import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfill';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), wasm()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -11,11 +14,14 @@ export default defineConfig({
       '@lib': path.resolve(__dirname, './src/lib'),
       '@utils': path.resolve(__dirname, './src/lib/utils'),
       '@ui': path.resolve(__dirname, './src/components/ui'),
-      '@hooks': path.resolve(__dirname, './src/hooks')
+      '@hooks': path.resolve(__dirname, './src/hooks'),
+      buffer: 'buffer/'
     }
   },
   define: {
-    global: 'globalThis',
+    global: {},
+    'process.env': {},
+    Buffer: ['buffer', 'Buffer'],
   },
   build: {
     outDir: 'dist',
@@ -32,7 +38,16 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['@monaco-editor/react', 'buffer']
+    include: ['@monaco-editor/react', 'buffer'],
+    exclude: ['@bitcoinerlab/secp256k1'],
+    esbuildOptions: {
+      plugins: [
+        NodeGlobalsPolyfillPlugin({
+          buffer: true
+        }),
+        NodeModulesPolyfillPlugin()
+      ]
+    }
   },
   server: {
     port: 3000,

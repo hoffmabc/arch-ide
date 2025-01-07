@@ -1,24 +1,51 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FileNode } from '../types';
+import type { FileNode, Project } from '../types';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { findFileInProject } from '../App';
 
 interface TabBarProps {
   openFiles: FileNode[];
   currentFile: FileNode | null;
   onSelectFile: (file: FileNode) => void;
   onCloseFile: (file: FileNode) => void;
+  currentProject: Project | null;
 }
 
-const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarProps) => {
-  const handleTabClick = (file: FileNode) => {
-    onSelectFile(file);
+const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProject }: TabBarProps) => {
+  const handleTabSelect = (file: FileNode) => {
+    console.group('TabBar handleTabSelect');
+    console.log('Tab selected:', {
+      name: file.name,
+      path: file.path,
+      type: file.type,
+      contentLength: file.content?.length,
+      contentPreview: file.content?.substring(0, 100)
+    });
+
+    // Find the actual file node from the current project
+    const projectFile = findFileInProject(currentProject?.files || [], file.path || file.name);
+
+    if (projectFile) {
+      console.log('Found file in project:', {
+        name: projectFile.name,
+        path: projectFile.path,
+        contentLength: projectFile.content?.length,
+        contentPreview: projectFile.content?.substring(0, 100)
+      });
+      onSelectFile(projectFile);
+    } else {
+      console.warn('File not found in project:', file.path || file.name);
+      onSelectFile(file);
+    }
+
+    console.groupEnd();
   };
 
   return (
@@ -36,7 +63,7 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile }: TabBarPro
               <TooltipTrigger asChild>
                 <span
                   className="text-sm"
-                  onClick={() => handleTabClick(file)}
+                  onClick={() => handleTabSelect(file)}
                 >
                   {file.name}
                 </span>

@@ -5,8 +5,8 @@ import './index.css'
 import ErrorBoundary from './components/ErrorBoundary'
 
 // Properly set up Buffer for browser environment
-import { Buffer as BufferPolyfill } from 'buffer'
-globalThis.Buffer = BufferPolyfill
+import { Buffer } from 'buffer/';
+
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

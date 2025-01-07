@@ -434,6 +434,15 @@ export class ProjectService {
   }
 
   private transformToSrcStructure(fileNodes: FileNode[]): FileNode[] {
+    console.group('File Structure Transformation');
+
+    // Log initial state
+    console.log('Initial structure:', fileNodes.map(n => ({
+      name: n.name,
+      type: n.type,
+      hasContent: !!n.content
+    })));
+
     // Find or create src directory
     let srcNode = fileNodes.find(node => node.name === 'src' && node.type === 'directory');
 
@@ -449,11 +458,28 @@ export class ProjectService {
     // Move lib.rs to src directory if it exists at root
     const libRs = fileNodes.find(node => node.name === 'lib.rs' && node.type === 'file');
     if (libRs) {
+      // Verify we're not duplicating content
+      const existingLibRs = srcNode.children?.find(n => n.name === 'lib.rs');
+      if (existingLibRs) {
+        console.error('Duplicate lib.rs detected!', {
+          rootContent: libRs.content?.substring(0, 100),
+          srcContent: existingLibRs.content?.substring(0, 100)
+        });
+      }
+
       srcNode.children = srcNode.children || [];
       srcNode.children.push(libRs);
       fileNodes = fileNodes.filter(node => node !== libRs);
     }
 
+    // Log final state
+    console.log('Transformed structure:', fileNodes.map(n => ({
+      name: n.name,
+      type: n.type,
+      children: n.children?.map(c => c.name)
+    })));
+
+    console.groupEnd();
     return fileNodes;
   }
 }

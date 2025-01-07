@@ -1,14 +1,41 @@
-import { Buffer } from 'buffer';
-import { ArchConnection, RpcConnection, Message, Instruction, RuntimeTransaction } from '@saturnbtcio/arch-sdk';
+import { Buffer } from 'buffer/';
+
+// Polyfill Buffer for the browser environment
+if (typeof window !== 'undefined') {
+  window.Buffer = window.Buffer || Buffer;
+}
+
+import { RpcConnection, Message, Instruction, RuntimeTransaction } from '@saturnbtcio/arch-sdk';
+import { MessageUtil } from '@saturnbtcio/arch-sdk';
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
+
+bitcoin.initEccLib(ecc);
+
+const signMessageBIP322 = (privateKey: Buffer, messageHash: Buffer, network: string): Buffer => {
+  const signature = ecc.signSchnorr(messageHash, privateKey);
+  return Buffer.from(signature);
+};
 
 declare global {
   interface Window {
-    bitcoin: {
-      connect: () => Promise<void>;
-      sendPayment: (info: {
-        network: string;
-        address: string;
-        amount: bigint;
+    unisat?: {
+      requestAccounts: () => Promise<string[]>;
+      signMessage: (message: string, type: string) => Promise<string>;
+      sendBitcoin: (address: string, amount: number) => Promise<string>;
+    };
+    xverse?: {
+      bitcoin: {
+        connect: () => Promise<string[]>;
+        signMessage: (message: string) => Promise<{ pubkey: string; signature: string }>;
+        sendBtc: (params: { addressTo: string; amount: number }) => Promise<string>;
+      }
+    };
+    leather?: {
+      enable: () => Promise<void>;
+      request: (params: {
+        method: string;
+        params: any;
       }) => Promise<any>;
     };
   }
@@ -33,6 +60,61 @@ interface ArchDeployOptions {
   };
 }
 
+interface BitcoinWallet {
+  name: string;
+  connect: () => Promise<void>;
+  sendPayment: (info: {
+    network: string;
+    address: string;
+    amount: bigint;
+  }) => Promise<string>;
+  isAvailable: () => boolean;
+}
+
+class UnisatWallet implements BitcoinWallet {
+  name = 'Unisat';
+
+  isAvailable() {
+    return !!window.unisat;
+  }
+
+  async connect() {
+    if (!window.unisat) throw new Error('Unisat wallet not installed');
+    const accounts = await window.unisat.requestAccounts();
+    if (!accounts || accounts.length === 0) {
+      throw new Error('No accounts available in Unisat wallet');
+    }
+  }
+
+  async sendPayment(info: { network: string; address: string; amount: bigint }) {
+    if (!window.unisat) throw new Error('Unisat wallet not installed');
+    const txid = await window.unisat.sendBitcoin(info.address, Number(info.amount));
+    return txid;
+  }
+}
+
+class XverseWallet implements BitcoinWallet {
+  name = 'Xverse';
+
+  isAvailable() {
+    return !!window.xverse?.bitcoin;
+  }
+
+  async connect() {
+    if (!window.xverse?.bitcoin) throw new Error('Xverse wallet not installed');
+    await window.xverse.bitcoin.connect();
+  }
+
+  async sendPayment(info: { network: string; address: string; amount: bigint }) {
+    if (!window.xverse?.bitcoin) throw new Error('Xverse wallet not installed');
+    const txid = await window.xverse.bitcoin.sendBtc({
+      addressTo: info.address,
+      amount: Number(info.amount)
+    });
+    return txid;
+  }
+}
+
 export class ArchProgramLoader {
   static async load(options: ArchDeployOptions) {
     // Create program account
@@ -43,10 +125,19 @@ export class ArchProgramLoader {
       options.regtestConfig
     );
 
+    console.log('createAccountInstruction', createAccountInstruction);
+
+    // If rpcUrl is testnet and the url is http://localhost:9002 then use the proxy
+    console.log('options.rpcUrl', options.rpcUrl);
+    if (options.rpcUrl === 'http://localhost:9002' && options.network === 'testnet') {
+      options.rpcUrl = 'http://localhost:3000/rpc';
+    }
+
     const createAccountTxid = await this.sendInstruction(
       options.rpcUrl,
       createAccountInstruction,
-      options.keypair
+      options.keypair,
+      options.network
     );
 
     // Split binary into chunks and upload
@@ -63,7 +154,8 @@ export class ArchProgramLoader {
       const txid = await this.sendInstruction(
         options.rpcUrl,
         uploadInstruction,
-        options.keypair
+        options.keypair,
+        options.network
       );
       uploadTxids.push(txid);
     }
@@ -76,7 +168,8 @@ export class ArchProgramLoader {
     const executableTxid = await this.sendInstruction(
       options.rpcUrl,
       executableInstruction,
-      options.keypair
+      options.keypair,
+      options.network
     );
 
     return {
@@ -134,71 +227,81 @@ export class ArchProgramLoader {
     }
 
     switch (network) {
-        case 'devnet': {
-            if (!regtestConfig) {
-              throw new Error('Regtest configuration required for devnet');
-            }
-
-            // Direct call to Bitcoin node with CORS headers
-            const response = await fetch(regtestConfig.url + '/wallet/testwallet', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-              },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 'arch',
-                method: 'sendtoaddress',
-                params: [address, 0.00005]
-              })
-            });
-
-            const { result: txid } = await response.json();
-
-            // Similar modification for getting transaction details
-            const txResponse = await fetch(regtestConfig.url + '/wallet/testwallet', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-              },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 'arch',
-                method: 'getrawtransaction',
-                params: [txid, true]
-              })
-            });
-
-            const { result: tx } = await txResponse.json();
-            const vout = tx.vout.findIndex((output: any) => output.scriptPubKey.address === address);
-
-            return { txid, vout };
-          }
       case 'testnet':
       case 'mainnet-beta': {
-        // For testnet/mainnet, prompt user to send Bitcoin using Sats Connect
-        await window.bitcoin.connect();
+        const wallets = [new UnisatWallet(), new XverseWallet()];
+        const availableWallet = wallets.find(w => w.isAvailable());
 
-        // Show modal/UI element asking user to send 5000 sats
-        const paymentInfo = {
-          network: network === 'testnet' ? 'testnet' : 'mainnet',
-          address: address,
-          amount: BigInt(5000)
-        };
+        if (!availableWallet) {
+          throw new Error(
+            'No compatible Bitcoin wallet detected. Please install one of the following:\n' +
+            '- Unisat Wallet (https://unisat.io)\n' +
+            '- Xverse Wallet (https://www.xverse.app)'
+          );
+        }
 
-        // Wait for payment confirmation
-        await window.bitcoin.sendPayment(paymentInfo);
+        try {
+          await availableWallet.connect();
 
-        // Monitor address for incoming transaction
-        return await this.waitForUtxo(address, network);
+          const txid = await availableWallet.sendPayment({
+            network: network === 'testnet' ? 'testnet' : 'mainnet',
+            address: address,
+            amount: BigInt(5000)
+          });
+
+          return await this.waitForUtxo(address, network);
+        } catch (error: any) {
+          throw new Error(`Failed to send payment using ${availableWallet.name}: ${error.message}`);
+        }
+      }
+
+      case 'devnet': {
+        if (!regtestConfig) {
+          throw new Error('Regtest configuration required for devnet');
+        }
+
+        // Direct call to Bitcoin node with CORS headers
+        const response = await fetch(regtestConfig.url + '/wallet/testwallet', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'arch',
+            method: 'sendtoaddress',
+            params: [address, 0.00005]
+          })
+        });
+
+        const { result: txid } = await response.json();
+
+        // Similar modification for getting transaction details
+        const txResponse = await fetch(regtestConfig.url + '/wallet/testwallet', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'arch',
+            method: 'getrawtransaction',
+            params: [txid, true]
+          })
+        });
+
+        const { result: tx } = await txResponse.json();
+        const vout = tx.vout.findIndex((output: any) => output.scriptPubKey.address === address);
+
+        return { txid, vout };
       }
 
       default:
@@ -213,7 +316,7 @@ export class ArchProgramLoader {
 
     while (Date.now() - startTime < TIMEOUT) {
       const endpoint = network === 'testnet'
-        ? `https://mempool.space/testnet/api/address/${address}/utxo`
+        ? `https://mempool.space/testnet4/api/address/${address}/utxo`
         : `https://mempool.space/api/address/${address}/utxo`;
 
       const response = await fetch(endpoint);
@@ -282,14 +385,22 @@ export class ArchProgramLoader {
   private static async sendInstruction(
     rpcUrl: string,
     instruction: Instruction,
-    keypair: { privkey: string; pubkey: string }
+    keypair: { privkey: string; pubkey: string },
+    network: string
   ): Promise<string> {
     const message: Message = {
       signers: [Buffer.from(keypair.pubkey, 'hex')],
       instructions: [instruction]
     };
 
-    const signature = Buffer.from(keypair.privkey, 'hex');
+    const messageHash = MessageUtil.hash(message);
+    const privateKeyBuffer = Buffer.from(keypair.privkey, 'hex');
+
+    // Convert network string to BIP322 network type
+    const bitcoinNetwork = network === 'mainnet-beta' ? 'mainnet' :
+                          network === 'devnet' ? 'regtest' : 'testnet';
+
+    const signature = signMessageBIP322(privateKeyBuffer, Buffer.from(messageHash), bitcoinNetwork);
 
     const transaction: RuntimeTransaction = {
       version: 0,

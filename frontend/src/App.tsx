@@ -21,6 +21,7 @@ import { ArchProgramLoader } from './utils/arch-program-loader';
 import { storage } from './utils/storage';
 import { FileChange } from './types/types';
 import { Plus, FolderPlus, Download } from 'lucide-react';
+import { Buffer } from 'buffer/';
 
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -130,11 +131,11 @@ const findNodeByPath = (nodes: FileNode[], targetPath: string[]): FileNode | nul
   return findNodeByPath(node.children, rest);
 };
 
-const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null => {
-  for (const file of nodes) {
-    if (file.path === targetPath) return file;
-    if (file.children) {
-      const found = findFileByPath(file.children, targetPath);
+export const findFileInProject = (nodes: FileNode[], targetPath: string): FileNode | null => {
+  for (const node of nodes) {
+    if (node.type === 'file' && (node.path === targetPath || node.name === targetPath)) return node;
+    if (node.type === 'directory' && node.children) {
+      const found = findFileInProject(node.children, targetPath);
       if (found) return found;
     }
   }
@@ -158,6 +159,48 @@ const stripFileContent = (files: FileNode[]): FileNode[] => {
     children: file.children ? stripFileContent(file.children) : undefined,
     path: file.path
   }));
+};
+
+interface ArchDeployOptions {
+  rpcUrl: string;
+  network: string;
+  programBinary: Uint8Array;
+  keypair: {
+    privkey: string;
+    pubkey: string;
+    address: string;
+  };
+  regtestConfig?: {
+    url: string;
+    username: string;
+    password: string;
+  };
+}
+
+const constructFullPath = (file: FileNode, files: FileNode[]): string => {
+  const findPath = (nodes: FileNode[], target: FileNode, currentPath: string = ''): string | null => {
+    for (const node of nodes) {
+      if (node === file) return currentPath + node.name;
+      if (node.children) {
+        const found = findPath(node.children, target, `${currentPath}${node.name}/`);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  return findPath(files, file) || file.name;
+};
+
+const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null => {
+  for (const node of nodes) {
+    if (node.type === 'file' && node.path === targetPath) return node;
+    if (node.type === 'directory' && node.children) {
+      const found = findFileByPath(node.children, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
 };
 
 const App = () => {
@@ -348,6 +391,8 @@ const App = () => {
         regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined
       };
 
+      console.log('deployOptions', deployOptions);
+
       const result = await ArchProgramLoader.load(deployOptions);
 
       if (result.programId) {
@@ -482,17 +527,6 @@ const App = () => {
     }
   };
 
-  const findFileInProject = (files: FileNode[], targetPath: string): FileNode | null => {
-    for (const file of files) {
-      if (file.path === targetPath) return file;
-      if (file.children) {
-        const found = findFileInProject(file.children, targetPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
       // Always use the full path from the file structure
@@ -519,21 +553,6 @@ const App = () => {
         setOpenFiles(prev => [...prev, fileToUse]);
       }
     }
-  };
-
-  const constructFullPath = (file: FileNode, files: FileNode[]): string => {
-    const findPath = (nodes: FileNode[], target: FileNode, currentPath: string = ''): string | null => {
-      for (const node of nodes) {
-        if (node === file) return currentPath + node.name;
-        if (node.children) {
-          const found = findPath(node.children, target, `${currentPath}${node.name}/`);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    return findPath(files, file) || file.name;
   };
 
   const handleCloseFile = useCallback((fileToClose: FileNode) => {
@@ -749,50 +768,41 @@ const App = () => {
     }
   };
 
-  const handleSaveFile = useCallback((newContent: string) => {
-    console.log('handleSaveFile called', {
-      newContent: newContent,
-      currentFile: currentFile?.path,
-      hasCurrentProject: !!fullCurrentProject
-    });
+  const handleSaveFile = useCallback(async (newContent: string) => {
+    console.group('handleSaveFile');
 
-    if (!currentFile || !fullCurrentProject) return;
+    if (!currentFile || !fullCurrentProject) {
+      console.warn('No current file or project');
+      console.groupEnd();
+      return;
+    }
 
-    // Create an updated version of the current file with new content
-    const updatedCurrentFile = {
-      ...currentFile,
-      content: newContent  // Update the content in the current file
-    };
+    try {
+      const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
+      const updatedProject = {
+        ...fullCurrentProject,
+        files: updatedFiles,
+        lastModified: new Date()
+      };
 
-    // Update the file content in the project files
-    const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
+      // Save and verify
+      await projectService.saveProject(updatedProject);
 
-    console.log('Updated files:', updatedFiles);
+      // Only update state if save was successful
+      setCurrentFile({ ...currentFile, content: newContent });
+      setFullCurrentProject(updatedProject);
 
-    console.log('Updated files:', {
-      oldContent: currentFile.content,
-      newContent: newContent,
-      filesUpdated: JSON.stringify(updatedFiles) !== JSON.stringify(fullCurrentProject.files)
-    });
+      console.log('File saved and verified successfully');
+    } catch (error) {
+      console.error('Save failed:', error);
+      // Optionally, reload the current file from storage to ensure consistent state
+      const reloadedProject = await projectService.getProject(fullCurrentProject.id);
+      if (reloadedProject) {
+        setFullCurrentProject(reloadedProject);
+      }
+    }
 
-    // Create an updated project with the modified files and a new last modified date
-    const updatedProject = {
-      ...fullCurrentProject,
-      files: updatedFiles,
-      lastModified: new Date()
-    };
-
-    setCurrentFile(updatedCurrentFile);
-    setFullCurrentProject(updatedProject);
-
-    // Save to storage
-    projectService.saveProject(updatedProject);
-
-    // Update projects list
-    setProjects(prev => prev.map(p =>
-      p.id === updatedProject.id ? updatedProject : p
-    ));
-
+    console.groupEnd();
   }, [currentFile, fullCurrentProject]);
 
   useEffect(() => {
@@ -896,6 +906,74 @@ const App = () => {
     setIsNewProjectOpen(true);
   };
 
+  const handleFileClick = useCallback((file: FileNode) => {
+    console.group('handleFileClick');
+    console.log('File clicked:', {
+      name: file.name,
+      path: file.path,
+      type: file.type,
+      contentLength: file.content?.length,
+      contentPreview: file.content?.substring(0, 100)
+    });
+
+    // Ensure file has a full path
+    const fullPath = file.path || constructFullPath(file, fullCurrentProject?.files || []);
+    console.log('Constructed full path:', fullPath);
+
+    const fileWithPath = {
+      ...file,
+      path: fullPath
+    };
+
+    // Update open files with the full path
+    setOpenFiles(prev => {
+      const exists = prev.some(f => f.path === fullPath);
+      console.log('File already open:', exists);
+      if (!exists) {
+        return [...prev, fileWithPath];
+      }
+      return prev;
+    });
+
+    console.log('Setting current file:', {
+      name: fileWithPath.name,
+      path: fileWithPath.path,
+      contentLength: fileWithPath.content?.length,
+      contentPreview: fileWithPath.content?.substring(0, 100)
+    });
+
+    setCurrentFile(fileWithPath);
+    console.groupEnd();
+  }, [fullCurrentProject]);
+
+  const handleTabSelect = (file: FileNode) => {
+    console.group('TabBar handleTabSelect');
+    console.log('Tab selected:', {
+      name: file.name,
+      path: file.path,
+      type: file.type,
+      contentLength: file.content?.length,
+      contentPreview: file.content?.substring(0, 100)
+    });
+
+    // Find the actual file node from the current project
+    const projectFile = findFileInProject(fullCurrentProject?.files || [], file.path || file.name);
+
+    if (projectFile) {
+      console.log('Found file in project:', {
+        name: projectFile.name,
+        path: projectFile.path,
+        contentLength: projectFile.content?.length,
+        contentPreview: projectFile.content?.substring(0, 100)
+      });
+      setCurrentFile(projectFile);
+    } else {
+      console.warn('File not found in project:', file.path || file.name);
+    }
+
+    console.groupEnd();
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="h-screen flex flex-col bg-gray-900 text-white">
@@ -951,6 +1029,7 @@ const App = () => {
               currentFile={currentFile}
               onSelectFile={setCurrentFile}
               onCloseFile={handleCloseFile}
+              currentProject={fullCurrentProject}
             />
             <div className="flex-1 overflow-hidden">
             <Editor
@@ -1002,44 +1081,70 @@ const App = () => {
 };
 
 const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: string): FileNode[] => {
+  console.group('updateFileContent');
+  console.log('Target file:', {
+    name: targetFile.name,
+    path: targetFile.path,
+    currentContent: targetFile.content?.substring(0, 100),
+    newContent: newContent.substring(0, 100)
+  });
+
   // Early return if content hasn't changed
   if (targetFile.content === newContent) {
+    console.log('Content unchanged, returning original nodes');
+    console.groupEnd();
     return nodes;
   }
 
-  // If target file has a path, use it for direct matching
-  if (targetFile.path) {
-    return nodes.map(node => {
-      // If this is the target file, update its content
-      if (node.type === 'file' && node.path === targetFile.path) {
-        return { ...node, content: newContent };
+  const updateNode = (node: FileNode): FileNode => {
+    if (node.type === 'file') {
+      // Ensure both nodes have paths for comparison
+      const nodePath = node.path || constructFullPath(node, nodes);
+      const targetPath = targetFile.path || constructFullPath(targetFile, nodes);
+
+      if (nodePath === targetPath) {
+        console.log(`Updating content for ${nodePath}`, {
+          oldContent: node.content?.substring(0, 100),
+          newContent: newContent.substring(0, 100)
+        });
+        return { ...node, path: nodePath, content: newContent };
       }
-
-      // If this is a directory, only recurse if the path starts with this directory's path
-      if (node.type === 'directory' && node.children &&
-          targetFile.path && node.path &&
-          targetFile.path.startsWith(node.path + '/')) {
-        const updatedChildren = updateFileContent(node.children, targetFile, newContent);
-        return updatedChildren === node.children ? node : { ...node, children: updatedChildren };
-      }
-
-      return node;
-    });
-  }
-
-  // If no path exists, match by name only (should be avoided if possible)
-  return nodes.map(node => {
-    if (node.type === 'file' && node.name === targetFile.name) {
-      return { ...node, content: newContent };
     }
 
     if (node.type === 'directory' && node.children) {
-      const updatedChildren = updateFileContent(node.children, targetFile, newContent);
-      return updatedChildren === node.children ? node : { ...node, children: updatedChildren };
+      const updatedChildren = node.children.map(updateNode);
+      const hasChanges = updatedChildren.some((child, i) => child !== node.children![i]);
+      if (hasChanges) {
+        return { ...node, children: updatedChildren };
+      }
     }
 
     return node;
-  });
+  };
+
+  const updatedNodes = nodes.map(updateNode);
+
+  // Verify the update
+  const verifyUpdate = (nodes: FileNode[]) => {
+    nodes.forEach(node => {
+      if (node.type === 'file' &&
+          (node.path === targetFile.path ||
+           (!targetFile.path && node.name === targetFile.name))) {
+        console.log(`Verification for ${node.name}:`, {
+          path: node.path,
+          contentUpdated: node.content === newContent,
+          contentLength: node.content?.length
+        });
+      }
+      if (node.type === 'directory' && node.children) {
+        verifyUpdate(node.children);
+      }
+    });
+  };
+
+  verifyUpdate(updatedNodes);
+  console.groupEnd();
+  return updatedNodes;
 };
 
 const updateNodeInTree = (nodes: FileNode[], path: string[], updater: (node: FileNode) => FileNode): FileNode[] => {
