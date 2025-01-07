@@ -1,5 +1,5 @@
 // src/components/FileExplorer.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Folder,
   File,
@@ -219,7 +219,44 @@ const FileExplorerItem = ({
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
 }) => {
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [isInlineRenaming, setIsInlineRenaming] = useState(false);
+  const [newName, setNewName] = useState(node.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Check if this is the top-level src folder
+  const isTopLevelSrc = node.name === 'src' && path.length === 0;
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isTopLevelSrc) {
+      setIsInlineRenaming(true);
+      setNewName(node.name);
+    }
+  };
+
+  const handleRename = () => {
+    if (newName && newName !== node.name) {
+      onUpdateTree('rename', [...path, node.name], undefined, newName);
+    }
+    setIsInlineRenaming(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleRename();
+    } else if (e.key === 'Escape') {
+      setIsInlineRenaming(false);
+      setNewName(node.name);
+    }
+  };
+
+  // Focus input when entering rename mode
+  useEffect(() => {
+    if (isInlineRenaming) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isInlineRenaming]);
 
   // Helper to ensure parent folders are expanded
   const ensureParentFoldersExpanded = (itemPath: string[]) => {
@@ -257,11 +294,6 @@ const FileExplorerItem = ({
     setTimeout(() => {
       onNewItem(parentPath, 'directory');
     }, 0);
-  };
-
-  const handleRename = (newName: string) => {
-    onUpdateTree('rename', [...path, node.name], undefined, newName);
-    setIsRenaming(false);
   };
 
   const isSelected = currentFile?.path === getNodePath(node, path);
@@ -304,27 +336,39 @@ const FileExplorerItem = ({
           ) : (
             getFileIcon(node.name)
           )}
-          <span className="ml-2 text-sm">{node.name}</span>
+          <div
+            className="ml-2 flex-1"
+            onDoubleClick={handleDoubleClick}
+          >
+            {isInlineRenaming ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onBlur={handleRename}
+                onKeyDown={handleKeyDown}
+                className="bg-gray-700 text-sm px-1 w-full outline-none border border-blue-500 rounded"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span className="text-sm">{node.name}</span>
+            )}
+          </div>
         </div>
-        <div className="opacity-0 group-hover:opacity-100 pr-2">
-          <FileContextMenu
-            node={node}
-            onNewFile={handleNewFile}
-            onNewFolder={handleNewFolder}
-            onDelete={() => {
-              console.log('Delete triggered for path:', [...path, node.name]);
-              onUpdateTree('delete', [...path, node.name]);
-            }}
-            onRename={() => setIsRenaming(true)}
-          />
-          <RenameDialog
-            isOpen={isRenaming}
-            onClose={() => setIsRenaming(false)}
-            onRename={handleRename}
-            currentName={node.name}
-            type={node.type}
-          />
-        </div>
+        {!isInlineRenaming && (
+          <div className="opacity-0 group-hover:opacity-100 pr-2">
+            <FileContextMenu
+              node={node}
+              onNewFile={handleNewFile}
+              onNewFolder={handleNewFolder}
+              onDelete={() => {
+                onUpdateTree('delete', [...path, node.name]);
+              }}
+              onRename={() => setIsInlineRenaming(true)}
+            />
+          </div>
+        )}
       </div>
       {node.type === 'directory' && node.children && expandedFolders.has(getNodePath(node, path)) && (
         [...node.children]
