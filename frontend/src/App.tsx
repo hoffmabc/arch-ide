@@ -667,6 +667,29 @@ const App = () => {
         break;
       case 'delete':
         updatedFiles = fileTreeOperations.delete(fullCurrentProject.files, operation.path);
+
+        // Get the full path of the deleted item
+        const deletedPath = operation.path.join('/');
+
+        // Close any open files that were in the deleted path
+        setOpenFiles(prevFiles => {
+          const remainingFiles = prevFiles.filter(file => {
+            const filePath = file.path || constructFullPath(file, fullCurrentProject.files);
+            return !filePath.startsWith(deletedPath);
+          });
+
+          // If current file was in deleted path, set to last remaining file or null
+          if (currentFile) {
+            const currentFilePath = currentFile.path ||
+              constructFullPath(currentFile, fullCurrentProject.files);
+
+            if (currentFilePath.startsWith(deletedPath)) {
+              setCurrentFile(remainingFiles.length > 0 ? remainingFiles[remainingFiles.length - 1] : null);
+            }
+          }
+
+          return remainingFiles;
+        });
         break;
       case 'rename':
         updatedFiles = fileTreeOperations.rename(
@@ -704,18 +727,19 @@ const App = () => {
         throw new Error('src directory not found or invalid');
       }
 
-      // Collect all .rs files from src directory
+      // Collect all non-empty .rs files from src directory
       const rsFiles: [string, string][] = srcDir.children
-        .filter(node => node.type === 'file' && node.name.endsWith('.rs'))
+        .filter(node =>
+          node.type === 'file' &&
+          node.name.endsWith('.rs') &&
+          node.content &&
+          node.content.trim() !== ''  // Only include files with non-empty content
+        )
         .map(file => {
-          if (!file.content) {
-            throw new Error(`No content found for file: ${file.name}`);
-          }
-
-          let decodedContent = file.content;
+          let decodedContent = file.content!;
           // If it's base64 encoded, decode it
-          if (file.content.startsWith('data:text/plain;base64,')) {
-            const plainContent = file.content.replace(/^data:text\/plain;base64,/, '');
+          if (file.content!.startsWith('data:text/plain;base64,')) {
+            const plainContent = file.content!.replace(/^data:text\/plain;base64,/, '');
             try {
               decodedContent = atob(plainContent);
             } catch (error) {
@@ -727,7 +751,7 @@ const App = () => {
         });
 
       if (rsFiles.length === 0) {
-        throw new Error('No Rust source files found in src directory');
+        throw new Error('No non-empty Rust source files found in src directory');
       }
 
       const buildResponse = await fetch(`${API_URL}/build`, {
