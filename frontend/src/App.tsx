@@ -187,6 +187,7 @@ const App = () => {
     address: string;
   } | null>(null);
   const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
+  const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -198,10 +199,13 @@ const App = () => {
   useEffect(() => {
     const loadProjects = async () => {
       const loadedProjects = await projectService.getAllProjects();
-      // Store stripped versions in the projects list
-      setProjects(loadedProjects.map(stripProjectContent));
+      // Only strip in production
+      if (import.meta.env.PROD) {
+        setProjects(loadedProjects.map(stripProjectContent));
+      } else {
+        setProjects(loadedProjects);
+      }
       if (loadedProjects.length > 0) {
-        // Store the full version of the first project
         setFullCurrentProject(loadedProjects[0]);
       }
     };
@@ -209,8 +213,9 @@ const App = () => {
     loadProjects();
   }, []);
 
+  // Modify the project update effect to prevent unnecessary saves
   useEffect(() => {
-    if (fullCurrentProject) {
+    if (fullCurrentProject && !import.meta.env.DEV) {
       const updateProjects = async () => {
         await projectService.saveProject(fullCurrentProject);
         const updatedProjects = await projectService.getAllProjects();
@@ -303,6 +308,12 @@ const App = () => {
     storage.saveCurrentView(currentView);
   }, [currentView]);
 
+  useEffect(() => {
+    if (programBinary && fullCurrentProject?.name) {
+      setBinaryFileName(`${fullCurrentProject.name}.so`);
+    }
+  }, [programBinary, fullCurrentProject?.name]);
+
   const handleDeploy = async () => {
     if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
       const missing = [];
@@ -318,15 +329,15 @@ const App = () => {
 
     setIsDeploying(true);
     try {
-      // Convert base64 to Uint8Array
+      // Convert base64 to Uint8Array in chunks
       let binaryData: Uint8Array;
+      const chunkSize = 1024; // Process 1KB at a time
+
       if (programBinary.startsWith('data:')) {
         const base64Content = programBinary.split(',')[1];
-        const binaryString = window.atob(base64Content);
-        binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+        binaryData = base64ToUint8Array(base64Content);
       } else {
-        const binaryString = window.atob(programBinary);
-        binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+        binaryData = base64ToUint8Array(programBinary);
       }
 
       const deployOptions = {
@@ -343,12 +354,31 @@ const App = () => {
         addOutputMessage('success', `Program deployed successfully`);
         addOutputMessage('info', `Program ID: ${result.programId}`);
         setProgramId(result.programId);
+        setBinaryFileName(`${fullCurrentProject.name}.so`);
       }
     } catch (error: any) {
       addOutputMessage('error', `Deploy error: ${error.message}`);
     } finally {
       setIsDeploying(false);
     }
+  };
+
+  // Helper function to convert base64 to Uint8Array in chunks
+  const base64ToUint8Array = (base64: string): Uint8Array => {
+    const binaryString = atob(base64);
+    const length = binaryString.length;
+    const bytes = new Uint8Array(length);
+
+    // Process in chunks to avoid call stack issues
+    const chunkSize = 1024;
+    for (let i = 0; i < length; i += chunkSize) {
+      const chunk = Math.min(chunkSize, length - i);
+      for (let j = 0; j < chunk; j++) {
+        bytes[i + j] = binaryString.charCodeAt(i + j);
+      }
+    }
+
+    return bytes;
   };
 
   const handleCreateProject = async (name: string, description: string) => {
@@ -590,75 +620,80 @@ const App = () => {
     });
   };
 
-  const handleCompile = async () => {
+  const handleBuild = async () => {
     if (!fullCurrentProject) return;
 
     setIsCompiling(true);
     addOutputMessage('command', 'cargo build-sbf');
 
     try {
-      // Find the program directory
-      const programDir = fullCurrentProject.files.find(node =>
-        node.type === 'directory' && node.name === 'program'
-      );
-
-      if (!programDir?.children) {
-        throw new Error('Program directory not found or invalid');
-      }
-
-      // Find src directory and Cargo.toml directly in program directory
-      const srcDir = programDir.children.find(node =>
+      const srcDir = fullCurrentProject.files.find(node =>
         node.type === 'directory' && node.name === 'src'
       );
 
-      const cargoToml = programDir.children.find(node =>
-        node.type === 'file' && node.name === 'Cargo.toml'
-      );
-
-      // Find lib.rs in src directory
-      const libRs = srcDir?.children?.find(node =>
-        node.type === 'file' && node.name === 'lib.rs'
-      );
-
-      if (!libRs || !cargoToml) {
-        throw new Error('Missing required files (lib.rs and/or Cargo.toml)');
+      if (!srcDir?.children) {
+        throw new Error('src directory not found or invalid');
       }
 
-      const programFiles = [
-        {
-          path: 'src/lib.rs',
-          content: libRs.content || ''
-        },
-        {
-          path: 'Cargo.toml',
-          content: cargoToml.content || ''
-        }
-      ];
+      // Collect all .rs files from src directory
+      const rsFiles: [string, string][] = srcDir.children
+        .filter(node => node.type === 'file' && node.name.endsWith('.rs'))
+        .map(file => {
+          if (!file.content) {
+            throw new Error(`No content found for file: ${file.name}`);
+          }
+          const plainContent = file.content.replace(/^data:text\/plain;base64,/, '');
+          const decodedContent = atob(plainContent);
+          return [`/src/${file.name}`, decodedContent];
+        });
 
-      console.log('Sending files to compile:', programFiles); // Debug log
+      if (rsFiles.length === 0) {
+        throw new Error('No Rust source files found in src directory');
+      }
 
-      const response = await fetch(`${API_URL}/compile`, {
+      const buildResponse = await fetch(`${API_URL}/build`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: JSON.stringify({ files: programFiles })
+        body: JSON.stringify({
+          program_name: fullCurrentProject.name,
+          files: rsFiles
+        })
       });
 
-      const result = await response.json();
-      console.log('Compile result:', result); // Debug log
+      const result = await buildResponse.json();
 
-      if (result.success) {
-        addOutputMessage('success', 'Build successful');
-        setProgramBinary(result.program);
-        if (result.idl) {
-          setProgramIdl(result.idl);
-          addOutputMessage('info', 'IDL generated successfully');
+      if (result.stderr) {
+        if (result.stderr.includes("error: could not compile")) {
+          addOutputMessage('error', result.stderr);
         } else {
-          addOutputMessage('error', 'No IDL was generated');
+          addOutputMessage('success', 'Build successful');
+
+          // Call deploy endpoint with the UUID
+          if (result.uuid) {
+            try {
+              const deployResponse = await fetch(`${API_URL}/deploy/${result.uuid}/${fullCurrentProject.name}`, {
+                method: 'GET',
+              });
+
+              if (!deployResponse.ok) {
+                throw new Error(`Deploy failed: ${deployResponse.statusText}`);
+              }
+
+              const binary = await deployResponse.arrayBuffer();
+              const base64Binary = arrayBufferToBase64(binary);
+              setProgramBinary(base64Binary);
+              setBinaryFileName(`${fullCurrentProject.name}.so`);
+              console.log('fullCurrentProject.name', `${fullCurrentProject.name}.so`);
+              console.log('binaryFileName', binaryFileName);
+              addOutputMessage('success', 'Program deployed successfully');
+            } catch (deployError: any) {
+              addOutputMessage('error', `Deploy error: ${deployError.message}`);
+            }
+          }
         }
-      } else {
-        addOutputMessage('error', result.error);
       }
     } catch (error: any) {
       addOutputMessage('error', `Build error: ${error.message}`);
@@ -673,6 +708,10 @@ const App = () => {
       content,
       timestamp: new Date()
     }]);
+  };
+
+  const clearOutputMessages = () => {
+    setOutputMessages([]);
   };
 
   const handleDeleteProject = async (projectId: string) => {
@@ -885,7 +924,7 @@ const App = () => {
             onFileSelect={handleFileSelect}
             onUpdateTree={handleUpdateTreeAdapter}
             onNewItem={handleNewItem}
-            onBuild={handleCompile}
+            onBuild={handleBuild}
             onDeploy={handleDeploy}
             isBuilding={isCompiling}
             isDeploying={isDeploying}
@@ -902,6 +941,8 @@ const App = () => {
             project={fullCurrentProject!}
             onProjectAccountChange={handleProjectAccountChange}
             onNewProject={handleNewProject}
+            binaryFileName={binaryFileName}
+            setBinaryFileName={setBinaryFileName}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">
@@ -924,7 +965,7 @@ const App = () => {
             <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
               <ResizeHandle onMouseDown={handleResizeStart} />
               <div className="flex-1 min-h-0">
-                <Output messages={outputMessages} />
+                <Output messages={outputMessages} onClear={clearOutputMessages} />
               </div>
             </div>
           </div>
@@ -1032,5 +1073,15 @@ function debounce<T extends (...args: any[]) => any>(
     }, wait);
   };
 }
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const uint8Array = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(uint8Array.slice(i, i + chunkSize)));
+  }
+  return btoa(binary);
+};
 
 export default App;

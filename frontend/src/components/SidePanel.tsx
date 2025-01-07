@@ -48,11 +48,13 @@ interface SidePanelProps {
   project: Project;
   onProjectAccountChange: (account: ProjectAccount) => void;
   onNewProject: () => void;
+  binaryFileName: string | null;
+  setBinaryFileName: (name: string | null) => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject, binaryFileName, setBinaryFileName }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
     const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
@@ -142,6 +144,8 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
             onAccountChange={onAccountChange}
             project={project}
             onProjectAccountChange={onProjectAccountChange}
+            binaryFileName={binaryFileName}
+            setBinaryFileName={setBinaryFileName}
           />
         )}
       </div>

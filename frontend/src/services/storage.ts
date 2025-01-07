@@ -42,19 +42,27 @@ export class StorageService {
       return content;
     }
 
-    if (this.isTextFile(fileName)) {
-      try {
-        const base64Content = content.split(';base64,')[1];
-        return atob(base64Content);
-      } catch (e) {
-        console.error('Failed to decode base64 content:', e);
+    try {
+      const base64Content = content.split(';base64,')[1];
+      if (!base64Content) {
+        console.error('Invalid base64 content format');
         return content;
       }
+      return atob(base64Content);
+    } catch (e) {
+      console.error('Failed to decode base64 content:', e);
+      return content;
     }
     return content;
   }
 
   async saveProject(project: Project): Promise<void> {
+    console.log('StorageService.saveProject - Starting save:', {
+      projectId: project.id,
+      projectName: project.name,
+      fileCount: project.files.length
+    });
+
     if (!this.db) await this.init();
 
     // Don't encode already encoded content
@@ -64,12 +72,23 @@ export class StorageService {
 
     // Encode file contents when saving project
     const encodeFileNodes = (nodes: FileNode[]): FileNode[] => {
+      console.log('Encoding file nodes:', {
+        nodeCount: nodes.length,
+        fileNodes: nodes.map(n => ({
+          name: n.name,
+          type: n.type,
+          hasContent: !!n.content,
+          contentLength: n.content?.length
+        }))
+      });
+
       return nodes.map(node => {
         if (node.type === 'file' && node.content && shouldEncodeContent(node.content)) {
+          console.log(`Encoding content for file: ${node.name}`);
           const base64Content = btoa(node.content);
           return {
             ...node,
-            content: `data:application/octet-stream;base64,${base64Content}`
+            content: `data:text/plain;base64,${base64Content}`
           };
         }
         return {
@@ -78,6 +97,12 @@ export class StorageService {
         };
       });
     };
+
+    // Add before the final save
+    console.log('StorageService.saveProject - About to save to IndexedDB:', {
+      projectId: project.id,
+      encodedFileCount: project.files.length
+    });
 
     await this.db!.put('projects', {
       ...project,
@@ -88,19 +113,43 @@ export class StorageService {
   }
 
   async getProject(id: string): Promise<Project | undefined> {
+    console.log('StorageService.getProject - Fetching project:', { id });
+
     if (!this.db) await this.init();
     const project = await this.db!.get('projects', id);
 
-    if (project) {
-      // Decode file contents when retrieving project
-      const decodeFileNodes = (nodes: FileNode[]): FileNode[] => {
-        return nodes.map(node => ({
+    console.log('StorageService.getProject - Raw project from DB:', {
+      found: !!project,
+      fileCount: project?.files?.length
+    });
+
+    // Decode file contents when retrieving project
+    const decodeFileNodes = (nodes: FileNode[]): FileNode[] => {
+      console.log('Decoding file nodes:', {
+        nodeCount: nodes.length,
+        fileTypes: nodes.map(n => ({ name: n.name, type: n.type }))
+      });
+
+      return nodes.map(node => {
+        const decoded = {
           ...node,
           content: node.type === 'file' ? this.decodeFileContent(node.content || '', node.name) : undefined,
           children: node.children ? decodeFileNodes(node.children) : undefined
-        }));
-      };
+        };
 
+        if (node.type === 'file') {
+          console.log(`Decoded file ${node.name}:`, {
+            hadContent: !!node.content,
+            hasDecodedContent: !!decoded.content,
+            contentLength: decoded.content?.length
+          });
+        }
+
+        return decoded;
+      });
+    };
+
+    if (project) {
       return {
         ...project,
         files: decodeFileNodes(project.files)
@@ -113,10 +162,15 @@ export class StorageService {
     if (!this.db) await this.init();
     const projects = await this.db!.getAll('projects');
 
-    return projects.map(project => ({
-      ...project,
-      files: this.stripFileContent(project.files)
-    }));
+    // Only strip content in production
+    if (import.meta.env.PROD) {
+      return projects.map(project => ({
+        ...project,
+        files: this.stripFileContent(project.files)
+      }));
+    }
+
+    return projects;
   }
 
   async deleteProject(id: string): Promise<void> {

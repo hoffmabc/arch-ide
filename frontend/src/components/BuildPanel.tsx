@@ -39,6 +39,8 @@ import {
     onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
     project: Project;
     onProjectAccountChange: (account: ProjectAccount) => void;
+    binaryFileName: string | null;
+    setBinaryFileName: (name: string | null) => void;
   }
 
   const BuildPanel = ({
@@ -57,28 +59,26 @@ import {
     currentAccount,
     onAccountChange,
     project,
-    onProjectAccountChange
+    onProjectAccountChange,
+    binaryFileName,
+    setBinaryFileName
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
+      console.log('BuildPanel render:', { programBinary, binaryFileName });
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
-      const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
       const [isUploading, setIsUploading] = useState(false);
       const { toast } = useToast();
 
-      // Update effect to handle both uploaded and compiled binaries
       useEffect(() => {
-          if (programBinary) {
-              setBinaryFileName('arch_program.so');
-          }
-      }, [programBinary]);
+        let isCurrentEffect = true;
 
-      useEffect(() => {
-        if (project?.account && !currentAccount) {
-          onAccountChange(project.account);
-          onProgramIdChange?.(project.account.pubkey);
+        if (programBinary && project?.name && isCurrentEffect) {
+          setBinaryFileName(`${project.name}.so`);
         }
-        // Clear binary filename when project changes
-        setBinaryFileName(null);
-      }, [project, currentAccount, onAccountChange, onProgramIdChange]);
+
+        return () => {
+          isCurrentEffect = false;
+        };
+      }, [programBinary, project?.name]);
 
       const handleImportBinary = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];

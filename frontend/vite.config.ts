@@ -42,6 +42,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
+      '/api/build': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
       '/api/bitcoin': {
         target: 'http://localhost:8010/proxy',
         changeOrigin: true,

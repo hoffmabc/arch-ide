@@ -104,7 +104,7 @@ interface FileExplorerProps {
   hasProjects: boolean;
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string, children?: FileNode[]) => void;
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
@@ -210,7 +210,7 @@ const FileExplorerItem = ({
   path?: string[];
   depth?: number;
   onSelect: (file: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string, children?: FileNode[]) => void;
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
@@ -319,15 +319,81 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files?.length) return;
 
     try {
-      const content = await readFileContent(file);
-      onNewItem([], 'file', file.name, content);
+      let srcNode: FileNode = {
+        name: 'src',
+        type: 'directory',
+        children: []
+      };
+
+      for (const file of files) {
+        // Skip non-Rust files
+        if (!file.name.endsWith('.rs')) continue;
+
+        // Get content
+        const content = await readFileContent(file);
+
+        // For directory imports
+        if (file.webkitRelativePath) {
+          const pathParts = file.webkitRelativePath.split('/');
+          const srcIndex = pathParts.indexOf('src');
+
+          // Skip files not in src directory
+          if (srcIndex === -1) continue;
+
+          // Get the path parts after src
+          const relevantParts = pathParts.slice(srcIndex + 1);
+          if (relevantParts.length === 0) continue;
+
+          // Add file to appropriate location in src directory
+          let currentLevel = srcNode.children!;
+
+          // Create subdirectories if needed
+          for (let i = 0; i < relevantParts.length - 1; i++) {
+            const part = relevantParts[i];
+            let dirNode = currentLevel.find(
+              node => node.type === 'directory' && node.name === part
+            );
+
+            if (!dirNode) {
+              dirNode = {
+                name: part,
+                type: 'directory',
+                children: []
+              };
+              currentLevel.push(dirNode);
+            }
+            currentLevel = dirNode.children!;
+          }
+
+          // Add the file
+          currentLevel.push({
+            name: relevantParts[relevantParts.length - 1],
+            type: 'file',
+            content
+          });
+        } else {
+          // For single file imports
+          srcNode.children.push({
+            name: file.name,
+            type: 'file',
+            content
+          });
+        }
+      }
+
+      // Only update if we have files
+      if (srcNode.children && srcNode.children.length > 0) {
+        onUpdateTree('create', [], 'directory', undefined, [srcNode]);
+      }
+
     } catch (error) {
-      console.error('Failed to read file:', error);
+      console.error('Failed to read files:', error);
     }
+
     // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -394,7 +460,9 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
         type="file"
         ref={fileInputRef}
         className="hidden"
+        multiple
         onChange={handleFileSelect}
+        accept=".rs"
       />
     </div>
   );
