@@ -327,20 +327,28 @@ const FileExplorerItem = ({
         </div>
       </div>
       {node.type === 'directory' && node.children && expandedFolders.has(getNodePath(node, path)) && (
-        node.children.map((child: FileNode, i: number) => (
-          <FileExplorerItem
-            key={i}
-            node={child}
-            path={[...path, node.name]}
-            depth={depth + 1}
-            onSelect={onSelect}
-            onUpdateTree={onUpdateTree}
-            onNewItem={onNewItem}
-            expandedFolders={expandedFolders}
-            onExpandedFoldersChange={onExpandedFoldersChange}
-            currentFile={currentFile}
-          />
-        ))
+        [...node.children]
+          .sort((a, b) => {
+            // First sort by type (directories first)
+            if (a.type === 'directory' && b.type === 'file') return -1;
+            if (a.type === 'file' && b.type === 'directory') return 1;
+            // Then sort alphabetically
+            return a.name.localeCompare(b.name);
+          })
+          .map((child: FileNode, i: number) => (
+            <FileExplorerItem
+              key={i}
+              node={child}
+              path={[...path, node.name]}
+              depth={depth + 1}
+              onSelect={onSelect}
+              onUpdateTree={onUpdateTree}
+              onNewItem={onNewItem}
+              expandedFolders={expandedFolders}
+              onExpandedFoldersChange={onExpandedFoldersChange}
+              currentFile={currentFile}
+            />
+          ))
       )}
     </div>
   );
@@ -472,19 +480,27 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
           </Button>
         </div>
       ) : (
-        files.map((file, i) => (
-          <FileExplorerItem
-            key={i}
-            node={file}
-            path={[]}
-            onSelect={onFileSelect}
-            onUpdateTree={onUpdateTree}
-            onNewItem={onNewItem}
-            expandedFolders={expandedFolders}
-            onExpandedFoldersChange={onExpandedFoldersChange}
-            currentFile={currentFile}
-          />
-        ))
+        [...files]
+          .sort((a, b) => {
+            // First sort by type (directories first)
+            if (a.type === 'directory' && b.type === 'file') return -1;
+            if (a.type === 'file' && b.type === 'directory') return 1;
+            // Then sort alphabetically
+            return a.name.localeCompare(b.name);
+          })
+          .map((file, i) => (
+            <FileExplorerItem
+              key={i}
+              node={file}
+              path={[]}
+              onSelect={onFileSelect}
+              onUpdateTree={onUpdateTree}
+              onNewItem={onNewItem}
+              expandedFolders={expandedFolders}
+              onExpandedFoldersChange={onExpandedFoldersChange}
+              currentFile={currentFile}
+            />
+          ))
       )}
 
       <input
