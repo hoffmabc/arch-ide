@@ -464,6 +464,21 @@ const App = () => {
     return newName;
   };
 
+  const isDuplicateName = (path: string[], name: string, type: 'file' | 'directory', files: FileNode[]): boolean => {
+    // Find the target directory where we want to create the new item
+    let currentLevel = files;
+    for (const segment of path) {
+      const nextLevel = currentLevel.find(node => node.name === segment)?.children;
+      if (!nextLevel) return false;
+      currentLevel = nextLevel;
+    }
+
+    // Only check for duplicates in the current directory level
+    return currentLevel.some(node =>
+      node.name.toLowerCase() === name.toLowerCase() // Case-insensitive comparison
+    );
+  };
+
   const handleNewItem = (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => {
     console.log('handleNewItem called with:', { path, type, fileName, content });
 
@@ -471,7 +486,6 @@ const App = () => {
 
     // Prevent creation at root level
     if (path.length === 0) {
-      // If at root level, default to src directory
       path = ['src'];
     }
 
@@ -486,32 +500,30 @@ const App = () => {
     const parentPath = path.join('/');
     setExpandedFolders(prev => {
       const newSet = new Set(prev);
-
-      // Add all parent paths to expanded set
       let currentPath = '';
       for (const segment of path) {
         currentPath = currentPath ? `${currentPath}/${segment}` : segment;
         newSet.add(currentPath);
       }
-
       return newSet;
     });
 
     // Wait for the next render cycle to ensure folder is expanded
     setTimeout(() => {
       if (fileName && content !== undefined) {
-        // Handle direct file import with content
-        const targetDir = findNodeByPath(fullCurrentProject.files, path)?.children || [];
-        const uniqueName = generateUniqueName(fileName, targetDir);
+        // Check for duplicates before creating
+        if (isDuplicateName(path, fileName, type, fullCurrentProject.files)) {
+          alert(`A ${type} with the name "${fileName}" already exists in this location.`);
+          return;
+        }
 
         handleUpdateTree({
           type: 'create',
-          path: [...path, uniqueName],
+          path: [...path, fileName],
           fileType: type,
           content: content
         });
       } else {
-        // Open modal for new file/folder creation
         setNewItemPath(path);
         setNewItemType(type);
         setIsNewFileDialogOpen(true);
@@ -541,18 +553,20 @@ const App = () => {
   }, [currentFile, fullCurrentProject]);
 
   const handleCreateNewItem = (name: string) => {
-    console.log('handleCreateNewItem called with:', { name, path: newItemPath, type: newItemType });
+    if (!newItemPath || !newItemType) return;
 
-    // Check only newItemType since newItemPath can be an empty array for root level
-    if (newItemType) {
-      handleUpdateTree({
-        type: 'create',
-        path: [...newItemPath, name], // newItemPath might be empty array for root level
-        fileType: newItemType,
-        content: newItemType === 'file' ? '' : undefined // Initialize files with empty content
-      });
-      setIsNewFileDialogOpen(false); // Ensure dialog closes after creation
+    if (isDuplicateName(newItemPath, name, newItemType, fullCurrentProject.files)) {
+      alert(`A ${newItemType} with the name "${name}" already exists in this location.`);
+      return;
     }
+
+    handleUpdateTree({
+      type: 'create',
+      path: [...newItemPath, name],
+      fileType: newItemType,
+      content: newItemType === 'file' ? '' : undefined
+    });
+    setIsNewFileDialogOpen(false);
   };
 
   const handleFileSelect = (file: FileNode) => {
