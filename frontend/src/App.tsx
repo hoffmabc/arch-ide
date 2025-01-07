@@ -468,10 +468,21 @@ const App = () => {
 
     if (!fullCurrentProject) return;
 
+    // Prevent creation at root level
+    if (path.length === 0) {
+      console.warn('Cannot create items at root level');
+      return;
+    }
+
+    // Ensure we're under the src directory
+    const isUnderSrc = path[0] === 'src';
+    if (!isUnderSrc) {
+      console.warn('Can only create items under src directory');
+      return;
+    }
+
     // Find the target directory where the new item will be created
-    const targetDir = path.length === 0
-      ? fullCurrentProject.files
-      : findNodeByPath(fullCurrentProject.files, path)?.children || [];
+    const targetDir = findNodeByPath(fullCurrentProject.files, path)?.children || [];
 
     if (fileName && content !== undefined) {
       // Generate unique name if needed
@@ -603,6 +614,14 @@ const App = () => {
 
   const handleUpdateTree = (operation: FileOperation) => {
     if (!fullCurrentProject) return;
+
+    // Prevent src folder deletion
+    if (operation.type === 'delete' &&
+        operation.path.length === 1 &&
+        operation.path[0] === 'src') {
+      console.warn('Cannot delete src directory');
+      return;
+    }
 
     let updatedFiles: FileNode[];
     let projectToUpdate: Project;

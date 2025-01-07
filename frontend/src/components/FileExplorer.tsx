@@ -123,19 +123,19 @@ interface FileContextMenuProps {
 const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: FileContextMenuProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Check if this is the src folder
+  const isSrcFolder = node.type === 'directory' && node.name === 'src';
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !onNewFile) return;
 
     try {
       const content = await readFileContent(file);
-      console.log('File content read:', content);
-      // Pass the original filename and content directly
       onNewFile(file.name, content);
     } catch (error) {
       console.error('Failed to read file:', error);
     }
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -180,10 +180,13 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
           <Pencil size={16} className="mr-2" />
           Rename
         </DropdownMenuItem>
-        <DropdownMenuItem className="text-red-400" onClick={handleDelete}>
-          <Trash2 size={16} className="mr-2" />
-          Delete
-        </DropdownMenuItem>
+        {/* Only show delete option if it's not the src folder */}
+        {!isSrcFolder && (
+          <DropdownMenuItem className="text-red-400" onClick={handleDelete}>
+            <Trash2 size={16} className="mr-2" />
+            Delete
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
       <input
         type="file"
