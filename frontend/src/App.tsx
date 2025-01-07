@@ -22,6 +22,7 @@ import { storage } from './utils/storage';
 import { FileChange } from './types/types';
 import { Plus, FolderPlus, Download } from 'lucide-react';
 import { Buffer } from 'buffer/';
+import { formatBuildError } from './utils/errorFormatter';
 
 const queryClient = new QueryClient();
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -661,8 +662,18 @@ const App = () => {
           if (!file.content) {
             throw new Error(`No content found for file: ${file.name}`);
           }
-          const plainContent = file.content.replace(/^data:text\/plain;base64,/, '');
-          const decodedContent = atob(plainContent);
+
+          let decodedContent = file.content;
+          // If it's base64 encoded, decode it
+          if (file.content.startsWith('data:text/plain;base64,')) {
+            const plainContent = file.content.replace(/^data:text\/plain;base64,/, '');
+            try {
+              decodedContent = atob(plainContent);
+            } catch (error) {
+              throw new Error(`Failed to decode content for file: ${file.name}. Error: ${error.message}`);
+            }
+          }
+
           return [`/src/${file.name}`, decodedContent];
         });
 
@@ -686,7 +697,8 @@ const App = () => {
 
       if (result.stderr) {
         if (result.stderr.includes("error: could not compile")) {
-          addOutputMessage('error', result.stderr);
+          const formattedError = formatBuildError(result.stderr);
+          addOutputMessage('error', formattedError);
         } else {
           addOutputMessage('success', 'Build successful');
 
@@ -698,7 +710,7 @@ const App = () => {
               });
 
               if (!deployResponse.ok) {
-                throw new Error(`Deploy failed: ${deployResponse.statusText}`);
+                throw new Error(`Build failed: ${deployResponse.statusText}`);
               }
 
               const binary = await deployResponse.arrayBuffer();

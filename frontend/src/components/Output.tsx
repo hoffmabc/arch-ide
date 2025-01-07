@@ -37,23 +37,35 @@ export const Output = ({ messages, onClear }: OutputProps) => {
       </div>
       <div ref={scrollRef} className="bg-gray-900 text-white font-mono p-2 overflow-auto flex-1 text-xs leading-4">
         {messages.map((msg, i) => (
-          <div key={i} className="mb-0.5 flex">
-            <span className="text-gray-500 text-[10px] whitespace-nowrap mr-2">
-              {msg.timestamp.toLocaleTimeString()}
-            </span>
-            <div className="flex-1 break-all">
-              {msg.type === 'command' && (
-                <span className="text-blue-400">$ {msg.content}</span>
-              )}
-              {msg.type === 'success' && (
-                <span className="text-green-400">{msg.content}</span>
-              )}
-              {msg.type === 'error' && (
-                <span className="text-red-400">{msg.content}</span>
-              )}
-              {msg.type === 'info' && (
-                <span className="text-gray-400">{msg.content}</span>
-              )}
+          <div key={i} className="mb-2">
+            <div className="flex items-center">
+              <span className="text-gray-500 text-[10px] whitespace-nowrap mr-2">
+                {msg.timestamp.toLocaleTimeString()}
+              </span>
+              <div className="flex-1">
+                {msg.type === 'command' && (
+                  <span className="text-blue-400">$ {msg.content}</span>
+                )}
+                {msg.type === 'success' && (
+                  <span className="text-green-400">{msg.content}</span>
+                )}
+                {msg.type === 'error' && (
+                  <div className="text-red-400 whitespace-pre-wrap">
+                    {msg.content.split('\n').map((line, i) => (
+                      <div key={i} className={`
+                        ${line.startsWith('File:') ? 'text-yellow-400 mt-1' : ''}
+                        ${line.startsWith('Line:') ? 'text-yellow-400' : ''}
+                        ${line.startsWith('Code:') ? 'text-blue-400 mt-1 pl-4' : ''}
+                      `}>
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {msg.type === 'info' && (
+                  <span className="text-gray-400">{msg.content}</span>
+                )}
+              </div>
             </div>
           </div>
         ))}
