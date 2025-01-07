@@ -63,7 +63,6 @@ import {
     binaryFileName,
     setBinaryFileName
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
-      console.log('BuildPanel render:', { programBinary, binaryFileName });
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [isUploading, setIsUploading] = useState(false);
       const { toast } = useToast();

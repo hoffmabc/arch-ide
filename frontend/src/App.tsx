@@ -688,9 +688,9 @@ const App = () => {
               setBinaryFileName(`${fullCurrentProject.name}.so`);
               console.log('fullCurrentProject.name', `${fullCurrentProject.name}.so`);
               console.log('binaryFileName', binaryFileName);
-              addOutputMessage('success', 'Program deployed successfully');
+              addOutputMessage('success', 'Program built successfully');
             } catch (deployError: any) {
-              addOutputMessage('error', `Deploy error: ${deployError.message}`);
+              addOutputMessage('error', `Build error: ${deployError.message}`);
             }
           }
         }
