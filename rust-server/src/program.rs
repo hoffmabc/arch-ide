@@ -9,6 +9,32 @@ const MAX_PATH_LENGTH: usize = 128;
 
 static INIT: OnceCell<()> = OnceCell::const_new();
 
+const CARGO_TOML_TEMPLATE: &str = r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+arch_program = { path = "../../crates/program" }
+
+# Core serialization/encoding
+borsh = { version = "1.5.1", features = ["derive"] }
+
+# Utilities
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+hex = { version = "0.4.3", default-features = false }
+sha256 = { version = "1.5.0", default-features = false }
+
+# Error handling
+thiserror = "*"
+
+# Serialization
+serde = { version = "1.0.136", features = ["derive"], default-features = false }
+"#;
+
 pub async fn init() -> anyhow::Result<()> {
     INIT.get_or_try_init(|| async {
         let programs_dir = Path::new(PROGRAMS_DIR);
@@ -71,6 +97,8 @@ pub fn build(
     program_name: &str,
     files: &Files,
 ) -> anyhow::Result<(String, String)> {
+    println!("Starting build for program: {}", program_name);
+
     // Check file count
     if files.len() > MAX_FILE_AMOUNT {
         return Err(anyhow!("Exceeded maximum file amount({MAX_FILE_AMOUNT})"));
@@ -89,68 +117,88 @@ pub fn build(
         return Err(anyhow!("Invalid path"));
     }
 
-    // Create program directory with its own Cargo.toml
+    // Get or create program directory using UUID
     let program_path = Path::new(PROGRAMS_DIR).join(uuid);
+    println!("Program directory: {:?}", program_path);
+
     fs::create_dir_all(&program_path)?;
     fs::create_dir_all(program_path.join("src"))?;
-
-    // Create program-specific Cargo.toml with the user's program name
-    let cargo_toml = format!(r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
-path = "src/lib.rs"
-
-[dependencies]
-arch_program = {{ path = "../../crates/program" }}
-borsh = {{ version = "1.5.1", features = ["derive"] }}
-base64 = {{ version = "0.22.1", default-features = false, features = ["alloc"] }}
-hex = {{ version = "0.4.3", default-features = false }}
-sha256 = {{ version = "1.5.0", default-features = false }}
-thiserror = "*"
-log = "0.4.17"
-serde = {{ version = "1.0.136", features = ["derive"], default-features = false }}"#,
-        program_name);
-
-    fs::write(program_path.join("Cargo.toml"), cargo_toml)?;
+    fs::create_dir_all(program_path.join("target/deploy"))?;
 
     // Write source files
+    println!("Writing source files...");
     for [path, content] in files {
         let relative_path = path.trim_start_matches('/');
-        let item_path = program_path.join(relative_path);
+        let file_path = program_path.join(relative_path);
+        println!("Writing file: {:?}", file_path);
 
-        let parent_path = item_path.parent().expect("Should have parent");
-        fs::create_dir_all(parent_path)?;
-        fs::write(item_path, content)?;
+        let parent = file_path.parent().expect("Should have parent");
+        fs::create_dir_all(parent)?;
+        fs::write(&file_path, content)?;
     }
 
-    // Build the program
+    // Create program-specific Cargo.toml with sanitized name
+    println!("Creating Cargo.toml...");
+    let safe_program_name = program_name.replace(|c: char| !c.is_alphanumeric(), "_");
+    let cargo_toml = CARGO_TOML_TEMPLATE
+        .replace("{}", &safe_program_name);
+    let manifest_path = program_path.join("Cargo.toml");
+    fs::write(&manifest_path, &cargo_toml)?;
+    println!("Cargo.toml contents:\n{}", cargo_toml);
+
+    // Set up shared target directory
+    let shared_target = Path::new(PROGRAMS_DIR).join("target");
+    println!("Using shared target directory: {:?}", shared_target);
+    fs::create_dir_all(&shared_target)?;
+
+    // Build using cargo-build-sbf
+    println!("Starting cargo-build-sbf...");
+    let manifest_path = program_path.join("Cargo.toml").canonicalize()?;
+    let deploy_dir = program_path.join("target/deploy").canonicalize()?;
+
+    println!("Using manifest path: {:?}", manifest_path);
     let output = Command::new("cargo-build-sbf")
         .args([
+            "build-sbf",
             "--manifest-path",
-            program_path.join("Cargo.toml").to_str().expect("Manifest path should be UTF-8"),
+            manifest_path
+                .to_str()
+                .expect("Manifest path should be UTF-8"),
             "--sbf-out-dir",
-            program_path.join("target/deploy").to_str()
-                .ok_or_else(|| anyhow!("{program_path:?} is not valid UTF-8"))?,
-            "--offline",
+            deploy_dir.to_str()
+                .ok_or_else(|| anyhow!("{deploy_dir:?} is not valid UTF-8"))?,
         ])
         .output()?;
 
+    // Process output
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8(output.stderr)?;
-    Ok((stderr, program_name.to_string()))
+
+    println!("Build stdout:\n{}", stdout);
+    println!("Build stderr:\n{}", stderr);
+
+    // Check if binary was created using safe program name
+    let binary_path = program_path
+        .join("target/deploy")
+        .join(format!("{}.so", safe_program_name));
+    println!("Checking for binary at: {:?}", binary_path);
+
+    if binary_path.exists() {
+        println!("Binary file created successfully");
+    } else {
+        println!("Warning: Binary file not found at expected location");
+    }
+
+    Ok((stderr, safe_program_name))
 }
 
 pub async fn get_binary(uuid: &str, program_name: &str) -> std::io::Result<Vec<u8>> {
-    // Construct the path to the binary file
+    let safe_program_name = program_name.replace(|c: char| !c.is_alphanumeric(), "_");
     let program_path = Path::new(PROGRAMS_DIR)
         .join(uuid)
-        .join("target/sbf-solana-solana/release")
-        .join(format!("{}.so", program_name));
+        .join("target/deploy")
+        .join(format!("{}.so", safe_program_name));
     println!("Attempting to read binary from path: {:?}", program_path);
 
-    // Attempt to read the file
     fs::read(program_path)
 }
