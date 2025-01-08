@@ -33,6 +33,18 @@ thiserror = "*"
 
 # Serialization
 serde = { version = "1.0.136", features = ["derive"], default-features = false }
+
+[profile.release]
+overflow-checks = true
+incremental = true
+codegen-units = 256
+opt-level = 2
+lto = false
+
+[profile.release.build-override]
+opt-level = 3
+incremental = true
+codegen-units = 256
 "#;
 
 pub async fn init() -> anyhow::Result<()> {
@@ -147,27 +159,26 @@ pub fn build(
     println!("Cargo.toml contents:\n{}", cargo_toml);
 
     // Set up shared target directory
-    let shared_target = Path::new(PROGRAMS_DIR).join("target");
+    let shared_target = Path::new(PROGRAMS_DIR).join("target").canonicalize()?;
     println!("Using shared target directory: {:?}", shared_target);
-    fs::create_dir_all(&shared_target)?;
 
     // Build using cargo-build-sbf
     println!("Starting cargo-build-sbf...");
     let manifest_path = program_path.join("Cargo.toml").canonicalize()?;
     let deploy_dir = program_path.join("target/deploy").canonicalize()?;
 
-    println!("Using manifest path: {:?}", manifest_path);
     let output = Command::new("cargo-build-sbf")
         .args([
             "build-sbf",
             "--manifest-path",
-            manifest_path
-                .to_str()
-                .expect("Manifest path should be UTF-8"),
+            manifest_path.to_str().expect("Manifest path should be UTF-8"),
             "--sbf-out-dir",
-            deploy_dir.to_str()
-                .ok_or_else(|| anyhow!("{deploy_dir:?} is not valid UTF-8"))?,
+            deploy_dir.to_str().ok_or_else(|| anyhow!("{deploy_dir:?} is not valid UTF-8"))?,
         ])
+        .env("CARGO_TARGET_DIR", shared_target.to_str().unwrap())
+        .env("CARGO_BUILD_INCREMENTAL", "true")
+        .env("CARGO_PROFILE_RELEASE_INCREMENTAL", "true")
+        .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
         .output()?;
 
     // Process output
