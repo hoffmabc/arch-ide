@@ -255,7 +255,7 @@ export class ArchProgramLoader {
     address: string,
     network: string,
     regtestConfig?: { url: string; username: string; password: string }
-  ): Promise<{ txid: string; vout: number }> {
+  ): Promise<{txid: string, vout: number}> {
     if (!address) {
       throw new Error('Bitcoin address is required');
     }
@@ -294,9 +294,10 @@ export class ArchProgramLoader {
           throw new Error('Regtest configuration required for devnet');
         }
 
-        regtestConfig.url += '/wallet/testwallet';
+        const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+        regtestConfig.url = isLocalhost ? 'http://localhost:8010/proxy' : regtestConfig.url;
 
-        // Use the bitcoinRpcRequest helper for wallet operations
+        // Use the bitcoinRpcRequest helper for all RPC calls
         const sendResponse = await bitcoinRpcRequest(
           regtestConfig,
           'sendtoaddress',
@@ -305,7 +306,6 @@ export class ArchProgramLoader {
         );
         const txid = sendResponse.result;
 
-        // Get transaction details using base endpoint
         const txResponse = await bitcoinRpcRequest(
           regtestConfig,
           'getrawtransaction',

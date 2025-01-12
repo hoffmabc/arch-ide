@@ -7,7 +7,8 @@ export async function bitcoinRpcRequest(
   wallet?: string
 ) {
   try {
-    const baseUrl = 'http://localhost:8010/proxy';
+    const isLocalhost = window.location.hostname === 'localhost';
+    const baseUrl = isLocalhost ? 'http://localhost:8010/proxy' : config.url;
     const url = wallet ? `${baseUrl}/wallet/${wallet}` : baseUrl;
 
     const response = await fetch(url, {
