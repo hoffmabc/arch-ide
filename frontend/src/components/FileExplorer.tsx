@@ -34,6 +34,9 @@ import RenameDialog from './RenameDialog';
 import { cn } from '../lib/utils';
 import type { FileNode } from '../types';
 import { Button } from '@/components/ui/button';
+import ResizeHandle from './ResizeHandle';
+import Editor from "@monaco-editor/react";
+
 
 const getNodePath = (node: FileNode, path: string[] = []): string => {
   return [...path, node.name].join('/');
@@ -400,93 +403,25 @@ const FileExplorerItem = ({
 
 const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile, onNewProject }: FileExplorerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [clientHeight, setClientHeight] = useState(300);
+
+  // Group files by section
+  const programFiles = files.filter(f => f.name === 'src');
+  const clientFiles = files.filter(f => f.name === 'client');
+  const otherFiles = files.filter(f => f.name !== 'src' && f.name !== 'client');
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files?.length) return;
-
-    try {
-      let srcNode: FileNode = {
-        name: 'src',
-        type: 'directory',
-        children: []
-      };
-
-      for (const file of files) {
-        // Skip non-Rust files
-        if (!file.name.endsWith('.rs')) continue;
-
-        // Get content
-        const content = await readFileContent(file);
-
-        // For directory imports
-        if (file.webkitRelativePath) {
-          const pathParts = file.webkitRelativePath.split('/');
-          const srcIndex = pathParts.indexOf('src');
-
-          // Skip files not in src directory
-          if (srcIndex === -1) continue;
-
-          // Get the path parts after src
-          const relevantParts = pathParts.slice(srcIndex + 1);
-          if (relevantParts.length === 0) continue;
-
-          // Add file to appropriate location in src directory
-          let currentLevel = srcNode.children!;
-
-          // Create subdirectories if needed
-          for (let i = 0; i < relevantParts.length - 1; i++) {
-            const part = relevantParts[i];
-            let dirNode = currentLevel.find(
-              node => node.type === 'directory' && node.name === part
-            );
-
-            if (!dirNode) {
-              dirNode = {
-                name: part,
-                type: 'directory',
-                children: []
-              };
-              currentLevel.push(dirNode);
-            }
-            currentLevel = dirNode.children!;
-          }
-
-          // Add the file
-          currentLevel.push({
-            name: relevantParts[relevantParts.length - 1],
-            type: 'file',
-            content
-          });
-        } else {
-          // For single file imports
-          srcNode.children.push({
-            name: file.name,
-            type: 'file',
-            content
-          });
-        }
-      }
-
-      // Only update if we have files
-      if (srcNode.children && srcNode.children.length > 0) {
-        onUpdateTree('create', [], 'directory', undefined, [srcNode]);
-      }
-
-    } catch (error) {
-      console.error('Failed to read files:', error);
-    }
-
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    const file = e.target.files?.[0];
+    if (file) {
+      const content = await readFileContent(file);
+      onNewItem([], 'file', file.name, content);
     }
   };
 
   return (
-    <div className="bg-gray-800 w-full h-full overflow-y-auto border-r border-gray-700">
+    <div className="bg-gray-800 w-full h-full flex flex-col">
       <div className="p-2 border-b border-gray-700 font-medium flex justify-between items-center">
-        <span>Explorer</span>
+        <span>EXPLORER</span>
         <div className="flex gap-1">
           <button
             className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
@@ -512,48 +447,93 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
         </div>
       </div>
 
-      {!hasProjects ? (
-        <div className="flex flex-col items-center justify-center h-[calc(100%-48px)] gap-4 text-gray-400">
-          <p className="text-sm">No projects found</p>
-          <Button
-            variant="default"
-            onClick={onNewProject}
-            className="bg-pink-500 hover:bg-pink-600 text-white"
-          >
-            Create New Project
-          </Button>
-        </div>
-      ) : (
-        [...files]
-          .sort((a, b) => {
-            // First sort by type (directories first)
-            if (a.type === 'directory' && b.type === 'file') return -1;
-            if (a.type === 'file' && b.type === 'directory') return 1;
-            // Then sort alphabetically
-            return a.name.localeCompare(b.name);
-          })
-          .map((file, i) => (
-            <FileExplorerItem
-              key={i}
-              node={file}
-              path={[]}
-              onSelect={onFileSelect}
-              onUpdateTree={onUpdateTree}
-              onNewItem={onNewItem}
-              expandedFolders={expandedFolders}
-              onExpandedFoldersChange={onExpandedFoldersChange}
-              currentFile={currentFile}
-            />
-          ))
-      )}
+      <div className="flex-1 overflow-y-auto">
+        {!hasProjects ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
+            <p className="text-sm">No projects found</p>
+            <Button
+              variant="default"
+              onClick={onNewProject}
+              className="bg-pink-500 hover:bg-pink-600 text-white"
+            >
+              Create New Project
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Program Section */}
+            <div className="py-2">
+              <div className="px-4 text-sm text-gray-400">Program</div>
+              <div className="mt-1">
+                {programFiles.map((file, i) => (
+                  <FileExplorerItem
+                    key={i}
+                    node={file}
+                    path={[]}
+                    onSelect={onFileSelect}
+                    onUpdateTree={onUpdateTree}
+                    onNewItem={onNewItem}
+                    expandedFolders={expandedFolders}
+                    onExpandedFoldersChange={onExpandedFoldersChange}
+                    currentFile={currentFile}
+                  />
+                ))}
+              </div>
+            </div>
 
+            {/* Client Section */}
+            <div className="py-2">
+              <div className="px-4 flex items-center justify-between">
+                <span className="text-sm text-gray-400">Client</span>
+                <Button size="sm" variant="ghost" className="h-6 px-2">
+                  Run
+                </Button>
+              </div>
+              <div className="mt-1">
+                {clientFiles.map((file, i) => (
+                  <FileExplorerItem
+                    key={i}
+                    node={file}
+                    path={[]}
+                    onSelect={onFileSelect}
+                    onUpdateTree={onUpdateTree}
+                    onNewItem={onNewItem}
+                    expandedFolders={expandedFolders}
+                    onExpandedFoldersChange={onExpandedFoldersChange}
+                    currentFile={currentFile}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Other Files */}
+            {otherFiles.length > 0 && (
+              <div className="py-2">
+                <div className="mt-1">
+                  {otherFiles.map((file, i) => (
+                    <FileExplorerItem
+                      key={i}
+                      node={file}
+                      path={[]}
+                      onSelect={onFileSelect}
+                      onUpdateTree={onUpdateTree}
+                      onNewItem={onNewItem}
+                      expandedFolders={expandedFolders}
+                      onExpandedFoldersChange={onExpandedFoldersChange}
+                      currentFile={currentFile}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
       <input
         type="file"
         ref={fileInputRef}
         className="hidden"
-        multiple
         onChange={handleFileSelect}
-        accept=".rs"
       />
     </div>
   );
