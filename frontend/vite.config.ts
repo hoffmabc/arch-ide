@@ -4,9 +4,16 @@ import path from 'path';
 import wasm from 'vite-plugin-wasm';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfill';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
-  plugins: [react(), wasm()],
+  plugins: [
+    react(),
+    wasm(),
+    nodePolyfills({
+      include: ['process', 'buffer']
+    })
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -20,8 +27,7 @@ export default defineConfig({
   },
   define: {
     global: {},
-    'process.env': {},
-    Buffer: ['buffer', 'Buffer'],
+    'process.env': {}
   },
   build: {
     outDir: 'dist',
@@ -38,8 +44,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['@monaco-editor/react', 'buffer'],
-    exclude: ['@bitcoinerlab/secp256k1'],
+    include: ['@monaco-editor/react', 'buffer', 'bip322-js'],
     esbuildOptions: {
       plugins: [
         NodeGlobalsPolyfillPlugin({

@@ -7,14 +7,11 @@ if (typeof window !== 'undefined') {
 
 import { RpcConnection, Message, Instruction, RuntimeTransaction } from '@saturnbtcio/arch-sdk';
 import { MessageUtil } from '@saturnbtcio/arch-sdk';
-import * as bitcoin from 'bitcoinjs-lib';
-import * as ecc from 'tiny-secp256k1';
+import { signMessage } from './bitcoin-signer';
 
-bitcoin.initEccLib(ecc);
-
-const signMessageBIP322 = (privateKey: Buffer, messageHash: Buffer, network: string): Buffer => {
-  const signature = ecc.signSchnorr(messageHash, privateKey);
-  return Buffer.from(signature);
+const signMessageBIP322 = async (privateKey: Buffer, messageHash: Buffer): Promise<Buffer> => {
+  const signature = await signMessage(privateKey as any, messageHash as any);
+  return Buffer.from(signature as Uint8Array);
 };
 
 declare global {
@@ -117,6 +114,7 @@ class XverseWallet implements BitcoinWallet {
 
 export class ArchProgramLoader {
   static async load(options: ArchDeployOptions) {
+    console.log('options', options);
     // Create program account
     const createAccountInstruction = await this.createProgramAccountInstruction(
       options.keypair.pubkey,
@@ -125,7 +123,10 @@ export class ArchProgramLoader {
       options.regtestConfig
     );
 
-    console.log('createAccountInstruction', createAccountInstruction);
+    console.log('createAccountInstruction size:',
+      Buffer.from(JSON.stringify(createAccountInstruction)).length,
+      'bytes');
+    console.log('createAccountInstruction:', createAccountInstruction);
 
     // If rpcUrl is testnet and the url is http://localhost:9002 then use the proxy
     console.log('options.rpcUrl', options.rpcUrl);
@@ -211,10 +212,42 @@ export class ArchProgramLoader {
   }
 
   private static async getAccountAddress(pubkey: string, rpcUrl: string): Promise<string> {
-    const rpc = new RpcConnection(rpcUrl);
-    const pubkeyBuffer = Buffer.from(pubkey, 'hex');
-    const address = await rpc.getAccountAddress(pubkeyBuffer);
-    return address;
+    console.log('Getting account address for:', {
+      pubkey,
+      rpcUrl
+    });
+
+    try {
+      // Log RPC connection attempt
+      console.log('Creating RPC connection to:', rpcUrl);
+      const rpc = new RpcConnection(rpcUrl);
+
+      // Log pubkey buffer creation
+      console.log('Creating pubkey buffer from hex:', pubkey);
+      const pubkeyBuffer = Buffer.from(pubkey, 'hex');
+      console.log('Pubkey buffer created:', {
+        originalPubkey: pubkey,
+        bufferLength: pubkeyBuffer.length,
+        bufferHex: pubkeyBuffer.toString('hex')
+      });
+
+      // Log address request
+      console.log('Requesting account address from RPC...');
+      const address = await rpc.getAccountAddress(pubkeyBuffer);
+      console.log('Received account address:', address);
+
+      return address;
+    } catch (error) {
+      // Enhanced error logging
+      console.error('Error in getAccountAddress:', {
+        error,
+        pubkey,
+        rpcUrl,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   private static async sendUtxo(
@@ -400,7 +433,7 @@ export class ArchProgramLoader {
     const bitcoinNetwork = network === 'mainnet-beta' ? 'mainnet' :
                           network === 'devnet' ? 'regtest' : 'testnet';
 
-    const signature = signMessageBIP322(privateKeyBuffer, Buffer.from(messageHash), bitcoinNetwork);
+    const signature = await signMessageBIP322(privateKeyBuffer, Buffer.from(messageHash));
 
     const transaction: RuntimeTransaction = {
       version: 0,
