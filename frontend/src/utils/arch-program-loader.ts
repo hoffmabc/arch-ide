@@ -8,6 +8,7 @@ if (typeof window !== 'undefined') {
 import { RpcConnection, Message, Instruction, RuntimeTransaction } from '@saturnbtcio/arch-sdk';
 import { MessageUtil } from '@saturnbtcio/arch-sdk';
 import { signMessage } from './bitcoin-signer';
+import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
 
 const signMessageBIP322 = async (privateKey: Buffer, messageHash: Buffer): Promise<Buffer> => {
   const signature = await signMessage(privateKey as any, messageHash as any);
@@ -293,45 +294,25 @@ export class ArchProgramLoader {
           throw new Error('Regtest configuration required for devnet');
         }
 
-        // Direct call to Bitcoin node with CORS headers
-        const response = await fetch(regtestConfig.url + '/wallet/testwallet', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 'arch',
-            method: 'sendtoaddress',
-            params: [address, 0.00005]
-          })
-        });
+        regtestConfig.url += '/wallet/testwallet';
 
-        const { result: txid } = await response.json();
+        // Use the bitcoinRpcRequest helper for wallet operations
+        const sendResponse = await bitcoinRpcRequest(
+          regtestConfig,
+          'sendtoaddress',
+          [address, 0.00005],
+          'testwallet'
+        );
+        const txid = sendResponse.result;
 
-        // Similar modification for getting transaction details
-        const txResponse = await fetch(regtestConfig.url + '/wallet/testwallet', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + btoa(`${regtestConfig.username}:${regtestConfig.password}`),
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 'arch',
-            method: 'getrawtransaction',
-            params: [txid, true]
-          })
-        });
+        // Get transaction details using base endpoint
+        const txResponse = await bitcoinRpcRequest(
+          regtestConfig,
+          'getrawtransaction',
+          [txid, true]
+        );
 
-        const { result: tx } = await txResponse.json();
+        const tx = txResponse.result;
         const vout = tx.vout.findIndex((output: any) => output.scriptPubKey.address === address);
 
         return { txid, vout };

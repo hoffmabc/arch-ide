@@ -7,9 +7,10 @@ export async function bitcoinRpcRequest(
   wallet?: string
 ) {
   try {
-    console.log('wallet', wallet);
-    console.log('config', config);
-    const response = await fetch('http://localhost:8010/proxy', {
+    const baseUrl = 'http://localhost:8010/proxy';
+    const url = wallet ? `${baseUrl}/wallet/${wallet}` : baseUrl;
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -26,6 +27,26 @@ export async function bitcoinRpcRequest(
     const data = await response.json();
 
     if (data.error) {
+      // Check if wallet needs to be loaded
+      if (wallet && data.error.message.includes('not loaded')) {
+        // Try to load wallet
+        await fetch(baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa(`${config.username}:${config.password}`)
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'arch',
+            method: 'loadwallet',
+            params: [wallet]
+          })
+        });
+
+        // Retry original request
+        return bitcoinRpcRequest(config, method, params, wallet);
+      }
       throw new Error(data.error.message || 'Bitcoin RPC error');
     }
 
