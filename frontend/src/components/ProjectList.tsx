@@ -99,7 +99,17 @@ const ProjectList = ({
         onSelectProject(importedProject, true);
       } else {
         // Handling JSON import
-        importedProject = await projectService.importProject(files[0]);
+        const fileReader = new FileReader();
+        const importPromise = new Promise<Project>((resolve) => {
+          fileReader.onload = async (e) => {
+            const content = e.target?.result as string;
+            const projectData = JSON.parse(content);
+            await projectService.saveProject(projectData);
+            resolve(projectData);
+          };
+        });
+        fileReader.readAsText(files[0]);
+        importedProject = await importPromise;
         onProjectsChange([...projects, importedProject]);
         onSelectProject(importedProject, true);
       }

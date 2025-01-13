@@ -41,7 +41,8 @@ export default defineConfig({
           'monaco-editor': ['@monaco-editor/react']
         }
       }
-    }
+    },
+    target: ['esnext']
   },
   optimizeDeps: {
     include: ['@monaco-editor/react', 'buffer', 'bip322-js'],
@@ -51,7 +52,8 @@ export default defineConfig({
           buffer: true
         }),
         NodeModulesPolyfillPlugin()
-      ]
+      ],
+      target: 'esnext'
     }
   },
   server: {

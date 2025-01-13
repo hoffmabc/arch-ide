@@ -484,7 +484,26 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
             {/* Client Section */}
             <div className="py-2">
               <div className="px-4 flex items-center justify-between">
-                <span className="text-sm text-gray-400">Client</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400">Client</span>
+                  <button
+                    className="hover:bg-gray-700 p-1 rounded"
+                    onClick={() => {
+                      // Create client directory if it doesn't exist
+                      if (!clientFiles.length) {
+                        onNewItem([], 'directory', 'client');
+                        // Wait for directory creation
+                        setTimeout(() => {
+                          onNewItem(['client'], 'file', 'client.ts', '// Client code here');
+                        }, 100);
+                      } else {
+                        onNewItem(['client'], 'file', 'client.ts', '// Client code here');
+                      }
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
                 <Button size="sm" variant="ghost" className="h-6 px-2">
                   Run
                 </Button>

@@ -482,6 +482,81 @@ export class ProjectService {
     console.groupEnd();
     return fileNodes;
   }
+
+  async importFromFolder(files: FileList): Promise<Project> {
+    const fileNodes: FileNode[] = [];
+    const fileMap = new Map<string, FileNode>();
+
+    // Get base project name from first file
+    const baseProjectName = files[0].webkitRelativePath.split('/')[0];
+    const projectName = await this.getUniqueProjectName(baseProjectName);
+
+    // Process each file
+    for (const file of Array.from(files)) {
+      const pathParts = file.webkitRelativePath.split('/');
+      let currentPath = '';
+
+      // Skip the first part as it's the root folder name
+      for (let i = 1; i < pathParts.length; i++) {
+        const part = pathParts[i];
+        const isFile = i === pathParts.length - 1;
+        const fullPath = currentPath + part;
+
+        if (!fileMap.has(fullPath)) {
+          const node: FileNode = {
+            name: part,
+            type: isFile ? 'file' : 'directory',
+            path: fullPath,
+            ...(isFile ? { content: await this.readFileContent(file) } : { children: [] })
+          };
+
+          fileMap.set(fullPath, node);
+
+          if (currentPath === '') {
+            fileNodes.push(node);
+          } else {
+            const parent = fileMap.get(currentPath.slice(0, -1));
+            if (parent && parent.children) {
+              parent.children.push(node);
+            }
+          }
+        }
+
+        if (!isFile) {
+          currentPath += part + '/';
+        }
+      }
+    }
+
+    const project = {
+      id: uuidv4(),
+      name: projectName,
+      files: fileNodes,
+      created: new Date(),
+      lastModified: new Date()
+    };
+
+    await this.saveProject(project);
+    return project;
+  }
+
+  async exportProjectAsZip(project: Project): Promise<Blob> {
+    const zip = new JSZip();
+
+    const addToZip = (nodes: FileNode[], currentPath: string = '') => {
+      for (const node of nodes) {
+        const path = currentPath ? `${currentPath}/${node.name}` : node.name;
+        if (node.type === 'file' && node.content) {
+          zip.file(path, node.content);
+        } else if (node.type === 'directory' && node.children) {
+          addToZip(node.children, path);
+        }
+      }
+    };
+
+    addToZip(project.files);
+    return await zip.generateAsync({ type: 'blob' });
+  }
 }
 
 export const projectService = new ProjectService();

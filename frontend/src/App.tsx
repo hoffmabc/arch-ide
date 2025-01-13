@@ -555,7 +555,7 @@ const App = () => {
   const handleCreateNewItem = (name: string) => {
     if (!newItemPath || !newItemType) return;
 
-    if (isDuplicateName(newItemPath, name, newItemType, fullCurrentProject.files)) {
+    if (isDuplicateName(newItemPath, name, newItemType, fullCurrentProject?.files || [])) {
       alert(`A ${newItemType} with the name "${name}" already exists in this location.`);
       return;
     }
@@ -742,7 +742,7 @@ const App = () => {
             const plainContent = file.content!.replace(/^data:text\/plain;base64,/, '');
             try {
               decodedContent = atob(plainContent);
-            } catch (error) {
+            } catch (error: any) { // Added 'any' to specify the type of 'error'
               throw new Error(`Failed to decode content for file: ${file.name}. Error: ${error.message}`);
             }
           }
