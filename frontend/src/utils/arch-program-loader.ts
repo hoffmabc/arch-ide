@@ -39,8 +39,37 @@ declare global {
   }
 }
 
-const CHUNK_SIZE = 900;
+
+
 const SYSTEM_PROGRAM_ID = '0000000000000000000000000000000000000000000000000000000000000001';
+
+const RUNTIME_TX_SIZE_LIMIT = 10240; // Example limit from your network code
+
+function calculateMaxChunkSize(): number {
+  // Simulate the transaction size
+  const message = {
+    signers: [Buffer.from(SYSTEM_PROGRAM_ID, 'hex')],
+    instructions: [{
+      program_id: Buffer.from(SYSTEM_PROGRAM_ID, 'hex'),
+      accounts: [],
+      data: Buffer.alloc(8) // Simulate 8-byte data
+    }]
+  };
+
+  const simulatedTransaction = {
+    version: 0,
+    signatures: [Buffer.alloc(64)], // Simulate a 64-byte signature
+    message
+  };
+
+  // Calculate the serialized length
+  const serializedLength = JSON.stringify(simulatedTransaction).length;
+
+  // Calculate the maximum chunk size
+  return RUNTIME_TX_SIZE_LIMIT - serializedLength;
+}
+
+const CHUNK_SIZE = calculateMaxChunkSize();
 
 interface ArchDeployOptions {
   rpcUrl: string;
@@ -114,53 +143,53 @@ class XverseWallet implements BitcoinWallet {
 }
 
 export class ArchProgramLoader {
-  static async load(options: ArchDeployOptions) {
+  static async load(options: ArchDeployOptions, onMessage?: (type: 'info' | 'success' | 'error', message: string) => void) {
     console.log('options', options);
-    // Create program account
-    const createAccountInstruction = await this.createProgramAccountInstruction(
-      options.keypair.pubkey,
-      options.network,
-      options.rpcUrl,
-      options.regtestConfig
-    );
 
-    console.log('createAccountInstruction size:',
-      Buffer.from(JSON.stringify(createAccountInstruction)).length,
-      'bytes');
-    console.log('createAccountInstruction:', createAccountInstruction);
-
-    // If rpcUrl is testnet and the url is http://localhost:9002 then use the proxy
-    console.log('options.rpcUrl', options.rpcUrl);
-    if (options.rpcUrl === 'http://localhost:9002' && options.network === 'testnet') {
+    if (window.location.hostname === 'localhost' && options.network === 'testnet') {
       options.rpcUrl = 'http://localhost:3000/rpc';
     }
 
-    const createAccountTxid = await this.sendInstruction(
-      options.rpcUrl,
-      createAccountInstruction,
-      options.keypair,
-      options.network
-    );
+    let createAccountTxid = '';
+    const programAccount = await this.getProgramAccount(options.keypair.pubkey, options.rpcUrl);
+
+    if (programAccount) {
+      onMessage?.('info', `Program ${options.keypair.pubkey} already exists, proceeding with upload`);
+    }
+
+    if (!programAccount) {
+      // Create program account only if it doesn't exist
+      const createAccountInstruction = await this.createProgramAccountInstruction(
+        options.keypair.pubkey,
+        options.network,
+        options.rpcUrl,
+        options.regtestConfig
+      );
+
+      createAccountTxid = await this.sendInstruction(
+        options.rpcUrl,
+        createAccountInstruction,
+        options.keypair,
+        options.network
+      );
+    }
 
     // Split binary into chunks and upload
     const chunks = this.splitBinaryIntoChunks(options.programBinary);
     const uploadTxids: string[] = [];
 
-    for (let i = 0; i < chunks.length; i++) {
-      const uploadInstruction = this.createUploadInstruction(
-        options.keypair.pubkey,
-        chunks[i],
-        i * CHUNK_SIZE
-      );
+    const uploadInstructions = chunks.map((chunk, i) =>
+      this.createUploadInstruction(options.keypair.pubkey, chunk, i * CHUNK_SIZE)
+    );
 
-      const txid = await this.sendInstruction(
-        options.rpcUrl,
-        uploadInstruction,
-        options.keypair,
-        options.network
-      );
-      uploadTxids.push(txid);
-    }
+    const txids = await this.sendBatchInstructions(
+      options.rpcUrl,
+      uploadInstructions,
+      options.keypair,
+      options.network
+    );
+
+    uploadTxids.push(...txids);
 
     // Make program executable
     const executableInstruction = this.createExecutableInstruction(
@@ -174,9 +203,11 @@ export class ArchProgramLoader {
       options.network
     );
 
+    const allTxids = createAccountTxid ? [createAccountTxid, ...uploadTxids, executableTxid] : [...uploadTxids, executableTxid];
+
     return {
       programId: options.keypair.pubkey,
-      txids: [createAccountTxid, ...uploadTxids, executableTxid]
+      txids: allTxids
     };
   }
 
@@ -354,9 +385,12 @@ export class ArchProgramLoader {
     chunk: Buffer,
     offset: number
   ): Instruction {
-    const data = Buffer.alloc(1 + chunk.length);
-    data[0] = 1; // ExtendBytes variant
-    chunk.copy(data, 1);
+    const data = Buffer.alloc(8 + chunk.length); // 4 bytes for offset, 4 bytes for length, and chunk data
+    data.writeUInt32LE(offset, 0); // Write offset at the start
+    data.writeUInt32LE(chunk.length, 4); // Write length after offset
+    chunk.copy(data, 8); // Copy chunk data starting at position 8
+
+    console.log('data', data);
 
     return {
       program_id: Buffer.from(SYSTEM_PROGRAM_ID, 'hex'),
@@ -424,5 +458,63 @@ export class ArchProgramLoader {
 
     const rpc = new RpcConnection(rpcUrl);
     return await rpc.sendTransaction(transaction);
+  }
+
+  private static async sendBatchInstructions(
+    rpcUrl: string,
+    instructions: Instruction[],
+    keypair: { privkey: string; pubkey: string },
+    network: string
+  ): Promise<string[]> {
+    const messages = instructions.map(instruction => ({
+      signers: [Buffer.from(keypair.pubkey, 'hex')],
+      instructions: [instruction]
+    }));
+
+    const messageHashes = messages.map(MessageUtil.hash);
+    const privateKeyBuffer = Buffer.from(keypair.privkey, 'hex');
+
+    const signatures = await Promise.all(
+      messageHashes.map(hash => signMessageBIP322(privateKeyBuffer, Buffer.from(hash)))
+    );
+
+    const transactions = messages.map((message, index) => ({
+      version: 0,
+      signatures: [signatures[index]],
+      message
+    }));
+
+    // Check if localhost and if the network is testnet, use the proxy
+    if (window.location.hostname === 'localhost' && network === 'testnet') {
+      rpcUrl = 'http://localhost:3000/rpc';
+    }
+
+    const rpc = new RpcConnection(rpcUrl);
+    return await rpc.sendTransactions(transactions);
+  }
+
+  private static async getProgramAccount(pubkey: string, rpcUrl: string): Promise<any> {
+    console.log('Checking if program account exists for:', {
+      pubkey,
+      rpcUrl
+    });
+
+    try {
+      const rpc = new RpcConnection(rpcUrl);
+      const pubkeyBuffer = Buffer.from(pubkey, 'hex');
+      const accountInfo = await rpc.readAccountInfo(pubkeyBuffer);
+
+      console.log('Account info:', accountInfo);
+      return accountInfo;
+    } catch (error) {
+      console.error('Error in getProgramAccount:', {
+        error,
+        pubkey,
+        rpcUrl,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      return null;
+    }
   }
 }

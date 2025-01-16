@@ -4,6 +4,7 @@ use tower_http::{
     cors::{Any, CorsLayer},
     limit::RequestBodyLimitLayer,
 };
+use http::{Method, header};
 
 pub fn compression() -> CompressionLayer {
     CompressionLayer::new()
@@ -11,9 +12,13 @@ pub fn compression() -> CompressionLayer {
 
 pub fn cors(client_url: String) -> CorsLayer {
     CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_origin([client_url.parse().unwrap()])
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+        ])
 }
 
 pub fn payload_limit(limit: usize) -> RequestBodyLimitLayer {

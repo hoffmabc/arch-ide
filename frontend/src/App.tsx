@@ -25,6 +25,7 @@ import { Buffer } from 'buffer/';
 import { formatBuildError } from './utils/errorFormatter';
 
 const queryClient = new QueryClient();
+console.log('API_URL', import.meta.env.VITE_API_URL);
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 interface Config {
@@ -395,7 +396,7 @@ const App = () => {
 
       console.log('deployOptions', deployOptions);
 
-      const result = await ArchProgramLoader.load(deployOptions);
+      const result = await ArchProgramLoader.load(deployOptions, addOutputMessage);
 
       if (result.programId) {
         addOutputMessage('success', `Program deployed successfully`);

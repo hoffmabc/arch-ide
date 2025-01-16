@@ -5,6 +5,34 @@ import wasm from 'vite-plugin-wasm';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfill';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import type { ServerOptions } from 'http-proxy';
+
+const proxyOptions: ServerOptions = {
+  target: 'http://localhost:9002',
+  changeOrigin: true,
+  secure: false,
+  configure: (proxy, _options) => {
+    proxy.on('proxyReq', (proxyReq, req) => {
+      const url = new URL(req.url!, 'http://localhost:3000');
+      const targetUrl = url.searchParams.get('target');
+      if (targetUrl) {
+        const decodedTarget = decodeURIComponent(targetUrl);
+        const target = new URL(decodedTarget);
+
+        // Set the target properties
+        proxyReq.protocol = target.protocol;
+        proxyReq.host = target.host;
+        proxyReq.path = target.pathname + target.search;
+
+        console.log('Proxying to:', decodedTarget);
+      }
+    });
+
+    proxy.on('error', (err, _req, _res) => {
+      console.log('proxy error:', err);
+    });
+  }
+};
 
 export default defineConfig({
   plugins: [
@@ -60,14 +88,36 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/rpc': {
-        target: 'http://localhost:9002',
+        target: process.env.VITE_RPC_URL || 'http://rpc-01.test.arch.network',
         changeOrigin: true,
-        secure: false
+        secure: false,
+        proxyTimeout: 120000,  // Increase to 2 minutes
+        timeout: 120000,       // Increase to 2 minutes
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Connection', 'keep-alive');
+            proxyReq.setHeader('Keep-Alive', 'timeout=120');
+          });
+
+          proxy.on('error', (err, req, res) => {
+            console.error('Proxy error:', err);
+            if (!res.headersSent) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+            }
+            res.end(JSON.stringify({ error: 'Proxy error' }));
+          });
+        },
+        headers: {
+          'Content-Type': 'application/json',
+        }
       },
       '/api/build': {
-        target: 'http://localhost:8080',
+        target: process.env.VITE_API_URL || 'http://localhost:8080',
         changeOrigin: true,
-        secure: false
+        secure: true,
+        headers: {
+          'Origin': process.env.VITE_CLIENT_URL || 'http://localhost:3000'
+        }
       },
       '/api/bitcoin': {
         target: 'http://localhost:8010/proxy',

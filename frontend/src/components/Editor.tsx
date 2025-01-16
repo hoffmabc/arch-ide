@@ -177,7 +177,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
         }}
         options={{
           minimap: { enabled: false },
-          fontSize: 14,
+          fontSize: 12,
           scrollBeyondLastLine: false,
           lineNumbers: 'on',
           renderWhitespace: 'selection',

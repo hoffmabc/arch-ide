@@ -159,23 +159,37 @@ pub fn build(
     println!("Cargo.toml contents:\n{}", cargo_toml);
 
     // Set up shared target directory
-    let shared_target = Path::new(PROGRAMS_DIR).join("target").canonicalize()?;
+    println!("Setting up shared target directory...");
+    let programs_dir = Path::new(PROGRAMS_DIR);
+    let target_dir = programs_dir.join("target");
+    fs::create_dir_all(&target_dir)?;
+    let shared_target = target_dir.canonicalize()?;
     println!("Using shared target directory: {:?}", shared_target);
 
     // Build using cargo-build-sbf
     println!("Starting cargo-build-sbf...");
     let manifest_path = program_path.join("Cargo.toml").canonicalize()?;
+    println!("Manifest path: {:?}", manifest_path);
     let deploy_dir = program_path.join("target/deploy").canonicalize()?;
+    println!("Deploy directory: {:?}", deploy_dir);
+
+    let manifest_path_str = manifest_path.to_str().expect("Manifest path should be UTF-8");
+    let deploy_dir_str = deploy_dir.to_str().expect("Deploy directory path should be UTF-8");
+    let shared_target_str = shared_target.to_str().expect("Shared target directory path should be UTF-8");
+
+    println!("Using manifest path: {:?}", manifest_path_str);
+    println!("Using deploy directory: {:?}", deploy_dir_str);
+    println!("Using shared target directory: {:?}", shared_target_str);
 
     let output = Command::new("cargo-build-sbf")
         .args([
             "build-sbf",
             "--manifest-path",
-            manifest_path.to_str().expect("Manifest path should be UTF-8"),
+            manifest_path_str,
             "--sbf-out-dir",
-            deploy_dir.to_str().ok_or_else(|| anyhow!("{deploy_dir:?} is not valid UTF-8"))?,
+            deploy_dir_str,
         ])
-        .env("CARGO_TARGET_DIR", shared_target.to_str().unwrap())
+        .env("CARGO_TARGET_DIR", shared_target_str)
         .env("CARGO_BUILD_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
