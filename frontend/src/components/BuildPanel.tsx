@@ -175,12 +175,18 @@ import {
     };
 
     const handleNewKeypair = async () => {
+
+      // If the frontend is localhost, we need to generate a keypair on the backend we use /rpc proxy
+      if (window.location.hostname === 'localhost') {
+        config.rpcUrl = '/rpc';
+      }
+
       const connection = ArchConnection(new RpcConnection(config.rpcUrl));
-      const account = await connection.createNewAccount();
-      onAccountChange(account);
-      onProgramIdChange?.(account.pubkey);
-      onProjectAccountChange(account);
-      setIsNewKeypairDialogOpen(false);
+        const account = await connection.createNewAccount();
+        onAccountChange(account);
+        onProgramIdChange?.(account.pubkey);
+        onProjectAccountChange(account);
+        setIsNewKeypairDialogOpen(false);
     };
 
     // Update the Plus button click handler
