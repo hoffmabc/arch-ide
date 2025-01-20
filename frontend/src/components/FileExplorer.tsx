@@ -36,6 +36,17 @@ import type { FileNode } from '../types';
 import { Button } from '@/components/ui/button';
 import ResizeHandle from './ResizeHandle';
 import Editor from "@monaco-editor/react";
+import * as ts from 'typescript';
+import { ArchConnection, RpcConnection, MessageUtil, PubkeyUtil } from '@saturnbtcio/arch-sdk';
+import { url } from 'inspector';
+import { ArchPgClient } from '../utils/archPgClient';
+
+window.archSdk = {
+  RpcConnection,
+  MessageUtil,
+  PubkeyUtil,
+  // Add other properties as needed
+};
 
 
 const getNodePath = (node: FileNode, path: string[] = []): string => {
@@ -113,6 +124,7 @@ interface FileExplorerProps {
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
   onNewProject?: () => void;
+  addOutputMessage: (type: any, message: any) => void;
 }
 
 interface FileContextMenuProps {
@@ -401,14 +413,49 @@ const FileExplorerItem = ({
   );
 };
 
-const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile, onNewProject }: FileExplorerProps) => {
+const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile, onNewProject, addOutputMessage }: FileExplorerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [worker, setWorker] = useState<Worker | null>(null);
   const [clientHeight, setClientHeight] = useState(300);
+
+  useEffect(() => {
+    // Create the worker once when the component mounts
+    const newWorker = new Worker(new URL('../workers/clientWorker.ts', import.meta.url), { type: 'module' });
+
+    // Listen for messages from the worker
+    newWorker.onmessage = (event) => {
+        const { type, message } = event.data;
+        console.log('Worker message received:', event.data); // Debug log
+
+        // Handle log messages
+        switch (type) {
+            case 'info':
+                addOutputMessage('info', message);
+                break;
+            case 'error':
+                addOutputMessage('error', message);
+                break;
+            case 'success':
+                addOutputMessage('success', message);
+                break;
+            default:
+                addOutputMessage('info', message);
+        }
+    };
+
+    // Set the worker in state
+    setWorker(newWorker);
+
+    // Cleanup function to terminate the worker when the component unmounts
+    return () => {
+        newWorker.terminate();
+    };
+  }, [addOutputMessage]);
 
   // Group files by section
   const programFiles = files.filter(f => f.name === 'src');
   const clientFiles = files.filter(f => f.name === 'client');
-  const otherFiles = files.filter(f => f.name !== 'src' && f.name !== 'client');
+  const otherFiles = files.filter(f => !['src', 'client'].includes(f.name));
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -417,6 +464,37 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
       onNewItem([], 'file', file.name, content);
     }
   };
+
+  const runClientCode = async () => {
+    try {
+        if (!currentFile || !currentFile.name.endsWith('.ts')) {
+            addOutputMessage('error', 'No TypeScript file selected');
+            return;
+        }
+
+        const clientCode = currentFile.content;
+        if (!clientCode) {
+            addOutputMessage('error', 'Client code not found');
+            return;
+        }
+
+        addOutputMessage('info', 'Executing code...');
+
+        try {
+            await ArchPgClient.execute({
+                fileName: currentFile.name,
+                code: clientCode,
+                onMessage: (type, message) => {
+                    addOutputMessage(type, message);
+                }
+            });
+        } catch (error) {
+            addOutputMessage('error', `Error: ${error.message}`);
+        }
+    } catch (error) {
+        addOutputMessage('error', `Error: ${error.message}`);
+    }
+};
 
   return (
     <div className="bg-gray-800 w-full h-full flex flex-col">
@@ -504,7 +582,7 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
                     <Plus size={14} />
                   </button>
                 </div>
-                <Button size="sm" variant="ghost" className="h-6 px-2">
+                <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => runClientCode()}>
                   Run
                 </Button>
               </div>
