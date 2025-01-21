@@ -29,7 +29,7 @@ export const Output = ({ messages, onClear }: OutputProps) => {
           variant="ghost"
           size="sm"
           onClick={onClear}
-          className="text-gray-400 hover:text-white h-6 px-2 text-xs"
+          className="text-gray-400 hover:bg-gray-700 hover:text-white h-6 px-2 text-xs"
         >
           <Trash2 className="h-3 w-3 mr-1" />
           Clear

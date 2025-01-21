@@ -49,8 +49,8 @@ window.archSdk = {
 };
 
 
-const getNodePath = (node: FileNode, path: string[] = []): string => {
-  return [...path, node.name].join('/');
+const getNodePath = (node: FileNode, path: FileNode[] = []): string => {
+  return [...path.map(p => p.name), node.name].join('/');
 };
 
 const getFileIcon = (fileName: string) => {
@@ -457,11 +457,23 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
   const clientFiles = files.filter(f => f.name === 'client');
   const otherFiles = files.filter(f => !['src', 'client'].includes(f.name));
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const content = await readFileContent(file);
-      onNewItem([], 'file', file.name, content);
+  const handleFileSelect = (file: FileNode) => {
+    if (file.type === 'file') {
+      const filePath = file.path || getNodePath(file, files);
+      const projectFile = files.find(f => f.path === filePath);
+      const projectFileToUse = !projectFile && hasProjects ?
+        findFileInProject(files, filePath) : null;
+
+      const fileToUse = projectFileToUse || {
+        ...file,
+        path: filePath,
+        name: file.name
+      };
+
+      onFileSelect({
+        ...fileToUse,
+        path: filePath
+      });
     }
   };
 
@@ -665,6 +677,19 @@ const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' | '
   if (videoExtensions.includes(extension || '')) return 'video';
   if (audioExtensions.includes(extension || '')) return 'audio';
   return 'text';
+};
+
+const findFileInProject = (projectFiles: FileNode[], targetPath: string): FileNode | null => {
+  for (const file of projectFiles) {
+    if (file.path === targetPath || (file.type === 'file' && file.name === targetPath)) {
+      return file;
+    }
+    if (file.type === 'directory' && file.children) {
+      const found = findFileInProject(file.children, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
 };
 
 export default FileExplorer;

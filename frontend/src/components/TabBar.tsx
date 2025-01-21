@@ -29,20 +29,22 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProj
       contentPreview: file.content?.substring(0, 100)
     });
 
-    // Find the actual file node from the current project
-    const projectFile = findFileInProject(currentProject?.files || [], file.path || file.name);
+    // Find the file in openFiles first since it has the latest content
+    const openFile = openFiles.find(f => f.path === file.path || f.name === file.name);
 
-    if (projectFile) {
-      console.log('Found file in project:', {
-        name: projectFile.name,
-        path: projectFile.path,
-        contentLength: projectFile.content?.length,
-        contentPreview: projectFile.content?.substring(0, 100)
+    if (openFile) {
+      console.log('Found file in openFiles:', {
+        name: openFile.name,
+        path: openFile.path,
+        contentLength: openFile.content?.length,
+        contentPreview: openFile.content?.substring(0, 100)
       });
-      onSelectFile(projectFile);
+      onSelectFile(openFile);
     } else {
-      console.warn('File not found in project:', file.path || file.name);
-      onSelectFile(file);
+      console.warn('File not found in openFiles, falling back to project files:', file.path || file.name);
+      // Fallback to project files if not found in open files
+      const projectFile = findFileInProject(currentProject?.files || [], file.path || file.name);
+      onSelectFile(projectFile || file);
     }
 
     console.groupEnd();

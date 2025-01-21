@@ -539,13 +539,20 @@ const App = () => {
   const handleFileChange = useCallback((newContent: string | undefined) => {
     if (!newContent || !currentFile || !fullCurrentProject) return;
 
-    // Update UI immediately
+    // Update current file
     setCurrentFile(prev => ({
       ...prev!,
       content: newContent
     }));
 
-    // Queue the change
+    // Update open files with new content
+    setOpenFiles(prev => prev.map(f =>
+      (f.path === currentFile.path || f.name === currentFile.name)
+        ? { ...f, content: newContent }
+        : f
+    ));
+
+    // Queue the change for saving
     setPendingChanges(prev => {
       const newMap = new Map(prev);
       newMap.set(currentFile.path || currentFile.name, {
