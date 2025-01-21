@@ -154,7 +154,7 @@ export class ArchProgramLoader {
     const programAccount = await this.getProgramAccount(options.keypair.pubkey, options.rpcUrl);
 
     if (programAccount) {
-      onMessage?.('info', `Program ${options.keypair.pubkey} already exists, proceeding with upload`);
+      onMessage?.('info', `Program ${options.keypair.pubkey} already exists, proceeding with re-deploy`);
     }
 
     if (!programAccount) {

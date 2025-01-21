@@ -106,6 +106,17 @@ const PROGRAM_TEMPLATE: FileNode[] = [
         content: DEFAULT_PROGRAM
       }
     ]
+  },
+  {
+    name: 'client',
+    type: 'directory',
+    children: [
+      {
+        name: 'client.ts',
+        type: 'file',
+        content: ''
+      }
+    ]
   }
 ];
 
@@ -443,33 +454,32 @@ export class ProjectService {
       hasContent: !!n.content
     })));
 
-    // Find or create src directory
+    // Find or create src directory if it doesn't exist
     let srcNode = fileNodes.find(node => node.name === 'src' && node.type === 'directory');
-
     if (!srcNode) {
       srcNode = {
         name: 'src',
         type: 'directory',
         children: []
       };
-      fileNodes = [srcNode];
+      // Only add src directory if we have Rust files that should go in it
+      const hasRustFiles = fileNodes.some(node =>
+        node.type === 'file' && node.name.endsWith('.rs')
+      );
+      if (hasRustFiles) {
+        fileNodes.push(srcNode);
+      }
     }
 
-    // Move lib.rs to src directory if it exists at root
+    // Only move lib.rs to src directory if it exists at root and src exists
     const libRs = fileNodes.find(node => node.name === 'lib.rs' && node.type === 'file');
-    if (libRs) {
-      // Verify we're not duplicating content
-      const existingLibRs = srcNode.children?.find(n => n.name === 'lib.rs');
-      if (existingLibRs) {
-        console.error('Duplicate lib.rs detected!', {
-          rootContent: libRs.content?.substring(0, 100),
-          srcContent: existingLibRs.content?.substring(0, 100)
-        });
-      }
-
+    if (libRs && srcNode) {
       srcNode.children = srcNode.children || [];
-      srcNode.children.push(libRs);
-      fileNodes = fileNodes.filter(node => node !== libRs);
+      // Only move if not already in src
+      if (!srcNode.children.find(n => n.name === 'lib.rs')) {
+        srcNode.children.push(libRs);
+        fileNodes = fileNodes.filter(node => node !== libRs);
+      }
     }
 
     // Log final state

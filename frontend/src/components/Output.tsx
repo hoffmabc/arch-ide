@@ -35,22 +35,22 @@ export const Output = ({ messages, onClear }: OutputProps) => {
           Clear
         </Button>
       </div>
-      <div ref={scrollRef} className="bg-gray-900 text-white font-mono p-2 overflow-auto flex-1 text-xs leading-4">
+      <div ref={scrollRef} className="bg-gray-900 text-white font-mono p-2 overflow-y-auto overflow-x-auto flex-1 text-xs leading-4 break-words whitespace-pre-wrap">
         {messages.map((msg, i) => (
           <div key={i} className="mb-2">
-            <div className="flex items-center">
-              <span className="text-gray-500 text-[10px] whitespace-nowrap mr-2">
+            <div className="flex items-top">
+              <span className="text-gray-500 text-[10px] whitespace-nowrap mr-2 align-top">
                 {msg.timestamp.toLocaleTimeString()}
               </span>
-              <div className="flex-1">
+              <div className="flex-1 max-w-full">
                 {msg.type === 'command' && (
-                  <span className="text-blue-400">$ {msg.content}</span>
+                  <span className="text-blue-400 break-words">{`$ ${msg.content}`}</span>
                 )}
                 {msg.type === 'success' && (
-                  <span className="text-green-400">{msg.content}</span>
+                  <span className="text-green-400 break-words">{msg.content}</span>
                 )}
                 {msg.type === 'error' && (
-                  <div className="text-red-400 whitespace-pre-wrap">
+                  <div className="text-red-400 whitespace-pre-wrap break-words">
                     {msg.content.split('\n').map((line, i) => (
                       <div key={i} className={`
                         ${line.startsWith('File:') ? 'text-yellow-400 mt-1' : ''}
@@ -63,7 +63,7 @@ export const Output = ({ messages, onClear }: OutputProps) => {
                   </div>
                 )}
                 {msg.type === 'info' && (
-                  <span className="text-gray-400">{msg.content}</span>
+                  <div className="text-blue-400 break-words">{msg.content}</div>
                 )}
               </div>
             </div>

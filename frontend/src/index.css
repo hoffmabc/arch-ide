@@ -91,3 +91,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+.monaco-editor .monaco-editor-hover {
+  z-index: 1000; /* Set a higher z-index */
+}
+
+.break-words {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}

@@ -485,15 +485,19 @@ const App = () => {
 
     if (!fullCurrentProject) return;
 
-    // Prevent creation at root level
-    if (path.length === 0) {
+    console.log('fullCurrentProject', fullCurrentProject);
+
+    // Allow creation at root level for specific directories like 'client'
+    if (path.length === 0 && type === 'directory' && fileName === 'client') {
+      path = ['client'];
+    } else if (path.length === 0) {
       path = ['src'];
     }
 
-    // Ensure we're under the src directory
-    const isUnderSrc = path[0] === 'src';
-    if (!isUnderSrc) {
-      console.warn('Can only create items under src directory');
+    // Only enforce src directory for Rust files
+    const isRustFile = fileName?.endsWith('.rs');
+    if (isRustFile && !path.includes('src')) {
+      console.warn('Rust files must be created under src directory');
       return;
     }
 
@@ -1107,6 +1111,7 @@ const App = () => {
             onNewProject={handleNewProject}
             binaryFileName={binaryFileName}
             setBinaryFileName={setBinaryFileName}
+            addOutputMessage={addOutputMessage}
           />
 
           <div className="flex flex-col flex-1 overflow-hidden">

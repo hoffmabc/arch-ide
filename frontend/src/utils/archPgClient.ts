@@ -1,5 +1,5 @@
-import { transpile, ScriptTarget } from "typescript";
-import { RpcConnection, ArchConnection, PubkeyUtil } from "@saturnbtcio/arch-sdk";
+import { transpile, ScriptTarget, ModuleKind } from "typescript";
+import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil } from "@saturnbtcio/arch-sdk";
 
 interface ClientParams {
   fileName: string;
@@ -52,6 +52,7 @@ export class ArchPgClient {
         ['RpcConnection', RpcConnection],
         ['ArchConnection', ArchConnection],
         ['PubkeyUtil', PubkeyUtil],
+        ['MessageUtil', MessageUtil],
       ];
 
       // Set iframe globals
@@ -59,7 +60,7 @@ export class ArchPgClient {
         (iframeWindow as any)[name] = pkg;
       }
 
-      // Wrap code in async IIFE and class
+      // Wrap in async IIFE and class
       code = `(async () => {
         class __Arch {
           async __run() {
@@ -70,7 +71,7 @@ export class ArchPgClient {
         try {
           await __arch.__run();
         } catch (e) {
-          console.error(e.message);
+          console.error(e.toString());
         }
       })()`;
 
@@ -81,15 +82,17 @@ export class ArchPgClient {
       });
 
       return new Promise<void>((resolve) => {
-        // Create and inject new script
         const scriptEl = document.createElement("script");
         iframeDocument.head.appendChild(scriptEl);
         scriptEl.textContent = code;
 
-        // Resolve when code execution is complete
-        onMessage('success', 'Code executed successfully');
-        resolve();
+        // Wait a bit to catch any immediate errors
+        setTimeout(() => {
+          onMessage('success', 'Code executed successfully');
+          resolve();
+        }, 2000);
       });
+
     } finally {
       this._isClientRunning = false;
       console.log('ArchPgClient.execute finally called', this._isClientRunning);

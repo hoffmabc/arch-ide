@@ -58,3 +58,7 @@ export interface ArchIdl {
     isSigner: boolean;
     isWritable: boolean;
   }
+
+  export interface Disposable {
+    dispose(): void;
+  }
