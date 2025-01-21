@@ -191,7 +191,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
 
           // Set compiler options first
           monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-            target: monaco.languages.typescript.ScriptTarget.ES2020,
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
             module: monaco.languages.typescript.ModuleKind.ESNext,
             moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
             allowNonTsExtensions: true,
@@ -227,16 +227,18 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
 
           // Then add the globals
           monaco.languages.typescript.typescriptDefaults.addExtraLib(`
-            declare const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
-            declare const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
-            declare const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
-
-            declare const console: {
-              log(...args: any[]): void;
-              error(...args: any[]): void;
-              warn(...args: any[]): void;
-              info(...args: any[]): void;
-            };
+            declare global {
+              const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
+              const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
+              const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
+              const console: {
+                log(...args: any[]): void;
+                error(...args: any[]): void;
+                warn(...args: any[]): void;
+                info(...args: any[]): void;
+              };
+            }
+            export {};
           `, 'ts:filename/globals.d.ts');
 
           const language = getLanguage(currentFile?.name || '');
