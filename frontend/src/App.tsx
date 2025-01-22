@@ -739,32 +739,43 @@ const App = () => {
         throw new Error('src directory not found or invalid');
       }
 
-      // Collect all non-empty .rs files from src directory
-      const rsFiles: [string, string][] = srcDir.children
-        .filter(node =>
-          node.type === 'file' &&
-          node.name.endsWith('.rs') &&
-          node.content &&
-          node.content.trim() !== ''  // Only include files with non-empty content
-        )
-        .map(file => {
-          let decodedContent = file.content!;
-          // If it's base64 encoded, decode it
-          if (file.content!.startsWith('data:text/plain;base64,')) {
-            const plainContent = file.content!.replace(/^data:text\/plain;base64,/, '');
-            try {
-              decodedContent = atob(plainContent);
-            } catch (error: any) { // Added 'any' to specify the type of 'error'
-              throw new Error(`Failed to decode content for file: ${file.name}. Error: ${error.message}`);
-            }
-          }
+      // Recursively collect all .rs files from src directory and its subdirectories
+      const collectRustFiles = (dir: FileNode[], basePath: string = ''): [string, string][] => {
+        let files: [string, string][] = [];
 
-          return [`/src/${file.name}`, decodedContent];
-        });
+        for (const node of dir) {
+          const currentPath = basePath ? `${basePath}/${node.name}` : node.name;
+
+          if (node.type === 'file' && node.name.endsWith('.rs') && node.content) {
+            let decodedContent = node.content;
+
+            // Handle base64 encoded content
+            if (node.content.startsWith('data:text/plain;base64,')) {
+              const plainContent = node.content.replace(/^data:text\/plain;base64,/, '');
+              try {
+                decodedContent = atob(plainContent);
+              } catch (error: any) {
+                throw new Error(`Failed to decode content for file: ${node.name}. Error: ${error.message}`);
+              }
+            }
+
+            files.push([`/src/${currentPath}`, decodedContent]);
+          } else if (node.type === 'directory' && node.children) {
+            // Recursively collect files from subdirectories
+            files = files.concat(collectRustFiles(node.children, currentPath));
+          }
+        }
+
+        return files;
+      };
+
+      const rsFiles = collectRustFiles(srcDir.children);
 
       if (rsFiles.length === 0) {
         throw new Error('No non-empty Rust source files found in src directory');
       }
+
+      console.log('Sending Rust files to compile server:', rsFiles.map(([path]) => path));
 
       const buildResponse = await fetch(`${API_URL}/build`, {
         method: 'POST',
@@ -875,6 +886,7 @@ const App = () => {
     }
 
     try {
+      console.log(fullCurrentProject.files);
       const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
       const updatedProject = {
         ...fullCurrentProject,
@@ -1196,16 +1208,28 @@ const updateFileContent = (nodes: FileNode[], targetFile: FileNode, newContent: 
 
   const updateNode = (node: FileNode): FileNode => {
     if (node.type === 'file') {
+      // Normalize paths by removing leading src/, client/, and any leading slashes
+      const normalizeFilePath = (path: string) => {
+        return path
+          .replace(/^(src\/|client\/)/, '') // Remove leading src/ or client/
+          .replace(/^\/+/, ''); // Remove any leading slashes
+      };
+
       // Ensure both nodes have paths for comparison
-      const nodePath = node.path || constructFullPath(node, nodes);
-      const targetPath = targetFile.path || constructFullPath(targetFile, nodes);
+      const nodePath = normalizeFilePath(node.path || constructFullPath(node, nodes));
+      const targetPath = normalizeFilePath(targetFile.path || constructFullPath(targetFile, nodes));
+
+      console.log('Comparing paths:', {
+        normalizedNodePath: nodePath,
+        normalizedTargetPath: targetPath
+      });
 
       if (nodePath === targetPath) {
-        console.log(`Updating content for ${nodePath}`, {
+        console.log(`Updating content for ${node.path}`, {
           oldContent: node.content?.substring(0, 100),
           newContent: newContent.substring(0, 100)
         });
-        return { ...node, path: nodePath, content: newContent };
+        return { ...node, path: node.path || constructFullPath(node, nodes), content: newContent };
       }
     }
 
@@ -1270,7 +1294,7 @@ function debounce<T extends (...args: any[]) => any>(
       clearTimeout(timeout);
     }
 
-    timeout = setTimeout(() => {
+setTimeout(() => {
       func(...args);
       timeout = null;
     }, wait);
