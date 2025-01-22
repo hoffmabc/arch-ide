@@ -21,18 +21,16 @@ crate-type = ["cdylib"]
 arch_program = { path = "../../crates/program" }
 
 # Core serialization/encoding
-borsh = { version = "1.5.1", features = ["derive"] }
-
-# Utilities
-base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
-hex = { version = "0.4.3", default-features = false }
-sha256 = { version = "1.5.0", default-features = false }
+borsh = "=1.5.1"
+base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
+hex = { version = "=0.4.3", default-features = false }
+sha256 = { version = "=1.5.0", default-features = false }
 
 # Error handling
-thiserror = "*"
+thiserror = "=1.0.50"
 
 # Serialization
-serde = { version = "1.0.136", features = ["derive"], default-features = false }
+serde = { version = "=1.0.198", features = ["derive"], default-features = false }
 
 [profile.release]
 overflow-checks = true
@@ -166,6 +164,12 @@ pub fn build(
     let shared_target = target_dir.canonicalize()?;
     println!("Using shared target directory: {:?}", shared_target);
 
+    // Clean up any existing Cargo.lock
+    let lock_file = program_path.join("Cargo.lock");
+    if lock_file.exists() {
+        fs::remove_file(&lock_file)?;
+    }
+
     // Build using cargo-build-sbf
     println!("Starting cargo-build-sbf...");
     let manifest_path = program_path.join("Cargo.toml").canonicalize()?;
@@ -188,6 +192,8 @@ pub fn build(
             manifest_path_str,
             "--sbf-out-dir",
             deploy_dir_str,
+            "--",
+            "-Znext-lockfile-bump"
         ])
         .env("CARGO_TARGET_DIR", shared_target_str)
         .env("CARGO_BUILD_INCREMENTAL", "true")
