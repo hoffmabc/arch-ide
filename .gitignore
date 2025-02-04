@@ -14,3 +14,5 @@ rust-server/programs/*
 
 # target folder in rust-server
 rust-server/target/*
+
+**/target/*
