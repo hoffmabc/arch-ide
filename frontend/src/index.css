@@ -93,10 +93,49 @@
 }
 
 .monaco-editor .monaco-editor-hover {
-  z-index: 1000; /* Set a higher z-index */
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
+.monaco-editor .hover-row {
+  max-width: none !important;
+}
+
+.monaco-editor {
+  overflow: visible !important;
+}
+
+.overflow-guard {
+  overflow: visible !important;
 }
 
 .break-words {
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+
+/* Add styles for the hover widget container */
+.monaco-hover {
+  z-index: 9999 !important;
+  position: fixed !important;
+  max-width: 500px !important;
+}
+
+/* Ensure the editor container doesn't clip content */
+.monaco-editor .overflow-guard {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+/* Ensure parent containers don't clip the hover */
+.monaco-editor-background,
+.monaco-editor {
+  overflow: visible !important;
+}
+
+/* Style the hover content */
+.monaco-hover-content {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  padding: 4px 8px !important;
 }
