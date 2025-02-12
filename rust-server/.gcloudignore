@@ -1,0 +1,17 @@
+# Rust specific
+target/
+.cargo/
+**/*.rs.bk
+Cargo.lock
+
+# Git
+.git/
+.gitignore
+
+# IDE specific
+.idea/
+.vscode/
+
+# Any other large files or directories you don't need
+node_modules/
+*.log

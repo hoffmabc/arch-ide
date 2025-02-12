@@ -1,45 +1,45 @@
-# Use the official Rust image as a builder
-FROM rust:1.75 as builder
+FROM ubuntu:22.04 as rust
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+ARG DEBIAN_FRONTEND="noninteractive"
+ENV HOME="/root"
 
-# Create a new empty shell project
-WORKDIR /usr/src/app
-COPY . .
+# Install build deps
+RUN apt-get update -qq && apt-get upgrade -qq && apt-get install -qq \
+    build-essential curl pkg-config libssl-dev libudev-dev gcc-multilib libc6-dev-i386
 
-# Build the application
+# Install Rust
+RUN sh -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y --default-toolchain 1.75.0
+ENV PATH="${HOME}/.cargo/bin:${PATH}"
+
+# Build server binary
+FROM rust as build
+
+WORKDIR /build
+COPY Cargo.* .
+COPY src src
 RUN cargo build --release
 
-# Create the runtime image
-FROM debian:bookworm-slim
+# Start server
+FROM rust
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+ARG SOLANA_VERSION="1.18.26"
 
-# Install Rust and cargo-build-sbf
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Solana
+RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+ENV PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
 
-# Copy necessary files from builder
-COPY --from=builder /usr/src/app/target/release/arch-server /usr/local/bin/
-COPY --from=builder /usr/src/app/crates /app/crates
-COPY --from=builder /usr/src/app/programs /app/programs
+# Set the workdir
+WORKDIR /app
+
+# Copy programs dir
+COPY programs programs
 
 # Create necessary directories
 RUN mkdir -p /app/programs/target/deploy
 
-# Set the working directory
-WORKDIR /app
+# Copy server binary
+COPY --from=build /build/target/release/arch-server /usr/local/bin/
 
-# Expose the port the app runs on
 EXPOSE 8080
 
-# Command to run the application
 CMD ["arch-server"]

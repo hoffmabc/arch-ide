@@ -18,7 +18,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-arch_program = { path = "../../crates/program" }
+arch_program = "0.3.2"
 
 # Core serialization/encoding
 borsh = "=1.5.1"
@@ -36,11 +36,12 @@ serde = { version = "=1.0.198", features = ["derive"], default-features = false 
 overflow-checks = true
 incremental = true
 codegen-units = 256
-opt-level = 2
+opt-level = 1
 lto = false
+debug = false
 
 [profile.release.build-override]
-opt-level = 3
+opt-level = 1
 incremental = true
 codegen-units = 256
 "#;
@@ -66,7 +67,7 @@ overflow-checks = true
 incremental = true
 
 [dependencies]
-arch_program = { path = "../crates/program" }
+arch_program = "0.3.2"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
@@ -131,6 +132,7 @@ pub fn build(
     let program_path = Path::new(PROGRAMS_DIR).join(uuid);
     println!("Program directory: {:?}", program_path);
 
+    // Ensure the program directory and its subdirectories exist
     fs::create_dir_all(&program_path)?;
     fs::create_dir_all(program_path.join("src"))?;
     fs::create_dir_all(program_path.join("target/deploy"))?;
@@ -150,11 +152,18 @@ pub fn build(
     // Create program-specific Cargo.toml with sanitized name
     println!("Creating Cargo.toml...");
     let safe_program_name = program_name.replace(|c: char| !c.is_alphanumeric(), "_");
-    let cargo_toml = CARGO_TOML_TEMPLATE
-        .replace("{}", &safe_program_name);
+    let cargo_toml = CARGO_TOML_TEMPLATE.replace("{}", &safe_program_name);
     let manifest_path = program_path.join("Cargo.toml");
-    fs::write(&manifest_path, &cargo_toml)?;
+
+    // Debug output for Cargo.toml creation
+    println!("Writing Cargo.toml to: {:?}", manifest_path);
     println!("Cargo.toml contents:\n{}", cargo_toml);
+
+    // Write Cargo.toml and verify it exists
+    fs::write(&manifest_path, &cargo_toml)?;
+    if !manifest_path.exists() {
+        return Err(anyhow!("Failed to create Cargo.toml file"));
+    }
 
     // Set up shared target directory
     println!("Setting up shared target directory...");
@@ -167,43 +176,82 @@ pub fn build(
     // Clean up any existing Cargo.lock
     let lock_file = program_path.join("Cargo.lock");
     if lock_file.exists() {
+        println!("Removing existing Cargo.lock file...");
         fs::remove_file(&lock_file)?;
+    } else {
+        println!("No existing Cargo.lock file found.");
     }
 
-    // Build using cargo-build-sbf
-    println!("Starting cargo-build-sbf...");
-    let manifest_path = program_path.join("Cargo.toml").canonicalize()?;
-    println!("Manifest path: {:?}", manifest_path);
-    let deploy_dir = program_path.join("target/deploy").canonicalize()?;
-    println!("Deploy directory: {:?}", deploy_dir);
+    // Check Cargo version to determine if we need the lockfile bump flag
+    let cargo_version_output = Command::new("cargo")
+        .arg("--version")
+        .output()?;
+    let cargo_version = String::from_utf8_lossy(&cargo_version_output.stdout);
+    println!("Detected Cargo version: {}", cargo_version);
+    let needs_lockfile_bump = cargo_version.contains("1.75");
+    if needs_lockfile_bump {
+        println!("Cargo version requires lockfile bump.");
+    } else {
+        println!("Cargo version does not require lockfile bump.");
+    }
 
-    let manifest_path_str = manifest_path.to_str().expect("Manifest path should be UTF-8");
-    let deploy_dir_str = deploy_dir.to_str().expect("Deploy directory path should be UTF-8");
-    let shared_target_str = shared_target.to_str().expect("Shared target directory path should be UTF-8");
+    // Create string bindings to ensure paths live long enough
+    let manifest_path_str = manifest_path
+        .canonicalize()
+        .unwrap_or(manifest_path.clone())
+        .to_str()
+        .expect("Manifest path should be UTF-8")
+        .to_string();
 
-    println!("Using manifest path: {:?}", manifest_path_str);
-    println!("Using deploy directory: {:?}", deploy_dir_str);
-    println!("Using shared target directory: {:?}", shared_target_str);
+    let deploy_dir_str = program_path
+        .join("target/deploy")
+        .canonicalize()
+        .unwrap_or_else(|_| program_path.join("target/deploy"))
+        .to_str()
+        .expect("Deploy directory path should be UTF-8")
+        .to_string();
+
+    let shared_target_str = shared_target
+        .to_str()
+        .expect("Shared target directory path should be UTF-8")
+        .to_string();
+
+    println!("Using absolute paths:");
+    println!("Manifest path: {}", manifest_path_str);
+    println!("Deploy dir: {}", deploy_dir_str);
+    println!("Shared target: {}", shared_target_str);
+
+    // Build the args vector conditionally
+    let mut build_args = vec![
+        "build-sbf",
+        "--manifest-path",
+        &manifest_path_str,
+        "--sbf-out-dir",
+        &deploy_dir_str,
+    ];
+    if needs_lockfile_bump {
+        println!("Adding lockfile bump flag to build args.");
+        build_args.extend(["--", "-Znext-lockfile-bump"]);
+    }
+
+    println!("Executing build command with args: {:?}", build_args);
 
     let output = Command::new("cargo-build-sbf")
-        .args([
-            "build-sbf",
-            "--manifest-path",
-            manifest_path_str,
-            "--sbf-out-dir",
-            deploy_dir_str,
-            "--",
-            "-Znext-lockfile-bump"
-        ])
-        .env("CARGO_TARGET_DIR", shared_target_str)
+        .args(&build_args)
+        .env("CARGO_TARGET_DIR", &shared_target_str)
         .env("CARGO_BUILD_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
+        .env("RUST_LOG", "debug")
+        .env("RUST_BACKTRACE", "1")
+        .current_dir(&program_path)  // Ensure we're in the program directory
         .output()?;
+    println!("Build command executed successfully.");
 
     // Process output
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8(output.stderr)?;
+    println!("Build output processed successfully.");
 
     println!("Build stdout:\n{}", stdout);
     println!("Build stderr:\n{}", stderr);
