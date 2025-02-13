@@ -1,7 +1,7 @@
 use axum::{response::IntoResponse, middleware::Next};
 use tower_http::{
     compression::CompressionLayer,
-    cors::{Any, CorsLayer},
+    cors::{CorsLayer, Any},
     limit::RequestBodyLimitLayer,
 };
 use http::{Method, header};
@@ -10,15 +10,16 @@ pub fn compression() -> CompressionLayer {
     CompressionLayer::new()
 }
 
-pub fn cors(client_url: String) -> CorsLayer {
+pub fn cors(_client_url: String) -> CorsLayer {
     CorsLayer::new()
-        .allow_origin([client_url.parse().unwrap()])
-        .allow_methods([Method::GET, Method::POST])
+        .allow_origin(Any)  // Allow any origin since we're using Vercel deployments
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([
-            header::AUTHORIZATION,
             header::CONTENT_TYPE,
             header::ACCEPT,
         ])
+        // Remove allow_credentials since we don't need it
+        .max_age(std::time::Duration::from_secs(86400)) // 24 hours cache
 }
 
 pub fn payload_limit(limit: usize) -> RequestBodyLimitLayer {

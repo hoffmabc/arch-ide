@@ -14,7 +14,7 @@ use axum::{
     Router,
 };
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, error};
 
 use self::{config::Config, log::init_logging, middlewares::*, routes::*};
 
@@ -24,10 +24,14 @@ async fn main() -> Result<()> {
     init_logging(config.verbose);
     info!("Config loaded: {config:#?}");
 
-    program::init().await?;
+    program::init().await.map_err(|e| {
+        error!("Failed to initialize program directory: {}", e);
+        e
+    })?;
     info!("Program directory initialized");
 
     let app = Router::new()
+        .route("/health", get(health))
         .route("/build", post(build))
         .route("/deploy/:uuid/:program_name", get(deploy))
         .layer(compression())
@@ -36,10 +40,19 @@ async fn main() -> Result<()> {
         .layer(middleware::from_fn(log));
 
     let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port));
-    let listener = TcpListener::bind(addr).await?;
-    info!("Listening on {addr}");
+    info!("Attempting to bind to {addr}");
 
-    axum::serve(listener, app).await?;
+    let listener = TcpListener::bind(addr).await.map_err(|e| {
+        error!("Failed to bind to {}: {}", addr, e);
+        e
+    })?;
+    info!("Successfully bound to {addr}");
+
+    info!("Starting server...");
+    axum::serve(listener, app).await.map_err(|e| {
+        error!("Server error: {}", e);
+        e
+    })?;
 
     Ok(())
 }

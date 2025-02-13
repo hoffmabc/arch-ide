@@ -40,6 +40,14 @@ RUN mkdir -p /app/programs/target/deploy
 # Copy server binary
 COPY --from=build /build/target/release/arch-server /usr/local/bin/
 
-EXPOSE 8080
+# Default environment variables
+ENV PORT=8080
+ENV RUST_LOG=info
+
+# Health check
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+EXPOSE ${PORT}
 
 CMD ["arch-server"]

@@ -1,13 +1,21 @@
-use std::{fs, path::Path, process::Command, sync::OnceLock};
+use std::{fs, path::Path, process::Command, sync::OnceLock, env};
 use anyhow::anyhow;
 use regex::Regex;
 use tokio::sync::OnceCell;
+use cloud_storage::Client;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use tracing::info;
 
 const PROGRAMS_DIR: &str = "programs";
 const MAX_FILE_AMOUNT: usize = 64;
 const MAX_PATH_LENGTH: usize = 128;
 
 static INIT: OnceCell<()> = OnceCell::const_new();
+static GCS_CLIENT: OnceLock<Client> = OnceLock::new();
+
+fn get_gcs_bucket() -> String {
+    env::var("GCS_BUCKET").unwrap_or_else(|_| "arch-ide-build-artifacts".to_string())
+}
 
 const CARGO_TOML_TEMPLATE: &str = r#"[package]
 name = "{}"
@@ -262,8 +270,19 @@ pub fn build(
         .join(format!("{}.so", safe_program_name));
     println!("Checking for binary at: {:?}", binary_path);
 
+    // After successful build, upload to GCS
     if binary_path.exists() {
         println!("Binary file created successfully");
+        let binary_data = fs::read(&binary_path)?;
+        // Clone the uuid and safe_program_name to ensure they outlive the async block
+        let uuid = uuid.to_string(); // Clone to owned String
+        let safe_program_name = safe_program_name.clone();
+        let binary_data = binary_data.to_vec(); // Clone the data
+        tokio::spawn(async move {
+            if let Err(e) = upload_to_gcs(&uuid, &safe_program_name, &binary_data).await {
+                eprintln!("Failed to upload binary to GCS: {}", e);
+            }
+        });
     } else {
         println!("Warning: Binary file not found at expected location");
     }
@@ -271,13 +290,63 @@ pub fn build(
     Ok((stderr, safe_program_name))
 }
 
+async fn upload_to_gcs(uuid: &str, program_name: &str, binary_data: &[u8]) -> anyhow::Result<()> {
+    info!("Starting GCS upload for program {} with UUID {}", program_name, uuid);
+    let client = GCS_CLIENT.get_or_init(|| {
+        info!("Initializing GCS client");
+        Client::default()
+    });
+
+    let bucket = get_gcs_bucket();
+    let object_name = format!("binaries/{}/{}.so", uuid, program_name);
+    info!("Uploading to GCS bucket {} with path {}", bucket, object_name);
+
+    client.object().create(
+        &bucket,
+        binary_data.to_vec(),
+        &object_name,
+        "application/octet-stream",
+    ).await?;
+
+    info!("Successfully uploaded program binary to GCS");
+    Ok(())
+}
+
+async fn download_from_gcs(uuid: &str, program_name: &str) -> anyhow::Result<Vec<u8>> {
+    let client = GCS_CLIENT.get_or_init(|| {
+        Client::default()
+    });
+
+    let bucket = get_gcs_bucket();
+    let object_name = format!("binaries/{}/{}.so", uuid, program_name);
+    let data = client.object().download(&bucket, &object_name).await?;
+
+    Ok(data)
+}
+
 pub async fn get_binary(uuid: &str, program_name: &str) -> std::io::Result<Vec<u8>> {
     let safe_program_name = program_name.replace(|c: char| !c.is_alphanumeric(), "_");
+
+    // First try to get from local filesystem
     let program_path = Path::new(PROGRAMS_DIR)
         .join(uuid)
         .join("target/deploy")
         .join(format!("{}.so", safe_program_name));
-    println!("Attempting to read binary from path: {:?}", program_path);
 
-    fs::read(program_path)
+    if program_path.exists() {
+        println!("Reading binary from local path: {:?}", program_path);
+        fs::read(program_path).map_err(|e| {
+            println!("Failed to read local binary: {}", e);
+            e
+        })
+    } else {
+        // If not found locally, try to get from GCS
+        println!("Binary not found locally, attempting to fetch from GCS");
+        download_from_gcs(uuid, &safe_program_name)
+            .await
+            .map_err(|e| {
+                println!("Failed to download binary from GCS: {}", e);
+                std::io::Error::new(std::io::ErrorKind::NotFound, e)
+            })
+    }
 }

@@ -24,7 +24,11 @@ steps:
     - '--port'
     - '8080'
     - '--memory'
-    - '2Gi'
+    - '4Gi'
+    - '--service-account'
+    - 'arch-server-sa@archnetwork.iam.gserviceaccount.com'
+    - '--set-env-vars'
+    - 'GCS_BUCKET=arch-ide-build-artifacts'
 
 images:
   - 'gcr.io/$PROJECT_ID/arch-server'
