@@ -41,6 +41,7 @@ import {
     onProjectAccountChange: (account: ProjectAccount) => void;
     binaryFileName: string | null;
     setBinaryFileName: (name: string | null) => void;
+    connected: boolean;
   }
 
   const BuildPanel = ({
@@ -61,11 +62,13 @@ import {
     project,
     onProjectAccountChange,
     binaryFileName,
-    setBinaryFileName
+    setBinaryFileName,
+    connected
   }: BuildPanelProps & { idl: ArchIdl | null }) => {
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [isUploading, setIsUploading] = useState(false);
       const { toast } = useToast();
+      const [isRpcConnected, setIsRpcConnected] = useState(connected);
 
       useEffect(() => {
         let isCurrentEffect = true;
@@ -78,6 +81,11 @@ import {
           isCurrentEffect = false;
         };
       }, [programBinary, project?.name]);
+
+      useEffect(() => {
+        console.log('Connection status changed:', connected);
+        setIsRpcConnected(connected);
+      }, [connected]);
 
       const handleImportBinary = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -185,22 +193,39 @@ import {
     };
 
     const handleNewKeypair = async () => {
-      // If the frontend is localhost, we need to generate a keypair on the backend we use /rpc proxy
-      if (window.location.hostname === 'localhost') {
-        config.rpcUrl = '/rpc';
+      if (!connected) {
+        toast({
+          variant: "destructive",
+          title: "Connection Error",
+          description: "Cannot generate new keypair. Please check your RPC connection and try again."
+        });
+        return;
       }
 
-      // Create the RPC provider first
-      const provider = new RpcConnection(config.rpcUrl);
-      // Enhance the provider with Arch-specific functionality
-      const connection = ArchConnection(provider);
+      try {
+        // If the frontend is localhost, we need to generate a keypair on the backend we use /rpc proxy
+        if (window.location.hostname === 'localhost') {
+          config.rpcUrl = '/rpc';
+        }
 
-      console.log('Creating new account with connection:', connection);
-      const account = await connection.createNewAccount();
-      onAccountChange(account);
-      onProgramIdChange?.(account.pubkey);
-      onProjectAccountChange(account);
-      setIsNewKeypairDialogOpen(false);
+        // Create the RPC provider first
+        const provider = new RpcConnection(config.rpcUrl);
+        // Enhance the provider with Arch-specific functionality
+        const connection = ArchConnection(provider);
+
+        console.log('Creating new account with connection:', connection);
+        const account = await connection.createNewAccount();
+        onAccountChange(account);
+        onProgramIdChange?.(account.pubkey);
+        onProjectAccountChange(account);
+        setIsNewKeypairDialogOpen(false);
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to generate new keypair. Please try again."
+        });
+      }
     };
 
     // Update the Plus button click handler
@@ -279,6 +304,7 @@ import {
                         isOpen={isNewKeypairDialogOpen}
                         onClose={() => setIsNewKeypairDialogOpen(false)}
                         onConfirm={handleNewKeypair}
+                        isConnected={isRpcConnected}
                       />
 
                       <Tooltip>

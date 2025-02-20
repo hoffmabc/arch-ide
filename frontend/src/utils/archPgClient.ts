@@ -90,13 +90,50 @@ export class ArchPgClient {
       };
       iframeWindow.parent.addEventListener('message', messageHandler);
 
-      // Wrap code in async IIFE
+      // Add completion handler
+      const completionHandler = (event: MessageEvent) => {
+        if (event.data?.type === 'completion') {
+          iframeWindow.parent.removeEventListener('message', messageHandler);
+          iframeWindow.parent.removeEventListener('message', completionHandler);
+          onMessage('success', 'Code executed successfully');
+        }
+      };
+
+      iframeWindow.parent.addEventListener('message', completionHandler);
+
+      // Modify the wrapped code to include completion notification
       const wrappedCode = `
         (async () => {
           class __Pg {
             async __run() {
               ${consoleOverride}
-              ${code}
+              try {
+                // Create a promise that tracks all setTimeout calls
+                const timeouts = new Set();
+
+                // Override setTimeout to track all pending timeouts
+                const originalSetTimeout = window.setTimeout;
+                window.setTimeout = (fn, delay, ...args) => {
+                  const timeoutPromise = new Promise(resolve => {
+                    const timeoutId = originalSetTimeout(() => {
+                      timeouts.delete(timeoutPromise);
+                      fn.apply(this, args);
+                      resolve();
+                    }, delay);
+                    return timeoutId;
+                  });
+                  timeouts.add(timeoutPromise);
+                  return timeoutPromise;
+                };
+
+                // Execute the user's code
+                ${code}
+
+                // Wait for all timeouts to complete
+                await Promise.all(Array.from(timeouts));
+              } finally {
+                window.parent.postMessage({ type: 'completion' }, '*');
+              }
             }
           }
           const __pg = new __Pg();
@@ -115,28 +152,18 @@ export class ArchPgClient {
         removeComments: true,
       });
 
-      return new Promise<void>((resolve) => {
-        // Directly append the script to execute it
-        const scriptEl = document.createElement("script");
-        scriptEl.type = 'text/javascript';
-        scriptEl.textContent = transpiled;
-        iframeDocument.head.appendChild(scriptEl);
+      // Create and inject the script
+      const scriptEl = document.createElement("script");
+      scriptEl.type = 'text/javascript';
+      scriptEl.textContent = transpiled;
+      iframeDocument.head.appendChild(scriptEl);
 
-        // Wait a bit to catch any immediate errors
-        setTimeout(() => {
-          iframeWindow.parent.removeEventListener('message', messageHandler);
-          onMessage('success', 'Code executed successfully');
-          resolve();
-        }, 2000);
-
-        // Add after line 98 (after script injection)
-        console.log('Script injected:', {
-          bodyContent: iframeDocument.body.innerHTML,
-          scriptContent: scriptEl.textContent,
-          hasConsole: typeof (iframeWindow as any).console !== 'undefined'
-        });
+      // Add after line 98 (after script injection)
+      console.log('Script injected:', {
+        bodyContent: iframeDocument.body.innerHTML,
+        scriptContent: scriptEl.textContent,
+        hasConsole: typeof (iframeWindow as any).console !== 'undefined'
       });
-
     } finally {
       this._isClientRunning = false;
     }

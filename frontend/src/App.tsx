@@ -377,16 +377,16 @@ const App = () => {
 
     setIsDeploying(true);
     try {
-      // Convert base64 to Uint8Array in chunks
-      let binaryData: Uint8Array;
-      const chunkSize = 1024; // Process 1KB at a time
+      let base64Content: string;
 
       if (programBinary.startsWith('data:')) {
-        const base64Content = programBinary.split(',')[1];
-        binaryData = base64ToUint8Array(base64Content);
+        base64Content = programBinary.split(',')[1];
       } else {
-        binaryData = base64ToUint8Array(programBinary);
+        base64Content = programBinary;
       }
+
+      // Convert using Buffer
+      const binaryData = base64ToUint8Array(base64Content);
 
       const deployOptions = {
         rpcUrl: config.rpcUrl,
@@ -415,20 +415,8 @@ const App = () => {
 
   // Helper function to convert base64 to Uint8Array in chunks
   const base64ToUint8Array = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const length = binaryString.length;
-    const bytes = new Uint8Array(length);
-
-    // Process in chunks to avoid call stack issues
-    const chunkSize = 1024;
-    for (let i = 0; i < length; i += chunkSize) {
-      const chunk = Math.min(chunkSize, length - i);
-      for (let j = 0; j < chunk; j++) {
-        bytes[i + j] = binaryString.charCodeAt(i + j);
-      }
-    }
-
-    return bytes;
+    // Use Buffer to handle binary data properly
+    return Buffer.from(base64, 'base64');
   };
 
   const handleCreateProject = async (name: string, description: string) => {
@@ -840,10 +828,12 @@ const App = () => {
       // Update the last command message to remove the loading state
       setOutputMessages(prev => {
         const messages = [...prev];
-        const lastCommandIndex = messages.findLastIndex(m => m.type === 'command');
+        const lastCommandIndex = messages.reverse().findIndex(m => m.type === 'command');
         if (lastCommandIndex !== -1) {
-          messages[lastCommandIndex] = { ...messages[lastCommandIndex], isLoading: false };
+          const actualIndex = messages.length - 1 - lastCommandIndex;
+          messages[actualIndex] = { ...messages[actualIndex], isLoading: false };
         }
+        messages.reverse(); // Restore original order
         return messages;
       });
     }
@@ -1137,6 +1127,7 @@ const App = () => {
 
         <div className="flex flex-1 overflow-hidden">
           <SidePanel
+            connected={isConnected}
             hasProjects={projects.length > 0}
             currentView={currentView}
             onViewChange={setCurrentView}

@@ -100,7 +100,7 @@ const DEFAULT_WELCOME_MESSAGE = `
  * 2. Use the Explorer (📁) to navigate your project files
  * 3. Write your Arch program in Rust
  * 4. Build your program using the Build panel (🔨)
- * 5. Deploy to your chosen network (mainnet-beta, devnet, or testnet)
+ * 5. Deploy to your chosen network (mainnet-beta [coming soon], devnet, or testnet)
  *
  * Key Features:
  * ────────────

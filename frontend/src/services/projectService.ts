@@ -95,6 +95,19 @@ pub struct HelloWorldParams {
 }
 `;
 
+const DEFAULT_CLIENT = String.raw`
+
+const conn = new RpcConnection("http://localhost:9002");
+
+// Get latest block count
+const count = await conn.getBlockCount();
+console.log(JSON.stringify(count));
+
+// Get account address from hex pubkey
+const pubkey = PubkeyUtil.fromHex('c2e770ee15a878b111a88a4bd94229d2472f84a5b46818868e51ada469723f72');
+console.log("Account Address:", await conn.getAccountAddress(pubkey));
+`;
+
 const PROGRAM_TEMPLATE: FileNode[] = [
   {
     name: 'src',
@@ -114,7 +127,7 @@ const PROGRAM_TEMPLATE: FileNode[] = [
       {
         name: 'client.ts',
         type: 'file',
-        content: ''
+        content: DEFAULT_CLIENT
       }
     ]
   }
