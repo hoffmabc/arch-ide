@@ -34,7 +34,23 @@ export const ConnectionStatus = ({
   const CONNECTED_CHECK_INTERVAL = 30000;
 
   const checkConnection = async () => {
-    if (isConnecting) return false;
+    console.group('Connection Check Debug');
+    if (isConnecting) {
+      console.log('Already connecting, skipping check');
+      console.groupEnd();
+      return false;
+    }
+
+    console.log('Starting connection check');
+    console.log('Current state:', {
+      rpcUrl,
+      network,
+      isConnected,
+      isConnecting,
+      retryCount
+    });
+
+    setIsConnecting(true);
 
     try {
       let connectionUrl = rpcUrl;
@@ -47,6 +63,7 @@ export const ConnectionStatus = ({
         connectionUrl = '/rpc';
       }
 
+      console.log('Attempting connection to:', connectionUrl);
       const connection = new RpcConnection(connectionUrl);
 
       // Add timeout to prevent hanging
@@ -55,6 +72,7 @@ export const ConnectionStatus = ({
       });
 
       // Try to get block count with timeout
+      console.log('Requesting block count...');
       const blockCount = await Promise.race([
         connection.getBlockCount(),
         timeoutPromise
@@ -62,21 +80,29 @@ export const ConnectionStatus = ({
 
       // Ensure blockCount is a valid number
       if (typeof blockCount !== 'number') {
+        console.warn('Invalid block count response:', blockCount);
         throw new Error('Invalid block count response');
       }
 
+      console.log('Connection successful! Block count:', blockCount);
       const currentTime = new Date();
       onPingUpdate(currentTime);
       setShowErrorModal(false);
       setRetryCount(0);
-      window.postMessage({ type: 'CONNECTION_STATUS', status: 'connected', network, url: connectionUrl }, '*');
+      console.log('Calling onConnect()');
+      onConnect();
+      console.groupEnd();
       return true;
     } catch (error) {
+      console.error('Connection error:', error);
       setShowErrorModal(true);
+      console.log('Calling onDisconnect()');
       onDisconnect();
       onPingUpdate(null);
-      window.postMessage({ type: 'CONNECTION_STATUS', status: 'disconnected' }, '*');
+      console.groupEnd();
       return false;
+    } finally {
+      setIsConnecting(false);
     }
   };
 

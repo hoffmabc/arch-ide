@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Editor from './components/Editor';
 import { Output } from './components/Output';
@@ -234,6 +234,7 @@ const App = () => {
   const [currentView, setCurrentView] = useState<'explorer' | 'build'>(storage.getCurrentView());
   const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const previousConnectionStatus = useRef(isConnected);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -924,19 +925,25 @@ const App = () => {
   }, [currentFile, fullCurrentProject]);
 
   useEffect(() => {
-    const handleConnectionStatus = (event: MessageEvent) => {
-      if (event.data.type === 'CONNECTION_STATUS') {
-        if (event.data.status === 'connected') {
-          addOutputMessage('success', `Connected to ${event.data.network} (${event.data.url})`);
-        } else {
-          addOutputMessage('error', 'Not connected to network');
-        }
-      }
-    };
+    console.group('Connection Status Change Debug');
+    console.log('Previous status:', previousConnectionStatus.current);
+    console.log('Current isConnected:', isConnected);
+    console.log('Current config:', { network: config.network, rpcUrl: config.rpcUrl });
 
-    window.addEventListener('message', handleConnectionStatus);
-    return () => window.removeEventListener('message', handleConnectionStatus);
-  }, []);
+    // Watch for changes in isConnected
+    if (isConnected !== previousConnectionStatus.current) {
+      console.log('Status changed! Adding output message');
+      if (isConnected) {
+        addOutputMessage('success', `Connected to ${config.network} (${config.rpcUrl})`);
+      } else {
+        addOutputMessage('error', 'Not connected to network');
+      }
+      previousConnectionStatus.current = isConnected;
+    } else {
+      console.log('No status change detected');
+    }
+    console.groupEnd();
+  }, [isConnected, config.network, config.rpcUrl]);
 
   const handleUpdateTreeAdapter = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
     handleUpdateTree({ type: operation, path, fileType: type, newName });
@@ -1310,7 +1317,7 @@ function debounce<T extends (...args: any[]) => any>(
       clearTimeout(timeout);
     }
 
-setTimeout(() => {
+    timeout = setTimeout(() => {
       func(...args);
       timeout = null;
     }, wait);
