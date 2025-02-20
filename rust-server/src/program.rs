@@ -5,10 +5,17 @@ use tokio::sync::OnceCell;
 use cloud_storage::Client;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use tracing::info;
+use tokio::process::Command as TokioCommand;
+use tokio::io::{BufReader, AsyncBufReadExt};
+use std::process::Stdio;
 
 const PROGRAMS_DIR: &str = "programs";
 const MAX_FILE_AMOUNT: usize = 64;
 const MAX_PATH_LENGTH: usize = 128;
+
+fn use_gcs() -> bool {
+    std::env::var("USE_GCS").is_ok()
+}
 
 static INIT: OnceCell<()> = OnceCell::const_new();
 static GCS_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -111,7 +118,7 @@ proptest = "1.5.0""#;
 
 pub type Files = Vec<[String; 2]>;
 
-pub fn build(
+pub async fn build(
     uuid: &str,
     program_name: &str,
     files: &Files,
@@ -237,14 +244,14 @@ pub fn build(
         "--sbf-out-dir",
         &deploy_dir_str,
     ];
-    if needs_lockfile_bump {
+    // if needs_lockfile_bump {
         println!("Adding lockfile bump flag to build args.");
         build_args.extend(["--", "-Znext-lockfile-bump"]);
-    }
+    // }
 
     println!("Executing build command with args: {:?}", build_args);
 
-    let output = Command::new("cargo-build-sbf")
+    let mut child = TokioCommand::new("cargo-build-sbf")
         .args(&build_args)
         .env("CARGO_TARGET_DIR", &shared_target_str)
         .env("CARGO_BUILD_INCREMENTAL", "true")
@@ -252,17 +259,47 @@ pub fn build(
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "1")
-        .current_dir(&program_path)  // Ensure we're in the program directory
-        .output()?;
+        .current_dir(&program_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdout_lines = String::new();
+    let mut stderr_lines = String::new();
+
+    // Handle stdout
+    if let Some(stdout) = child.stdout.take() {
+        let mut reader = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            println!("stdout: {}", line);
+            stdout_lines.push_str(&line);
+            stdout_lines.push('\n');
+        }
+    }
+
+    // Handle stderr
+    if let Some(stderr) = child.stderr.take() {
+        let mut reader = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            println!("stderr: {}", line);
+            stderr_lines.push_str(&line);
+            stderr_lines.push('\n');
+        }
+    }
+
+    // Wait for the command to complete
+    let status = child.wait().await?;
+    let build_succeeded = stdout_lines.contains("Finished release") || stderr_lines.contains("Finished release");
+
+    if !status.success() && !build_succeeded {
+        return Err(anyhow!("Build failed with status: {}", status));
+    }
+
     println!("Build command executed successfully.");
 
-    // Process output
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8(output.stderr)?;
-    println!("Build output processed successfully.");
-
-    println!("Build stdout:\n{}", stdout);
-    println!("Build stderr:\n{}", stderr);
+    // Use stdout_lines and stderr_lines instead of the previous output variables
+    let stdout = stdout_lines;
+    let stderr = stderr_lines;
 
     // Check if binary was created using safe program name
     let binary_path = program_path
@@ -273,16 +310,17 @@ pub fn build(
     // After successful build, upload to GCS
     if binary_path.exists() {
         println!("Binary file created successfully");
-        let binary_data = fs::read(&binary_path)?;
-        // Clone the uuid and safe_program_name to ensure they outlive the async block
-        let uuid = uuid.to_string(); // Clone to owned String
-        let safe_program_name = safe_program_name.clone();
-        let binary_data = binary_data.to_vec(); // Clone the data
-        tokio::spawn(async move {
-            if let Err(e) = upload_to_gcs(&uuid, &safe_program_name, &binary_data).await {
-                eprintln!("Failed to upload binary to GCS: {}", e);
-            }
-        });
+        if use_gcs() {
+            let binary_data = fs::read(&binary_path)?;
+            let uuid = uuid.to_string();
+            let safe_program_name = safe_program_name.clone();
+            let binary_data = binary_data.to_vec();
+            tokio::spawn(async move {
+                if let Err(e) = upload_to_gcs(&uuid, &safe_program_name, &binary_data).await {
+                    eprintln!("Failed to upload binary to GCS: {}", e);
+                }
+            });
+        }
     } else {
         println!("Warning: Binary file not found at expected location");
     }
@@ -291,6 +329,10 @@ pub fn build(
 }
 
 async fn upload_to_gcs(uuid: &str, program_name: &str, binary_data: &[u8]) -> anyhow::Result<()> {
+    if !use_gcs() {
+        return Ok(());
+    }
+
     info!("Starting GCS upload for program {} with UUID {}", program_name, uuid);
     let client = GCS_CLIENT.get_or_init(|| {
         info!("Initializing GCS client");

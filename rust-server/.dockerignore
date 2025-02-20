@@ -2,3 +2,8 @@ target/
 .git/
 .gitignore
 .env
+*.md
+.idea/
+.vscode/
+*.log
+tmp/

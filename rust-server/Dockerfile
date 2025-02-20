@@ -1,50 +1,50 @@
-FROM ubuntu:22.04 as rust
+# Base development image
+FROM ubuntu:22.04 as development
 
 ARG DEBIAN_FRONTEND="noninteractive"
 ENV HOME="/root"
 
-# Install build deps
+# Install build deps and development tools
 RUN apt-get update -qq && apt-get upgrade -qq && apt-get install -qq \
-    build-essential curl pkg-config libssl-dev libudev-dev gcc-multilib libc6-dev-i386
+    build-essential \
+    curl \
+    pkg-config \
+    libssl-dev \
+    libudev-dev \
+    gcc-multilib \
+    libc6-dev-i386 \
+    git \
+    vim
 
-# Install Rust
-RUN sh -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y --default-toolchain 1.75.0
+# Install Rust with specific toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
 ENV PATH="${HOME}/.cargo/bin:${PATH}"
 
-# Build server binary
-FROM rust as build
-
-WORKDIR /build
-COPY Cargo.* .
-COPY src src
-RUN cargo build --release
-
-# Start server
-FROM rust
-
-ARG SOLANA_VERSION="1.18.26"
-
 # Install Solana
+ARG SOLANA_VERSION="1.18.26"
 RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
 ENV PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
 
-# Set the workdir
 WORKDIR /app
 
-# Copy programs dir
+# Production build stage
+FROM development as builder
+
+COPY . .
+RUN cargo build --release
+
+# Production runtime
+FROM development as production
+
+WORKDIR /app
+COPY --from=builder /app/target/release/arch-server /usr/local/bin/
 COPY programs programs
 
-# Create necessary directories
 RUN mkdir -p /app/programs/target/deploy
 
-# Copy server binary
-COPY --from=build /build/target/release/arch-server /usr/local/bin/
-
-# Default environment variables
 ENV PORT=8080
 ENV RUST_LOG=info
 
-# Health check
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 

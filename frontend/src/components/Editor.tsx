@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { FileNode } from '../types';
+import { FileNode, Disposable } from '../types';
+import { declareGlobalTypes } from './Editor/languages/typescript/declarations/global';
 
 interface EditorProps {
   code: string;
@@ -137,6 +138,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   const isWelcomeScreen = !currentFile;
   const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeContent(code);
   const editorRef = useRef<any>(null);
+  const [disposables, setDisposables] = useState<Disposable[]>([]);
 
   const getLanguage = (fileName: string) => {
     if (fileName.endsWith('.ts')) return 'typescript';
@@ -149,6 +151,12 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
     setLatestContent(code);
   }, [code]);
 
+  useEffect(() => {
+    return () => {
+      disposables.forEach(d => d.dispose());
+    };
+  }, [disposables]);
+
   const handleChange = useCallback((value: string | undefined) => {
     if (!isWelcomeScreen && value !== undefined) {
       setLatestContent(value);
@@ -158,7 +166,7 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Log the event for debugging
-    console.log('handleKeyDown', e);
+    // console.log('handleKeyDown', e);
 
     // Check if the key pressed is 's' and if Ctrl or Cmd is held down
     if ((e.ctrlKey || e.metaKey) && e.keyCode === 49) {
@@ -176,75 +184,32 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
-        defaultLanguage="typescript"
+        defaultLanguage="plaintext"
         theme="vs-dark"
         key={currentFile?.path || 'welcome'}
         value={displayCode}
         onChange={handleChange}
 
-        onMount={(editor, monaco) => {
+        onMount={async (editor, monaco) => {
           editorRef.current = editor;
           editor.onKeyDown((e) => {
             const keyboardEvent = e as unknown as KeyboardEvent;
             handleKeyDown(keyboardEvent);
           });
 
-          // Set compiler options first
-          monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-            target: monaco.languages.typescript.ScriptTarget.ESNext,
-            module: monaco.languages.typescript.ModuleKind.ESNext,
-            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-            allowNonTsExtensions: true,
-            noEmit: true,
-            noResolve: true,
-            skipLibCheck: true,
-            lib: ['es2020', 'DOM'],
-            allowJs: true,
-            checkJs: true,
-            allowSyntheticDefaultImports: true,
-            esModuleInterop: true
-          });
-
-          // Add the module declaration first
-          monaco.languages.typescript.typescriptDefaults.addExtraLib(`
-            declare module "@saturnbtcio/arch-sdk" {
-              export class RpcConnection {
-                constructor(endpoint: string);
-                readAccountInfo(pubkey: Uint8Array): Promise<{
-                  data: Uint8Array;
-                  owner: Uint8Array;
-                }>;
-              }
-              export class PubkeyUtil {
-                static fromHex(hex: string): Uint8Array;
-                static toHex(pubkey: Uint8Array): string;
-              }
-              export class MessageUtil {
-                static hash(message: any): Uint8Array;
-              }
-            }
-          `, 'ts:filename/arch-sdk.d.ts');
-
-          // Then add the globals
-          monaco.languages.typescript.typescriptDefaults.addExtraLib(`
-            declare global {
-              const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
-              const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
-              const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
-              const console: {
-                log(...args: any[]): void;
-                error(...args: any[]): void;
-                warn(...args: any[]): void;
-                info(...args: any[]): void;
-              };
-            }
-            export {};
-          `, 'ts:filename/globals.d.ts');
+          // Initialize Rust language support
+          const { initRustLanguage } = await import('./Editor/Monaco/languages/rust/init');
+          await initRustLanguage(monaco, editor);
 
           const language = getLanguage(currentFile?.name || '');
+          console.log('Initial language:', language);
+
           const editorModel = editor.getModel();
           if (editorModel) {
             monaco.editor.setModelLanguage(editorModel, language);
+
+            console.log('Model language after setting:', editorModel.getLanguageId());
+            console.log('Available languages:', monaco.languages.getLanguages());
           }
         }}
         options={{

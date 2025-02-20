@@ -153,6 +153,8 @@ export class ArchProgramLoader {
     let createAccountTxid = '';
     const programAccount = await this.getProgramAccount(options.keypair.pubkey, options.rpcUrl);
 
+    console.log('programAccount', programAccount);
+
     if (programAccount) {
       onMessage?.('info', `Program ${options.keypair.pubkey} already exists, proceeding with re-deploy`);
     }
@@ -166,6 +168,7 @@ export class ArchProgramLoader {
         options.regtestConfig
       );
 
+      console.log('createAccountInstruction', createAccountInstruction);
       createAccountTxid = await this.sendInstruction(
         options.rpcUrl,
         createAccountInstruction,
@@ -181,6 +184,8 @@ export class ArchProgramLoader {
     const uploadInstructions = chunks.map((chunk, i) =>
       this.createUploadInstruction(options.keypair.pubkey, chunk, i * CHUNK_SIZE)
     );
+
+    console.log('uploadInstructions', uploadInstructions);
 
     const txids = await this.sendBatchInstructions(
       options.rpcUrl,
@@ -385,12 +390,13 @@ export class ArchProgramLoader {
     chunk: Buffer,
     offset: number
   ): Instruction {
-    const data = Buffer.alloc(8 + chunk.length); // 4 bytes for offset, 4 bytes for length, and chunk data
-    data.writeUInt32LE(offset, 0); // Write offset at the start
-    data.writeUInt32LE(chunk.length, 4); // Write length after offset
-    chunk.copy(data, 8); // Copy chunk data starting at position 8
+    // 1 byte for variant + 4 bytes for offset + 4 bytes for length + chunk data
+    const data = Buffer.alloc(1 + 8 + chunk.length);
 
-    console.log('data', data);
+    data[0] = 1; // ExtendBytes variant
+    data.writeUInt32LE(offset, 1); // Write offset after variant byte
+    data.writeUInt32LE(chunk.length, 5); // Write length after offset
+    chunk.copy(data, 9); // Copy chunk data after length
 
     return {
       program_id: Buffer.from(SYSTEM_PROGRAM_ID, 'hex'),

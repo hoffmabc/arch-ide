@@ -792,34 +792,43 @@ const App = () => {
       const result = await buildResponse.json();
 
       if (result.stderr) {
-        if (result.stderr.includes("error: could not compile")) {
-          const formattedError = formatBuildError(result.stderr);
-          addOutputMessage('error', formattedError);
-        } else {
+        const formattedError = formatBuildError(result.stderr);
+        const buildSucceeded = result.stderr.includes("Finished release");
+
+        if (buildSucceeded) {
+          // Show any warnings but mark as success
+          addOutputMessage('info', formattedError);
           addOutputMessage('success', 'Build successful');
 
-          // Call deploy endpoint with the UUID
-          if (result.uuid) {
-            try {
-              const deployResponse = await fetch(`${API_URL}/deploy/${result.uuid}/${fullCurrentProject.name}`, {
-                method: 'GET',
-              });
+          // Fetch the binary after successful build
+          try {
+            const binaryResponse = await fetch(
+              `${API_URL}/deploy/${result.uuid}/${result.program_name}`,
+              { headers: { Accept: 'application/octet-stream' } }
+            );
 
-              if (!deployResponse.ok) {
-                throw new Error(`Build failed: ${deployResponse.statusText}`);
-              }
-
-              const binary = await deployResponse.arrayBuffer();
-              const base64Binary = arrayBufferToBase64(binary);
-              setProgramBinary(base64Binary);
-              setBinaryFileName(`${fullCurrentProject.name}.so`);
-              console.log('fullCurrentProject.name', `${fullCurrentProject.name}.so`);
-              console.log('binaryFileName', binaryFileName);
-              addOutputMessage('success', 'Program built successfully');
-            } catch (deployError: any) {
-              addOutputMessage('error', `Build error: ${deployError.message}`);
+            if (!binaryResponse.ok) {
+              throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
             }
+
+            const binaryData = await binaryResponse.text();
+            setProgramBinary(binaryData);
+            addOutputMessage('info', 'Program binary retrieved successfully');
+          } catch (error: any) {
+            addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
           }
+        } else if (
+          result.stderr.includes("error:") ||
+          result.stderr.includes("error[") ||
+          result.stderr.includes("Stack offset") ||
+          result.stderr.includes("Error deploying") ||
+          result.stderr.includes("Failed to parse IDL")
+        ) {
+          // Show as error
+          addOutputMessage('error', formattedError);
+        } else {
+          // Show other output
+          addOutputMessage('info', formattedError);
         }
       }
     } catch (error: any) {

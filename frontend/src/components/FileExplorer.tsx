@@ -49,8 +49,8 @@ window.archSdk = {
 };
 
 
-const getNodePath = (node: FileNode, path: FileNode[] = []): string => {
-  return [...path.map(p => p.name), node.name].join('/');
+const getNodePath = (node: FileNode, path: string[] = []): string => {
+  return [...path, node.name].join('/');
 };
 
 const getFileIcon = (fileName: string) => {
@@ -118,21 +118,21 @@ interface FileExplorerProps {
   hasProjects: boolean;
   files: FileNode[];
   onFileSelect: (file: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string, children?: FileNode[]) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
   onNewProject?: () => void;
-  addOutputMessage: (type: any, message: any) => void;
+  addOutputMessage: (type: string, message: string) => void;
 }
 
 interface FileContextMenuProps {
   node: FileNode;
-  onNewFile?: (fileName: string, content: string) => void;
-  onNewFolder?: () => void;
-  onDelete?: () => void;
-  onRename?: () => void;
+  onNewFile: () => void;
+  onNewFolder: () => void;
+  onDelete: () => void;
+  onRename: () => void;
 }
 
 const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: FileContextMenuProps) => {
@@ -147,7 +147,7 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
 
     try {
       const content = await readFileContent(file);
-      onNewFile(file.name, content);
+      onNewFile();
     } catch (error) {
       console.error('Failed to read file:', error);
     }
@@ -177,7 +177,7 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
       <DropdownMenuContent>
         {node.type === 'directory' && (
           <>
-            <DropdownMenuItem onClick={() => onNewFile?.('', '')}>
+            <DropdownMenuItem onClick={() => onNewFile()}>
               <Plus size={16} className="mr-2" />
               New File
             </DropdownMenuItem>
@@ -228,7 +228,7 @@ const FileExplorerItem = ({
   path?: string[];
   depth?: number;
   onSelect: (file: FileNode) => void;
-  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string, children?: FileNode[]) => void;
+  onUpdateTree: (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => void;
   onNewItem: (path: string[], type: 'file' | 'directory', fileName?: string, content?: string) => void;
   expandedFolders: Set<string>;
   onExpandedFoldersChange: (folders: Set<string>) => void;
@@ -236,79 +236,44 @@ const FileExplorerItem = ({
 }) => {
   const [isInlineRenaming, setIsInlineRenaming] = useState(false);
   const [newName, setNewName] = useState(node.name);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if this is the top-level src folder
-  const isTopLevelSrc = node.name === 'src' && path.length === 0;
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isTopLevelSrc) {
-      setIsInlineRenaming(true);
-      setNewName(node.name);
+    try {
+      const content = await readFileContent(file);
+      const currentPath = [...path, node.name];
+      onNewItem(currentPath, 'file', file.name, content);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error reading file:', error.message);
+      } else {
+        console.error('Unknown error reading file:', error);
+      }
     }
-  };
-
-  const handleRename = () => {
-    if (newName && newName !== node.name) {
-      onUpdateTree('rename', [...path, node.name], undefined, newName);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
-    setIsInlineRenaming(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleRename();
-    } else if (e.key === 'Escape') {
-      setIsInlineRenaming(false);
-      setNewName(node.name);
-    }
-  };
-
-  // Focus input when entering rename mode
-  useEffect(() => {
-    if (isInlineRenaming) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [isInlineRenaming]);
-
-  // Helper to ensure parent folders are expanded
-  const ensureParentFoldersExpanded = (itemPath: string[]) => {
-    const newExpandedFolders = new Set(expandedFolders);
-
-    // Build paths for each level and add to expanded set
-    let currentPath = '';
-    for (const segment of itemPath) {
-      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
-      newExpandedFolders.add(currentPath);
-    }
-
-    onExpandedFoldersChange(newExpandedFolders);
-  };
-
-  const handleNewFile = async (fileName: string, content: string) => {
-    console.log('handleNewFile called with:', { fileName, content });
-    // Ensure the parent folder is expanded before creating the file
-    const parentPath = [...path, node.name];
-    ensureParentFoldersExpanded(parentPath);
-
-    // Wait for the next render cycle to ensure folder is expanded
-    setTimeout(() => {
-      onNewItem(parentPath, 'file', fileName, content);
-    }, 0);
   };
 
   const handleNewFolder = () => {
-    console.log('handleNewFolder called with path:', path);
-    // Ensure the parent folder is expanded before creating the folder
-    const parentPath = [...path, node.name];
-    ensureParentFoldersExpanded(parentPath);
+    const currentPath = [...path, node.name];
+    onNewItem(currentPath, 'directory');
+  };
 
-    // Wait for the next render cycle to ensure folder is expanded
-    setTimeout(() => {
-      onNewItem(parentPath, 'directory');
-    }, 0);
+  const handleDelete = () => {
+    const currentPath = [...path, node.name];
+    onUpdateTree('delete', currentPath);
+  };
+
+  const handleRename = (newName: string) => {
+    if (newName && newName !== node.name) {
+      const currentPath = [...path, node.name];
+      onUpdateTree('rename', currentPath, undefined, newName);
+    }
+    setIsInlineRenaming(false);
   };
 
   const isSelected = currentFile?.path === getNodePath(node, path);
@@ -353,16 +318,14 @@ const FileExplorerItem = ({
           )}
           <div
             className="ml-2 flex-1"
-            onDoubleClick={handleDoubleClick}
           >
             {isInlineRenaming ? (
               <input
-                ref={inputRef}
+                ref={fileInputRef}
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                onBlur={handleRename}
-                onKeyDown={handleKeyDown}
+                onBlur={() => handleRename(newName)}
                 className="bg-gray-700 text-sm px-1 w-full outline-none border border-blue-500 rounded"
                 onClick={(e) => e.stopPropagation()}
               />
@@ -371,19 +334,13 @@ const FileExplorerItem = ({
             )}
           </div>
         </div>
-        {!isInlineRenaming && (
-          <div className="opacity-0 group-hover:opacity-100 pr-2">
-            <FileContextMenu
-              node={node}
-              onNewFile={handleNewFile}
-              onNewFolder={handleNewFolder}
-              onDelete={() => {
-                onUpdateTree('delete', [...path, node.name]);
-              }}
-              onRename={() => setIsInlineRenaming(true)}
-            />
-          </div>
-        )}
+        <FileContextMenu
+          node={node}
+          onNewFile={() => fileInputRef.current?.click()}
+          onNewFolder={handleNewFolder}
+          onDelete={handleDelete}
+          onRename={() => setIsInlineRenaming(true)}
+        />
       </div>
       {node.type === 'directory' && node.children && expandedFolders.has(getNodePath(node, path)) && (
         [...node.children]
@@ -413,7 +370,19 @@ const FileExplorerItem = ({
   );
 };
 
-const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewItem, expandedFolders, onExpandedFoldersChange, currentFile, onNewProject, addOutputMessage }: FileExplorerProps) => {
+const FileExplorer = ({
+  hasProjects,
+  files,
+  onFileSelect,
+  onUpdateTree,
+  onNewItem,
+  expandedFolders,
+  onExpandedFoldersChange,
+  currentFile,
+  onNewProject,
+  addOutputMessage
+}: FileExplorerProps) => {
+  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [worker, setWorker] = useState<Worker | null>(null);
   const [clientHeight, setClientHeight] = useState(300);
@@ -425,7 +394,7 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
     // Listen for messages from the worker
     newWorker.onmessage = (event) => {
         const { type, message } = event.data;
-        console.log('Worker message received:', event.data); // Debug log
+        console.log('Worker message received yo:', event.data); // Debug log
 
         // Handle log messages
         switch (type) {
@@ -457,24 +426,17 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
   const clientFiles = files.filter(f => f.name === 'client');
   const otherFiles = files.filter(f => !['src', 'client'].includes(f.name));
 
-  const handleFileSelect = (file: FileNode) => {
-    if (file.type === 'file') {
-      const filePath = file.path || getNodePath(file, files);
-      const projectFile = files.find(f => f.path === filePath);
-      const projectFileToUse = !projectFile && hasProjects ?
-        findFileInProject(files, filePath) : null;
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-      const fileToUse = projectFileToUse || {
-        ...file,
-        path: filePath,
-        name: file.name
-      };
-
-      onFileSelect({
-        ...fileToUse,
-        path: filePath
-      });
-    }
+    const file = files[0];
+    const fileNode: FileNode = {
+      name: file.name,
+      type: 'file',
+      content: ''
+    };
+    onFileSelect(fileNode);
   };
 
   const runClientCode = async () => {
@@ -497,14 +459,27 @@ const FileExplorer = ({ hasProjects, files, onFileSelect, onUpdateTree, onNewIte
                 fileName: currentFile.name,
                 code: clientCode,
                 onMessage: (type, message) => {
+                    console.log('onMessage called with:', { type, message });
                     addOutputMessage(type, message);
                 }
             });
-        } catch (error) {
-            addOutputMessage('error', `Error: ${error.message}`);
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                console.error('Error:', error.message);
+                addOutputMessage('error', error.message);
+            } else {
+                console.error('Unknown error:', error);
+                addOutputMessage('error', 'An unknown error occurred');
+            }
         }
-    } catch (error) {
-        addOutputMessage('error', `Error: ${error.message}`);
+    } catch (error: unknown) {
+        if (error instanceof Error) {
+            console.error('Error:', error.message);
+            addOutputMessage('error', error.message);
+        } else {
+            console.error('Unknown error:', error);
+            addOutputMessage('error', 'An unknown error occurred');
+        }
     }
 };
 

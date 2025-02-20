@@ -2,24 +2,50 @@ export class RpcConnection {
     constructor(private rpcUrl: string) {}
 
     async request(method: string, params: any[] = []) {
-      const response = await fetch(this.rpcUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 'arch',
-          method,
-          params
-        })
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message || 'RPC error');
+      try {
+        const response = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'arch',
+            method,
+            params
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error.message || 'RPC error');
+        }
+
+        return data.result;
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          throw new Error('Connection timeout');
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return data.result;
     }
-  }
+
+    async checkConnection(): Promise<boolean> {
+      try {
+        await this.request('getblockcount');
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+}

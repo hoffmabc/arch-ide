@@ -181,11 +181,12 @@ import {
         config.rpcUrl = '/rpc';
       }
 
-      const connection = ArchConnection(new RpcConnection(config.rpcUrl));
-        const account = await connection.createNewAccount();
-        onAccountChange(account);
-        onProgramIdChange?.(account.pubkey);
-        onProjectAccountChange(account);
+      // Corrected the creation of ArchConnection by passing the URL directly
+      const connection = new ArchConnection(config.rpcUrl);
+      const account = await connection.createNewAccount();
+      onAccountChange(account);
+      onProgramIdChange?.(account.pubkey);
+      onProjectAccountChange(account);
         setIsNewKeypairDialogOpen(false);
     };
 

@@ -28,13 +28,11 @@ pub async fn build(Json(payload): Json<BuildRequest>) -> Result<impl IntoRespons
         None => (Uuid::new_v4().to_string(), true),
     };
 
-    let (build_result, uuid) = task::spawn_blocking(move || {
-        (program::build(&uuid, &payload.program_name, &payload.files), uuid)
-    })
-    .await
-    .expect("`spawn_blocking` failure");
+    let files = payload.files;
+    let program_name = payload.program_name;
+    let uuid_clone = uuid.clone();
 
-    let (stderr, program_name) = build_result?;
+    let (stderr, program_name) = program::build(uuid_clone.as_str(), program_name.as_str(), &files).await?;
 
     Ok(Json(BuildResponse {
         stderr,

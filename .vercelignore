@@ -7,3 +7,5 @@ backend
 **/__tests__
 **/dist
 **/build
+rust-server/**
+**/target/*

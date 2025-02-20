@@ -51,15 +51,31 @@ export const Output = ({ messages, onClear }: OutputProps) => {
                 )}
                 {msg.type === 'error' && (
                   <div className="text-red-400 whitespace-pre-wrap break-words">
-                    {msg.content.split('\n').map((line, i) => (
-                      <div key={i} className={`
-                        ${line.startsWith('File:') ? 'text-yellow-400 mt-1' : ''}
-                        ${line.startsWith('Line:') ? 'text-yellow-400' : ''}
-                        ${line.startsWith('Code:') ? 'text-blue-400 mt-1 pl-4' : ''}
-                      `}>
-                        {line}
-                      </div>
-                    ))}
+                    {msg.content.split('\n').map((line, i) => {
+                      // Check for different parts of the error message
+                      const isHeader = line.startsWith('error');
+                      const isFile = line.startsWith('File:');
+                      const isLine = line.startsWith('Line:');
+                      const isCode = line.startsWith('Code:');
+                      const isNote = line.startsWith('note:');
+                      const isHelp = line.startsWith('help:');
+                      const isWarning = line.startsWith('warning:');
+
+                      return (
+                        <div key={i} className={`
+                          ${isHeader ? 'text-red-400 font-bold' : ''}
+                          ${isFile ? 'text-yellow-400 mt-1' : ''}
+                          ${isLine ? 'text-yellow-400' : ''}
+                          ${isCode ? 'text-blue-400 mt-1 pl-4' : ''}
+                          ${isNote ? 'text-cyan-400 mt-1' : ''}
+                          ${isHelp ? 'text-green-400 mt-1' : ''}
+                          ${isWarning ? 'text-yellow-400 font-bold' : ''}
+                          ${!isHeader && !isFile && !isLine && !isCode && !isNote && !isHelp && !isWarning ? 'text-gray-300' : ''}
+                        `}>
+                          {line}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {msg.type === 'info' && (

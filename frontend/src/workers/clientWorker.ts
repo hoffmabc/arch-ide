@@ -25,6 +25,9 @@ self.onmessage = async (event) => {
 
         self.postMessage({ type: 'success', message: 'Code executed successfully' });
     } catch (e) {
-        self.postMessage({ type: 'error', message: e.message });
+        self.postMessage({
+            type: 'error',
+            message: e instanceof Error ? e.message : 'Unknown error'
+        });
     }
 };

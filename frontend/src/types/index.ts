@@ -89,3 +89,7 @@ export interface ComplexType {
   vec?: ComplexType | string;        // Changed to allow string type for simple vectors
   defined?: string;
 }
+
+export interface Disposable {
+  dispose(): void;
+}

@@ -37,23 +37,38 @@ export const ConnectionStatus = ({
     if (isConnecting) return false;
 
     try {
+      let connectionUrl = rpcUrl;
       const isLocalhost = window.location.hostname === 'localhost';
-      const connectionUrl = isLocalhost ? '/rpc' : rpcUrl;
-      const connection = ArchConnection(new RpcConnection(connectionUrl));
 
-      const block_count = await connection.getBlockCount();
+      // Handle different network scenarios
+      if (network === 'devnet') {
+        connectionUrl = isLocalhost ? 'http://localhost:9002' : rpcUrl;
+      } else if (isLocalhost) {
+        connectionUrl = '/rpc';
+      }
 
-      if (!block_count) {
-        setShowErrorModal(true);
-        onDisconnect();
-        onPingUpdate(null);
-        return false;
+      const connection = new RpcConnection(connectionUrl);
+
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      });
+
+      // Try to get block count with timeout
+      const blockCount = await Promise.race([
+        connection.getBlockCount(),
+        timeoutPromise
+      ]);
+
+      // Ensure blockCount is a valid number
+      if (typeof blockCount !== 'number') {
+        throw new Error('Invalid block count response');
       }
 
       const currentTime = new Date();
       onPingUpdate(currentTime);
       setShowErrorModal(false);
-      setRetryCount(0); // Reset retry count on successful connection
+      setRetryCount(0);
       return true;
     } catch (error) {
       console.error('Connection error:', error);

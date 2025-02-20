@@ -6,12 +6,12 @@ import { ProjectAccount } from '../types/types';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 const CARGO_TOML_TEMPLATE = `[package]
-name = "arch-program"
+name = "arch-ide"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arch_program = { path = "../crates/program" }
+arch_program = "0.3.2"
 borsh = { version = "1.5.1", features = ["derive"] }
 
 [lib]

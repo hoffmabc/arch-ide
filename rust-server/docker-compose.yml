@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  rust-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/app/target
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - RUST_LOG=info
+      - CARGO_TARGET_DIR=/app/target
+      - CARGO_INCREMENTAL=1
+      - RUST_BACKTRACE=1
+      # Don't use GCS in local development by default
+      - USE_GCS=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+volumes:
+  cargo-cache:
+  target-cache:
