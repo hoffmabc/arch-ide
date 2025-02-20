@@ -132,30 +132,30 @@ import {
 
     const handleExportBinary = () => {
         if (!programBinary || !binaryFileName) {
-            console.error('Missing binary or filename');
+            toast({
+                title: "Error",
+                description: "Missing binary or filename",
+                variant: "destructive"
+            });
             return;
         }
 
         try {
             let binaryData: Uint8Array;
+            const base64Content = programBinary.startsWith('data:')
+                ? programBinary.split(',')[1]  // Handle data URL format
+                : programBinary;               // Handle raw base64
 
-            // If it's a data URL
-            if (programBinary.startsWith('data:')) {
-                // Extract the base64 part after the comma
-                const base64Content = programBinary.split(',')[1];
-                // Convert base64 to binary string
-                const binaryString = window.atob(base64Content);
-                // Convert binary string to Uint8Array
-                binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
-            } else {
-                // Handle raw base64 string
-                try {
-                    const binaryString = window.atob(programBinary);
-                    binaryData = Uint8Array.from(binaryString, c => c.charCodeAt(0));
-                } catch (error) {
-                    console.error('Failed to decode base64:', error);
-                    return;
+            // Decode base64 safely
+            try {
+                // Convert base64 to binary string using a more robust approach
+                const binaryString = Buffer.from(base64Content, 'base64').toString('binary');
+                binaryData = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    binaryData[i] = binaryString.charCodeAt(i);
                 }
+            } catch (error) {
+                throw new Error('Failed to decode binary data');
             }
 
             // Create and download the blob
@@ -169,8 +169,18 @@ import {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
+            toast({
+                title: "Success",
+                description: "Binary downloaded successfully"
+            });
+
         } catch (error) {
             console.error('Failed to export binary:', error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to export binary",
+                variant: "destructive"
+            });
         }
     };
 
