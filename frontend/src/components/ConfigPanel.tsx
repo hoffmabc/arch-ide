@@ -1,4 +1,4 @@
-import React, { useState, Dispatch, SetStateAction } from 'react';
+import React, { useState, Dispatch, SetStateAction, useCallback, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
@@ -15,28 +15,65 @@ interface ConfigPanelProps {
   onConfigChange: Dispatch<SetStateAction<Config>>;
 }
 
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): {
+  (...args: Parameters<T>): void;
+  cancel: () => void;
+} => {
+  let timeout: NodeJS.Timeout | null = null;
+
+  const debounced = (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+
+  debounced.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  };
+
+  return debounced;
+};
+
 export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigPanelProps) => {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'none' | 'success' | 'error'>('none');
 
-  const testRegtestConnection = async () => {
-    setTestingConnection(true);
-    setConnectionStatus('none');
+  // Separate debounced test functions for main RPC and Bitcoin RPC
+  const debouncedTestBitcoinConnection = useCallback(
+    debounce(async () => {
+      console.log('Debounced Bitcoin test connection running...');
+      setTestingConnection(true);
+      setConnectionStatus('none');
 
-    try {
-      const response = await bitcoinRpcRequest(config.regtestConfig, 'getblockcount');
-      setConnectionStatus(response.result !== undefined ? 'success' : 'error');
-    } catch (error) {
-      console.error('Connection error:', error);
-      setConnectionStatus('error');
-    } finally {
-      setTestingConnection(false);
-    }
-  };
+      try {
+        const response = await bitcoinRpcRequest(config.regtestConfig, 'getblockcount');
+        console.log('Bitcoin connection test response:', response);
+        setConnectionStatus(response.result !== undefined ? 'success' : 'error');
+      } catch (error) {
+        console.error('Bitcoin connection error:', error);
+        setConnectionStatus('error');
+      } finally {
+        setTestingConnection(false);
+      }
+    }, 1000),
+    [config.regtestConfig]
+  );
 
-  if (!isOpen) return null;
+  const debouncedTestMainConnection = useCallback(
+    debounce(async () => {
+      console.log('Debounced main RPC test connection running...');
+      // Add your main RPC connection test logic here if needed
+    }, 1000),
+    [config.rpcUrl]
+  );
 
   const handleRegtestChange = (field: 'url' | 'username' | 'password', value: string) => {
+    console.log('handleRegtestChange called for field:', field);
     onConfigChange(prevConfig => ({
       ...prevConfig,
       regtestConfig: {
@@ -44,12 +81,32 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
         [field]: value
       }
     }));
+    debouncedTestBitcoinConnection();
   };
+
+  const handleRpcUrlChange = (value: string) => {
+    console.log('handleRpcUrlChange called');
+    onConfigChange(prevConfig => ({
+      ...prevConfig,
+      rpcUrl: value
+    }));
+    debouncedTestMainConnection();
+  };
+
+  // Cleanup both debounced functions
+  useEffect(() => {
+    return () => {
+      debouncedTestBitcoinConnection.cancel?.();
+      debouncedTestMainConnection.cancel?.();
+    };
+  }, [debouncedTestBitcoinConnection, debouncedTestMainConnection]);
+
+  if (!isOpen) return null;
 
   const connectionTestButton = (
     <div className="mt-4">
       <Button
-        onClick={testRegtestConnection}
+        onClick={debouncedTestBitcoinConnection}
         disabled={testingConnection}
         variant="secondary"
         className="w-full"
@@ -120,7 +177,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
                 </Label>
                 <Input
                   value={config.rpcUrl}
-                  onChange={(e) => onConfigChange({ ...config, rpcUrl: e.target.value })}
+                  onChange={(e) => handleRpcUrlChange(e.target.value)}
                   placeholder="Enter RPC URL"
                 />
               </div>

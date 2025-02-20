@@ -17,8 +17,8 @@ RUN apt-get update -qq && apt-get upgrade -qq && apt-get install -qq \
     vim
 
 # Install Rust with specific toolchain
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
-ENV PATH="${HOME}/.cargo/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.80.0
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Solana
 ARG SOLANA_VERSION="1.18.26"

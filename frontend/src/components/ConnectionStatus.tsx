@@ -69,12 +69,13 @@ export const ConnectionStatus = ({
       onPingUpdate(currentTime);
       setShowErrorModal(false);
       setRetryCount(0);
+      window.postMessage({ type: 'CONNECTION_STATUS', status: 'connected', network, url: connectionUrl }, '*');
       return true;
     } catch (error) {
-      console.error('Connection error:', error);
       setShowErrorModal(true);
       onDisconnect();
       onPingUpdate(null);
+      window.postMessage({ type: 'CONNECTION_STATUS', status: 'disconnected' }, '*');
       return false;
     }
   };

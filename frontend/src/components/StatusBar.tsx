@@ -15,11 +15,13 @@ interface StatusBarProps {
 export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendingChanges, isSaving }: StatusBarProps) => {
   const [lastPingTime, setLastPingTime] = useState<Date | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isAutoConnecting, setIsAutoConnecting] = useState(false);
 
   useEffect(() => {
-    // Auto-connect when component mounts or connection is lost
+    // Only attempt auto-connect on initial mount or when explicitly triggered
     const attemptConnect = () => {
-      if (!isConnected) {
+      if (!isConnected && !isAutoConnecting) {
+        setIsAutoConnecting(true);
         onConnectionStatusChange(true);
       }
     };
@@ -29,8 +31,8 @@ export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendi
       clearTimeout(reconnectTimeoutRef.current);
     }
 
-    // If not connected, attempt to connect with a delay
-    if (!isConnected) {
+    // Only attempt reconnect if we were previously connected and lost connection
+    if (!isConnected && lastPingTime) {
       reconnectTimeoutRef.current = setTimeout(attemptConnect, 5000);
     }
 
@@ -39,10 +41,11 @@ export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendi
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [isConnected, onConnectionStatusChange]);
+  }, [isConnected, onConnectionStatusChange, lastPingTime]);
 
   const handlePingUpdate = (time: Date | null) => {
     setLastPingTime(time);
+    setIsAutoConnecting(false);
   };
 
   return (

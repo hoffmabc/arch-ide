@@ -924,12 +924,19 @@ const App = () => {
   }, [currentFile, fullCurrentProject]);
 
   useEffect(() => {
-    if (!isConnected) {
-      addOutputMessage('error', 'Not connected to network');
-    } else {
-      addOutputMessage('success', `Connected to ${config.network} (${config.rpcUrl})`);
-    }
-  }, [isConnected, config.network, config.rpcUrl]);
+    const handleConnectionStatus = (event: MessageEvent) => {
+      if (event.data.type === 'CONNECTION_STATUS') {
+        if (event.data.status === 'connected') {
+          addOutputMessage('success', `Connected to ${event.data.network} (${event.data.url})`);
+        } else {
+          addOutputMessage('error', 'Not connected to network');
+        }
+      }
+    };
+
+    window.addEventListener('message', handleConnectionStatus);
+    return () => window.removeEventListener('message', handleConnectionStatus);
+  }, []);
 
   const handleUpdateTreeAdapter = (operation: 'create' | 'delete' | 'rename', path: string[], type?: 'file' | 'directory', newName?: string) => {
     handleUpdateTree({ type: operation, path, fileType: type, newName });

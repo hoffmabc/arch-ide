@@ -38,3 +38,5 @@ steps:
 
 images:
   - 'gcr.io/$PROJECT_ID/arch-server'
+
+timeout: '1800s'  # 30 minutes

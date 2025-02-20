@@ -32,6 +32,12 @@ declare module "@saturnbtcio/arch-sdk" {
         is_executable: boolean;
     }
 
+    export interface CreatedAccount {
+        privkey: string;
+        pubkey: string;
+        address: string;
+    }
+
     export interface Block {
         transactions: Array<string>;
         previous_block_hash: string;
@@ -47,11 +53,13 @@ declare module "@saturnbtcio/arch-sdk" {
         accounts: Array<AccountMeta>;
         data: Uint8Array;
     }
+    export const InstructionSchema: Schema;
 
     export interface Message {
         signers: Array<Pubkey>;
         instructions: Array<Instruction>;
     }
+    export const MessageSchema: Schema;
 
     export type Signature = Uint8Array;
     export interface RuntimeTransaction {
@@ -60,11 +68,47 @@ declare module "@saturnbtcio/arch-sdk" {
         message: Message;
     }
 
-    export class RpcConnection {
-        constructor(endpoint: string);
-        readAccountInfo(pubkey: Uint8Array): Promise<AccountInfoResult>;
+    export type ProcessedTransactionStatus = 'Processing' | 'Processed' | { Failed: string };
+    export type RollbackStatus = { Rolledback: string } | 'NotRolledback';
+    export interface ProcessedTransaction {
+        runtime_transaction: RuntimeTransaction;
+        status: ProcessedTransactionStatus;
+        rollback_status: RollbackStatus;
+        bitcoin_txid: string | null;
+        logs: Array<string>;
+    }
+
+    export interface AccountFilter {
+        memcmp?: {
+            offset: number;
+            bytes: string;
+        };
+        dataSize?: number;
+    }
+
+    export interface ProgramAccount {
+        pubkey: Pubkey;
+        account: AccountInfoResult;
+    }
+
+    export interface Provider {
         sendTransaction(transaction: RuntimeTransaction): Promise<string>;
         sendTransactions(transactions: RuntimeTransaction[]): Promise<string[]>;
+        readAccountInfo(pubkey: Pubkey): Promise<AccountInfoResult>;
+        getAccountAddress(pubkey: Pubkey): Promise<string>;
+        getBestBlockHash(): Promise<string>;
+        getBlock(blockHash: string): Promise<Block | undefined>;
+        getBlockCount(): Promise<number>;
+        getBlockHash(blockHeight: number): Promise<string>;
+        getProgramAccounts(programId: Pubkey, filters?: AccountFilter[]): Promise<ProgramAccount[]>;
+        getProcessedTransaction(txid: string): Promise<ProcessedTransaction | undefined>;
+    }
+
+    export class RpcConnection implements Provider {
+        constructor(endpoint: string);
+        sendTransaction(transaction: RuntimeTransaction): Promise<string>;
+        sendTransactions(transactions: RuntimeTransaction[]): Promise<string[]>;
+        readAccountInfo(pubkey: Pubkey): Promise<AccountInfoResult>;
         getAccountAddress(pubkey: Pubkey): Promise<string>;
         getBestBlockHash(): Promise<string>;
         getBlock(blockHash: string): Promise<Block | undefined>;
@@ -120,10 +164,11 @@ declare module "@saturnbtcio/arch-sdk" {
         static adjustSignature(signature: Uint8Array): Uint8Array;
     }
 
-    export class ArchConnection extends RpcConnection {
-        constructor(endpoint: string);
+    export interface Arch extends Provider {
         createNewAccount(): Promise<CreatedAccount>;
     }
+
+    export const ArchConnection: <T extends Provider>(provider: T) => Arch & T;
 }
 
 declare global {
@@ -132,4 +177,7 @@ declare global {
     const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
     const UtxoMetaUtil: typeof import("@saturnbtcio/arch-sdk").UtxoMetaUtil;
     const SignatureUtil: typeof import("@saturnbtcio/arch-sdk").SignatureUtil;
+    const ArchConnection: typeof import("@saturnbtcio/arch-sdk").ArchConnection;
 }
+
+export {};

@@ -257,7 +257,7 @@ export class ArchProgramLoader {
     try {
       // Log RPC connection attempt
       console.log('Creating RPC connection to:', rpcUrl);
-      const rpc = new RpcConnection(rpcUrl);
+      const connection = new RpcConnection(rpcUrl);
 
       // Log pubkey buffer creation
       console.log('Creating pubkey buffer from hex:', pubkey);
@@ -270,7 +270,7 @@ export class ArchProgramLoader {
 
       // Log address request
       console.log('Requesting account address from RPC...');
-      const address = await rpc.getAccountAddress(pubkeyBuffer);
+      const address = await connection.getAccountAddress(pubkeyBuffer);
       console.log('Received account address:', address);
 
       return address;
@@ -462,8 +462,8 @@ export class ArchProgramLoader {
       message
     };
 
-    const rpc = new RpcConnection(rpcUrl);
-    return await rpc.sendTransaction(transaction);
+    const connection = new RpcConnection(rpcUrl);
+    return await connection.sendTransaction(transaction);
   }
 
   private static async sendBatchInstructions(
@@ -495,8 +495,8 @@ export class ArchProgramLoader {
       rpcUrl = 'http://localhost:3000/rpc';
     }
 
-    const rpc = new RpcConnection(rpcUrl);
-    return await rpc.sendTransactions(transactions);
+    const connection = new RpcConnection(rpcUrl);
+    return await connection.sendTransactions(transactions);
   }
 
   private static async getProgramAccount(pubkey: string, rpcUrl: string): Promise<any> {
@@ -506,9 +506,9 @@ export class ArchProgramLoader {
     });
 
     try {
-      const rpc = new RpcConnection(rpcUrl);
+      const connection = new RpcConnection(rpcUrl);
       const pubkeyBuffer = Buffer.from(pubkey, 'hex');
-      const accountInfo = await rpc.readAccountInfo(pubkeyBuffer);
+      const accountInfo = await connection.readAccountInfo(pubkeyBuffer);
 
       console.log('Account info:', accountInfo);
       return accountInfo;
