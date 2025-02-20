@@ -23,6 +23,7 @@ import { FileChange } from './types/types';
 import { Plus, FolderPlus, Download } from 'lucide-react';
 import { Buffer } from 'buffer/';
 import { formatBuildError } from './utils/errorFormatter';
+import { Loader2 } from 'lucide-react';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -729,7 +730,7 @@ const App = () => {
     if (!fullCurrentProject) return;
 
     setIsCompiling(true);
-    addOutputMessage('command', 'cargo build-sbf');
+    addOutputMessage('command', 'cargo build-sbf', true);
 
     try {
       const srcDir = fullCurrentProject.files.find(node =>
@@ -836,14 +837,24 @@ const App = () => {
       addOutputMessage('error', `Build error: ${error.message}`);
     } finally {
       setIsCompiling(false);
+      // Update the last command message to remove the loading state
+      setOutputMessages(prev => {
+        const messages = [...prev];
+        const lastCommandIndex = messages.findLastIndex(m => m.type === 'command');
+        if (lastCommandIndex !== -1) {
+          messages[lastCommandIndex] = { ...messages[lastCommandIndex], isLoading: false };
+        }
+        return messages;
+      });
     }
   };
 
-  const addOutputMessage = (type: OutputMessage['type'], content: string) => {
+  const addOutputMessage = (type: OutputMessage['type'], content: string, isLoading: boolean = false) => {
     setOutputMessages(prev => [...prev, {
       type,
       content,
-      timestamp: new Date()
+      timestamp: new Date(),
+      isLoading
     }]);
   };
 
