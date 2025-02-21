@@ -667,4 +667,43 @@ const findFileInProject = (projectFiles: FileNode[], targetPath: string): FileNo
   return null;
 };
 
+const testTypeDeclarations = (editor: monaco.editor.IStandaloneCodeEditor) => {
+  const model = editor.getModel();
+  if (!model) return false;
+
+  // Create a worker to get diagnostics
+  const worker = monaco.languages.typescript.getTypeScriptWorker();
+  return worker().then(client => {
+    return client.getSemanticDiagnostics(model.uri.toString()).then(diagnostics => {
+      // Log diagnostics to see what's happening
+      console.log('TypeScript Diagnostics:', diagnostics);
+      return diagnostics.length === 0;
+    });
+  });
+};
+
+export const declareGlobalTypes = (): Disposable => {
+  // First declare the module
+  const moduleDisposable = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    `declare module "@saturnbtcio/arch-sdk" { ... }`,
+    "file:///node_modules/@types/arch-sdk/index.d.ts"
+  );
+
+  // Then declare globals
+  const globalsDisposable = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    `declare global { ... }`,
+    "file:///globals.d.ts"
+  );
+
+  // Log to verify loading
+  console.log('Type declarations added:', moduleDisposable, globalsDisposable);
+
+  return {
+    dispose: () => {
+      moduleDisposable.dispose();
+      globalsDisposable.dispose();
+    }
+  };
+};
+
 export default FileExplorer;

@@ -24,7 +24,6 @@ async function initialize() {
 initialize().then(() => {
   onmessage = async (ev) => {
     console.log('Received message:', ev.data);
-    postMessage({ id: "poopy-pants", result: ev.data });
     const { method, args, id } = ev.data;
     try {
       let result;

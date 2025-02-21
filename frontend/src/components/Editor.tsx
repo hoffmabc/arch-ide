@@ -197,19 +197,54 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
             handleKeyDown(keyboardEvent);
           });
 
-          // Initialize Rust language support
-          const { initRustLanguage } = await import('./Editor/Monaco/languages/rust/init');
-          await initRustLanguage(monaco, editor);
-
           const language = getLanguage(currentFile?.name || '');
           console.log('Initial language:', language);
 
           const editorModel = editor.getModel();
           if (editorModel) {
             monaco.editor.setModelLanguage(editorModel, language);
-
             console.log('Model language after setting:', editorModel.getLanguageId());
-            console.log('Available languages:', monaco.languages.getLanguages());
+          }
+
+          // Initialize appropriate language support based on file type
+          switch (language) {
+            case 'typescript':
+              console.log('Initializing TypeScript declarations');
+              const { initDeclarations: initTsDeclarations } = await import('./Editor/languages/typescript/declarations');
+              console.log('Editor:', editor);
+              const tsDisposable = await initTsDeclarations(editor);
+              console.log('TypeScript Disposable:', tsDisposable);
+              setDisposables(prev => [...prev, tsDisposable]);
+
+              // Set TypeScript compiler options
+              monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.ES2020,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                module: monaco.languages.typescript.ModuleKind.CommonJS,
+                allowNonTsExtensions: true,
+                typeRoots: ["node_modules/@types"],
+                allowJs: true,
+                strict: true,
+                noImplicitAny: false
+              });
+
+              // Add global type declarations
+              monaco.languages.typescript.typescriptDefaults.addExtraLib(`
+                declare const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
+                declare const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
+                declare const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
+              `, 'globals.d.ts');
+              break;
+            case 'javascript':
+              // const { initDeclarations: initJsDeclarations } = await import('./Editor/languages/javascript/declarations');
+              // const jsDisposable = await initJsDeclarations();
+              // console.log('JavaScript Disposable:', jsDisposable);
+              // setDisposables(prev => [...prev, jsDisposable]);
+              break;
+            case 'rust':
+              const { initRustLanguage } = await import('./Editor/Monaco/languages/rust/init');
+              await initRustLanguage(monaco, editor);
+              break;
           }
         }}
         options={{
