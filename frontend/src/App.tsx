@@ -779,6 +779,22 @@ const App = () => {
         })
       });
 
+      if (!buildResponse.ok) {
+        const error = new Error(`Build failed with status: ${buildResponse.status}`);
+        // Update the command message to remove loading state before throwing
+        setOutputMessages(prev => {
+          const messages = [...prev];
+          const lastCommandIndex = messages.reverse().findIndex(m => m.type === 'command');
+          if (lastCommandIndex !== -1) {
+            const actualIndex = messages.length - 1 - lastCommandIndex;
+            messages[actualIndex] = { ...messages[actualIndex], isLoading: false };
+          }
+          messages.reverse();
+          return messages;
+        });
+        throw error;
+      }
+
       const result = await buildResponse.json();
 
       if (result.stderr) {
@@ -816,6 +832,7 @@ const App = () => {
         ) {
           // Show as error
           addOutputMessage('error', formattedError);
+          throw new Error(formattedError); // This will trigger the catch block
         } else {
           // Show other output
           addOutputMessage('info', formattedError);
@@ -823,29 +840,59 @@ const App = () => {
       }
     } catch (error: any) {
       addOutputMessage('error', `Build error: ${error.message}`);
+      console.error('Build error:', error);
     } finally {
+      // Always reset loading states
       setIsCompiling(false);
-      // Update the last command message to remove the loading state
       setOutputMessages(prev => {
         const messages = [...prev];
-        const lastCommandIndex = messages.reverse().findIndex(m => m.type === 'command');
-        if (lastCommandIndex !== -1) {
-          const actualIndex = messages.length - 1 - lastCommandIndex;
-          messages[actualIndex] = { ...messages[actualIndex], isLoading: false };
+        // Find all loading messages from the current command and update them
+        const lastLoadingCommand = messages.reverse().find(m => m.type === 'command' && m.isLoading);
+        if (lastLoadingCommand?.commandId) {
+          messages.forEach(msg => {
+            if (msg.commandId === lastLoadingCommand.commandId) {
+              msg.isLoading = false;
+            }
+          });
         }
-        messages.reverse(); // Restore original order
+        messages.reverse();
         return messages;
       });
     }
   };
 
   const addOutputMessage = (type: OutputMessage['type'], content: string, isLoading: boolean = false) => {
-    setOutputMessages(prev => [...prev, {
-      type,
-      content,
-      timestamp: new Date(),
-      isLoading
-    }]);
+    setOutputMessages(prev => {
+      const messages = [...prev];
+
+      // Generate a unique command ID when starting a new command
+      const commandId = type === 'command' && isLoading ?
+        Date.now().toString() : undefined;
+
+      // If adding an error or success message, update all loading states for the current command
+      if (type === 'error' || type === 'success') {
+        // Find the last command message that's still loading
+        const lastLoadingCommand = messages.reverse().find(m => m.type === 'command' && m.isLoading);
+        if (lastLoadingCommand?.commandId) {
+          // Update all messages with this commandId to not be loading
+          messages.forEach(msg => {
+            if (msg.commandId === lastLoadingCommand.commandId) {
+              msg.isLoading = false;
+            }
+          });
+        }
+        messages.reverse();
+      }
+
+      // Add the new message with commandId if applicable
+      return [...messages, {
+        type,
+        content,
+        timestamp: new Date(),
+        isLoading,
+        commandId // Add commandId to track related messages
+      }];
+    });
   };
 
   const clearOutputMessages = () => {

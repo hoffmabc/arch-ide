@@ -152,6 +152,8 @@ export class ArchPgClient {
         removeComments: true,
       });
 
+      console.log('Transpiled code:', transpiled);
+
       // Create and inject the script
       const scriptEl = document.createElement("script");
       scriptEl.type = 'text/javascript';

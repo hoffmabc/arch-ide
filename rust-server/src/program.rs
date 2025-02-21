@@ -291,15 +291,13 @@ pub async fn build(
     let status = child.wait().await?;
     let build_succeeded = stdout_lines.contains("Finished release") || stderr_lines.contains("Finished release");
 
+    // Instead of returning error, we return the stderr output along with the status
     if !status.success() && !build_succeeded {
-        return Err(anyhow!("Build failed with status: {}", status));
+        // Return the stderr output even on failure
+        return Ok((stderr_lines, safe_program_name));
     }
 
     println!("Build command executed successfully.");
-
-    // Use stdout_lines and stderr_lines instead of the previous output variables
-    let stdout = stdout_lines;
-    let stderr = stderr_lines;
 
     // Check if binary was created using safe program name
     let binary_path = program_path
@@ -325,7 +323,7 @@ pub async fn build(
         println!("Warning: Binary file not found at expected location");
     }
 
-    Ok((stderr, safe_program_name))
+    Ok((stderr_lines, safe_program_name))
 }
 
 async fn upload_to_gcs(uuid: &str, program_name: &str, binary_data: &[u8]) -> anyhow::Result<()> {

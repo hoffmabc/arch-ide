@@ -91,12 +91,23 @@ export default defineConfig({
         target: process.env.VITE_RPC_URL || 'http://rpc-01.test.arch.network',
         changeOrigin: true,
         secure: false,
-        proxyTimeout: 120000,  // Increase to 2 minutes
-        timeout: 120000,       // Increase to 2 minutes
+        proxyTimeout: 120000,
+        timeout: 120000,
         configure: (proxy, _options) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('Connection', 'keep-alive');
-            proxyReq.setHeader('Keep-Alive', 'timeout=120');
+          proxy.on('proxyReq', (proxyReq, req) => {
+            if (req.method !== 'OPTIONS') {
+              proxyReq.setHeader('Connection', 'keep-alive');
+              proxyReq.setHeader('Keep-Alive', 'timeout=120');
+            }
+          });
+
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            if (req.method === 'OPTIONS') {
+              proxyRes.headers['access-control-allow-origin'] = '*';
+              proxyRes.headers['access-control-allow-methods'] = 'POST, OPTIONS';
+              proxyRes.headers['access-control-allow-headers'] = 'content-type, authorization';
+              proxyRes.headers['access-control-max-age'] = '3600';
+            }
           });
 
           proxy.on('error', (err, req, res) => {
@@ -108,7 +119,9 @@ export default defineConfig({
           });
         },
         headers: {
-          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         }
       },
       '/api/build': {

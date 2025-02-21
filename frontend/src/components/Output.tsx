@@ -7,6 +7,7 @@ export interface OutputMessage {
   content: string;
   timestamp: Date;
   isLoading?: boolean;
+  commandId?: string;
 }
 
 interface OutputProps {

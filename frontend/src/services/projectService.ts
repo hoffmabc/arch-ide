@@ -106,6 +106,13 @@ console.log(JSON.stringify(count));
 // Get account address from hex pubkey
 const pubkey = PubkeyUtil.fromHex('c2e770ee15a878b111a88a4bd94229d2472f84a5b46818868e51ada469723f72');
 console.log("Account Address:", await conn.getAccountAddress(pubkey));
+
+try {
+  const data = await conn.readAccountInfo(pubkey);
+  console.log('Data:', data);
+} catch(e) {
+  console.log(e);
+}
 `;
 
 const PROGRAM_TEMPLATE: FileNode[] = [

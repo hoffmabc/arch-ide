@@ -123,17 +123,18 @@ export const ConnectionStatus = ({
   };
 
   const handleConnect = async () => {
-    if (isConnecting) return;
     setIsConnecting(true);
-
     try {
       const success = await checkConnection();
-      scheduleNextCheck(success);
-      if (success) {
-        onConnect();
+      if (!success) {
+        setIsConnecting(false);
       }
-    } finally {
+    } catch (error) {
+      console.error('Connection error:', error);
       setIsConnecting(false);
+      setShowErrorModal(true);
+      onDisconnect();
+      onPingUpdate(null);
     }
   };
 

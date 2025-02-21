@@ -10,7 +10,10 @@ export class RpcConnection {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
+          credentials: 'same-origin',
+          mode: 'cors',
           signal: controller.signal,
           body: JSON.stringify({
             jsonrpc: '2.0',
