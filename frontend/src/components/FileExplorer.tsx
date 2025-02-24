@@ -40,6 +40,7 @@ import * as ts from 'typescript';
 import { ArchConnection, RpcConnection, MessageUtil, PubkeyUtil } from '@saturnbtcio/arch-sdk';
 import { url } from 'inspector';
 import { ArchPgClient } from '../utils/archPgClient';
+import NewItemDialog from './NewItemDialog';
 
 window.archSdk = {
   RpcConnection,
@@ -50,6 +51,11 @@ window.archSdk = {
 
 
 const getNodePath = (node: FileNode, path: string[] = []): string => {
+  // For top-level folders (src and client), just return their names
+  if (path.length === 0 && ['src', 'client'].includes(node.name)) {
+    return node.name;
+  }
+  // For other paths, join with '/'
   return [...path, node.name].join('/');
 };
 
@@ -138,8 +144,8 @@ interface FileContextMenuProps {
 const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: FileContextMenuProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if this is the src folder
-  const isSrcFolder = node.type === 'directory' && node.name === 'src';
+  // Check if this is a top-level folder (src or client)
+  const isTopLevelFolder = node.type === 'directory' && ['src', 'client'].includes(node.name);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -191,16 +197,17 @@ const FileContextMenu = ({ node, onNewFile, onNewFolder, onDelete, onRename }: F
             </DropdownMenuItem>
           </>
         )}
-        <DropdownMenuItem onClick={onRename}>
-          <Pencil size={16} className="mr-2" />
-          Rename
-        </DropdownMenuItem>
-        {/* Only show delete option if it's not the src folder */}
-        {!isSrcFolder && (
-          <DropdownMenuItem className="text-red-400" onClick={handleDelete}>
-            <Trash2 size={16} className="mr-2" />
-            Delete
-          </DropdownMenuItem>
+        {!isTopLevelFolder && (
+          <>
+            <DropdownMenuItem onClick={onRename}>
+              <Pencil size={16} className="mr-2" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-red-400" onClick={handleDelete}>
+              <Trash2 size={16} className="mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </>
         )}
       </DropdownMenuContent>
       <input
@@ -234,62 +241,56 @@ const FileExplorerItem = ({
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
 }) => {
-  const [isInlineRenaming, setIsInlineRenaming] = useState(false);
-  const [newName, setNewName] = useState(node.name);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const nodePath = getNodePath(node, path);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
 
-    try {
-      const content = await readFileContent(file);
-      const currentPath = [...path, node.name];
-      onNewItem(currentPath, 'file', file.name, content);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Error reading file:', error.message);
-      } else {
-        console.error('Unknown error reading file:', error);
-      }
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!['src', 'client'].includes(node.name)) {
+      setIsRenameDialogOpen(true);
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  };
+
+  const handleNewFile = () => {
+    onNewItem([...path, node.name], 'file');
   };
 
   const handleNewFolder = () => {
-    const currentPath = [...path, node.name];
-    onNewItem(currentPath, 'directory');
+    onNewItem([...path, node.name], 'directory');
   };
 
   const handleDelete = () => {
-    const currentPath = [...path, node.name];
-    onUpdateTree('delete', currentPath);
+    onUpdateTree('delete', [...path, node.name]);
   };
 
-  const handleRename = (newName: string) => {
-    if (newName && newName !== node.name) {
-      const currentPath = [...path, node.name];
-      onUpdateTree('rename', currentPath, undefined, newName);
+  const handleRename = () => {
+    if (!['src', 'client'].includes(node.name)) {
+      setIsRenameDialogOpen(true);
     }
-    setIsInlineRenaming(false);
   };
 
-  const isSelected = currentFile?.path === getNodePath(node, path);
+  const handleRenameSubmit = (newName: string) => {
+    onUpdateTree('rename', [...path, node.name], node.type, newName);
+    setIsRenameDialogOpen(false);
+  };
 
   return (
     <div className="select-none">
-      <div className="flex items-center group">
+      <div className="flex items-center group" onContextMenu={handleContextMenu}>
         <div
           className={cn(
             "flex-1 flex items-center hover:bg-gray-700 px-2 py-1 cursor-pointer",
-            isSelected && "bg-gray-700"
+            currentFile?.path === nodePath && "bg-gray-700"
           )}
           style={{ paddingLeft: `${depth * 12}px` }}
           onClick={() => {
             if (node.type === 'directory') {
-              const nodePath = getNodePath(node, path);
               const newExpandedFolders = new Set(expandedFolders);
               if (expandedFolders.has(nodePath)) {
                 newExpandedFolders.delete(nodePath);
@@ -298,16 +299,16 @@ const FileExplorerItem = ({
               }
               onExpandedFoldersChange(newExpandedFolders);
             } else {
-              const nodePath = getNodePath(node, path);
               onSelect({
                 ...node,
                 path: nodePath
               });
             }
           }}
+          onDoubleClick={handleDoubleClick}
         >
           {node.type === 'directory' && (
-            expandedFolders.has(getNodePath(node, path))
+            expandedFolders.has(nodePath)
               ? <ChevronDown size={16} />
               : <ChevronRight size={16} />
           )}
@@ -316,55 +317,50 @@ const FileExplorerItem = ({
           ) : (
             getFileIcon(node.name)
           )}
-          <div
-            className="ml-2 flex-1"
-          >
-            {isInlineRenaming ? (
-              <input
-                ref={fileInputRef}
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onBlur={() => handleRename(newName)}
-                className="bg-gray-700 text-sm px-1 w-full outline-none border border-blue-500 rounded"
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <span className="text-sm">{node.name}</span>
-            )}
+          <div className="ml-2 flex-1">
+            <span className="text-sm">{node.name}</span>
           </div>
         </div>
         <FileContextMenu
           node={node}
-          onNewFile={() => fileInputRef.current?.click()}
+          onNewFile={handleNewFile}
           onNewFolder={handleNewFolder}
           onDelete={handleDelete}
-          onRename={() => setIsInlineRenaming(true)}
+          onRename={handleRename}
         />
       </div>
-      {node.type === 'directory' && node.children && expandedFolders.has(getNodePath(node, path)) && (
-        [...node.children]
-          .sort((a, b) => {
-            // First sort by type (directories first)
-            if (a.type === 'directory' && b.type === 'file') return -1;
-            if (a.type === 'file' && b.type === 'directory') return 1;
-            // Then sort alphabetically
-            return a.name.localeCompare(b.name);
-          })
-          .map((child: FileNode, i: number) => (
-            <FileExplorerItem
-              key={i}
-              node={child}
-              path={[...path, node.name]}
-              depth={depth + 1}
-              onSelect={onSelect}
-              onUpdateTree={onUpdateTree}
-              onNewItem={onNewItem}
-              expandedFolders={expandedFolders}
-              onExpandedFoldersChange={onExpandedFoldersChange}
-              currentFile={currentFile}
-            />
-          ))
+      <RenameDialog
+        isOpen={isRenameDialogOpen}
+        onClose={() => setIsRenameDialogOpen(false)}
+        onRename={handleRenameSubmit}
+        currentName={node.name}
+        type={node.type}
+      />
+      {node.type === 'directory' && node.children && (
+        <div style={{ display: expandedFolders.has(nodePath) ? 'block' : 'none' }}>
+          {node.children
+            .sort((a, b) => {
+              // First sort by type (directories first)
+              if (a.type === 'directory' && b.type === 'file') return -1;
+              if (a.type === 'file' && b.type === 'directory') return 1;
+              // Then sort alphabetically
+              return a.name.localeCompare(b.name);
+            })
+            .map((child, i) => (
+              <FileExplorerItem
+                key={i}
+                node={child}
+                path={[...path, node.name]}
+                depth={depth + 1}
+                onSelect={onSelect}
+                onUpdateTree={onUpdateTree}
+                onNewItem={onNewItem}
+                expandedFolders={expandedFolders}
+                onExpandedFoldersChange={onExpandedFoldersChange}
+                currentFile={currentFile}
+              />
+            ))}
+        </div>
       )}
     </div>
   );
@@ -386,6 +382,7 @@ const FileExplorer = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [worker, setWorker] = useState<Worker | null>(null);
   const [clientHeight, setClientHeight] = useState(300);
+  const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
 
   useEffect(() => {
     // Create the worker once when the component mounts
@@ -420,6 +417,16 @@ const FileExplorer = ({
         newWorker.terminate();
     };
   }, [addOutputMessage]);
+
+  useEffect(() => {
+    console.log('Expanded folders set to:', Array.from(expandedFolders));
+    // Add src to expandedFolders
+    // expandedFolders.add('src');
+    // // Add client to expandedFolders
+    // expandedFolders.add('client');
+    // We should update every FileExplorerItem with the new expandedFolders
+
+  }, [expandedFolders]);
 
   // Group files by section
   const programFiles = files.filter(f => f.name === 'src');
@@ -557,12 +564,12 @@ const FileExplorer = ({
                       // Create client directory if it doesn't exist
                       if (!clientFiles.length) {
                         onNewItem([], 'directory', 'client');
-                        // Wait for directory creation
+                        // Wait for directory creation then open dialog
                         setTimeout(() => {
-                          onNewItem(['client'], 'file', 'client.ts', '// Client code here');
+                          setIsNewItemDialogOpen(true);
                         }, 100);
                       } else {
-                        onNewItem(['client'], 'file', 'client.ts', '// Client code here');
+                        setIsNewItemDialogOpen(true);
                       }
                     }}
                   >
@@ -589,6 +596,17 @@ const FileExplorer = ({
                 ))}
               </div>
             </div>
+
+            {/* New Item Dialog */}
+            <NewItemDialog
+              isOpen={isNewItemDialogOpen}
+              onClose={() => setIsNewItemDialogOpen(false)}
+              onSubmit={(name) => {
+                onNewItem(['client'], 'file', name, `// ${name}\n// Add your client code here`);
+                setIsNewItemDialogOpen(false);
+              }}
+              type="file"
+            />
 
             {/* Other Files */}
             {otherFiles.length > 0 && (

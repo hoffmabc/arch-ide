@@ -246,7 +246,10 @@ const App = () => {
 
   useEffect(() => {
     const loadProjects = async () => {
+      console.group('Initial Project Load');
       const loadedProjects = await projectService.getAllProjects();
+      console.log('Loaded projects:', loadedProjects);
+
       // Only strip in production
       if (import.meta.env.PROD) {
         setProjects(loadedProjects.map(stripProjectContent));
@@ -254,8 +257,14 @@ const App = () => {
         setProjects(loadedProjects);
       }
       if (loadedProjects.length > 0) {
+        console.log('Setting initial project:', loadedProjects[0]);
         setFullCurrentProject(loadedProjects[0]);
+        // Ensure src and client folders are expanded by default
+        const defaultExpandedFolders = new Set(['src', 'client']);
+        console.log('Setting initial expanded folders:', Array.from(defaultExpandedFolders));
+        setExpandedFolders(defaultExpandedFolders);
       }
+      console.groupEnd();
     };
 
     loadProjects();
@@ -367,14 +376,18 @@ const App = () => {
     if (fullCurrentProject) {
       // Restore expanded folders
       const savedExpandedFolders = localStorage.getItem('expandedFolders');
+      const defaultExpandedFolders = new Set(['src', 'client']); // Add default folders to expand
+
       if (savedExpandedFolders) {
         try {
           const expandedPaths = JSON.parse(savedExpandedFolders);
-          setExpandedFolders(new Set(expandedPaths));
+          expandedPaths.forEach((path: string) => defaultExpandedFolders.add(path));
         } catch (e) {
           console.error('Error restoring expanded folders:', e);
         }
       }
+
+      setExpandedFolders(defaultExpandedFolders);
 
       // Restore tabs
       const savedTabs = localStorage.getItem('editorTabs');
@@ -1063,15 +1076,29 @@ const App = () => {
   };
 
   const handleProjectSelect = async (project: Project) => {
-    const fullProject = await projectService.getProject(project.id);
-    if (!fullProject) return;
+    console.group('Project Selection');
+    console.log('Selected project:', project);
 
+    const fullProject = await projectService.getProject(project.id);
+    if (!fullProject) {
+      console.warn('Project not found');
+      console.groupEnd();
+      return;
+    }
+
+    console.log('Loading full project:', fullProject);
     setFullCurrentProject(fullProject);
     setCurrentAccount(fullProject.account || null);
     setProgramId(fullProject.account?.pubkey);
     setProgramBinary(null);
     setOpenFiles([]);
     setCurrentFile(null);
+
+    // Ensure src and client folders are expanded by default
+    const defaultExpandedFolders = new Set(['src', 'client']);
+    console.log('Setting expanded folders for new project:', Array.from(defaultExpandedFolders));
+    setExpandedFolders(defaultExpandedFolders);
+    console.groupEnd();
   };
 
   // Add this effect to handle batched saves
@@ -1191,6 +1218,11 @@ const App = () => {
 
     console.groupEnd();
   };
+
+  // Monitor expandedFolders changes
+  useEffect(() => {
+    console.log('expandedFolders changed:', Array.from(expandedFolders));
+  }, [expandedFolders]);
 
   return (
     <QueryClientProvider client={queryClient}>
