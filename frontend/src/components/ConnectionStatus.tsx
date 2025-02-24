@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Button } from './ui/button';
-import { Loader2, Wifi, WifiOff } from 'lucide-react';
+import { Loader2, Wifi, WifiOff, HelpCircle } from 'lucide-react';
 import { ArchConnection, RpcConnection } from '@saturnbtcio/arch-sdk';
 import { ConnectionErrorModal } from './ConnectionErrorModal';
 
@@ -165,11 +165,21 @@ export const ConnectionStatus = ({
         )}
       </Button>
 
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-5 w-5 ml-2"
+        onClick={() => setShowErrorModal(true)}
+      >
+        <HelpCircle className="h-4 w-4" />
+      </Button>
+
       <ConnectionErrorModal
         isOpen={showErrorModal}
         onClose={() => setShowErrorModal(false)}
         network={network}
         persistDismissal={true}
+        isConnected={isConnected}
       />
     </>
   );

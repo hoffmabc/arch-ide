@@ -16,13 +16,15 @@ import {
     onClose: () => void;
     network: string;
     persistDismissal?: boolean;
+    isConnected: boolean;
   }
 
   export const ConnectionErrorModal = ({
     isOpen,
     onClose,
     network,
-    persistDismissal = true
+    persistDismissal = true,
+    isConnected
   }: ConnectionErrorModalProps) => {
     const isLocalnet = network === 'devnet';
     const [os, setOs] = useState<'mac' | 'linux' | 'windows' | 'unknown'>('unknown');
@@ -77,16 +79,14 @@ import {
 
     // Check if modal was previously dismissed
     const shouldShow = () => {
-      if (!persistDismissal) return isOpen;
-      const dismissed = localStorage.getItem(MODAL_PREFERENCE_KEY);
-      return isOpen && !dismissed;
+      return isOpen && !isConnected; // Only show if not connected
     };
 
     if (!shouldShow()) return null;
 
     return (
       <Dialog open={true} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-[600px] bg-[#1C1E26] border-gray-800">
+        <DialogContent className="sm:max-w-[600px] bg-[#1C1E26] border-gray-800" showCloseButton={false}>
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="text-xl font-mono text-white">
               Connect to {network}

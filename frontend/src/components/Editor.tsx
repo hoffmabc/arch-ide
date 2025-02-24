@@ -8,6 +8,8 @@ interface EditorProps {
   onChange: (value: string | undefined) => void;
   onSave?: (value: string) => void;
   currentFile?: FileNode | null;
+  currentProject?: any;
+  onSelectFile: (file: FileNode) => void;
 }
 
 const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' | 'svg' => {
@@ -133,7 +135,18 @@ const decodeContent = (content: string): string => {
   return content;
 };
 
-const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
+const findFileInProject = (files: any[], path: string): FileNode | null => {
+  for (const file of files) {
+    if (file.path === path) return file;
+    if (file.children) {
+      const found = findFileInProject(file.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectFile }: EditorProps) => {
   const [latestContent, setLatestContent] = useState(code);
   const isWelcomeScreen = !currentFile;
   const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeContent(code);
@@ -157,6 +170,42 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
     };
   }, [disposables]);
 
+  useEffect(() => {
+    // Check for saved tabs in localStorage
+    const savedTabs = localStorage.getItem('editorTabs');
+    const savedCurrentFile = localStorage.getItem('currentEditorFile');
+
+    if (savedTabs) {
+      try {
+        const tabs = JSON.parse(savedTabs);
+        // Verify each tab still exists before restoring
+        const validTabs = tabs.filter((tab: string) => {
+          const file = findFileInProject(currentProject?.files || [], tab);
+          return file != null;
+        });
+
+        if (validTabs.length > 0) {
+          validTabs.forEach((tab: string) => {
+            const file = findFileInProject(currentProject?.files || [], tab);
+            if (file) {
+              onSelectFile(file);
+            }
+          });
+
+          // Restore the previously active tab if it exists
+          if (savedCurrentFile) {
+            const currentFile = findFileInProject(currentProject?.files || [], savedCurrentFile);
+            if (currentFile) {
+              onSelectFile(currentFile);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error restoring editor tabs:', e);
+      }
+    }
+  }, [currentProject]); // Only run when project loads
+
   const handleChange = useCallback((value: string | undefined) => {
     if (!isWelcomeScreen && value !== undefined) {
       setLatestContent(value);
@@ -165,18 +214,46 @@ const Editor = ({ code, onChange, onSave, currentFile }: EditorProps) => {
   }, [isWelcomeScreen, onChange]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Log the event for debugging
-    // console.log('handleKeyDown', e);
+    try {
+      console.group('Editor KeyDown');
+      console.log('Event:', {
+        key: e?.key,
+        keyCode: e?.keyCode,
+        code: e?.code,
+        ctrlKey: e?.ctrlKey,
+        metaKey: e?.metaKey,
+        type: e?.type,
+        isWelcomeScreen,
+        hasEditor: !!editorRef.current,
+        hasSaveHandler: !!onSave
+      });
 
-    // Check if the key pressed is 's' and if Ctrl or Cmd is held down
-    if ((e.ctrlKey || e.metaKey) && e.keyCode === 49) {
-      e.preventDefault(); // Prevent the default save action
+      // Handle save shortcut (Ctrl+S or Cmd+S)
+      const isSaveCommand = (e?.ctrlKey || e?.metaKey) && (e?.key === 's' || e?.code === 'KeyS');
+      if (isSaveCommand) {
+        console.log('Save shortcut detected');
 
-      // Ensure we are not on the welcome screen and onSave is defined
-      if (!isWelcomeScreen && onSave && editorRef.current) {
-        const currentValue = editorRef.current.getValue(); // Get the current value from the editor
-        onSave(currentValue); // Call the onSave function with the current value
+        // Prevent default browser behavior
+        e?.preventDefault();
+        e?.stopPropagation();
+
+        // Save the file if we're not on welcome screen
+        if (!isWelcomeScreen && onSave && editorRef.current) {
+          console.log('Saving file...');
+          const currentValue = editorRef.current.getValue();
+          onSave(currentValue);
+        } else {
+          console.log('Cannot save:', {
+            isWelcomeScreen,
+            hasOnSave: !!onSave,
+            hasEditor: !!editorRef.current
+          });
+        }
       }
+    } catch (error) {
+      console.error('Error in handleKeyDown:', error);
+    } finally {
+      console.groupEnd();
     }
   }, [onSave, isWelcomeScreen]);
 

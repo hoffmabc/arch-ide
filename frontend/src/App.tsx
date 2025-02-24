@@ -362,6 +362,50 @@ const App = () => {
     }
   }, [programBinary, fullCurrentProject?.name]);
 
+  // Add this with your other initialization effects
+  useEffect(() => {
+    if (fullCurrentProject) {
+      // Restore expanded folders
+      const savedExpandedFolders = localStorage.getItem('expandedFolders');
+      if (savedExpandedFolders) {
+        try {
+          const expandedPaths = JSON.parse(savedExpandedFolders);
+          setExpandedFolders(new Set(expandedPaths));
+        } catch (e) {
+          console.error('Error restoring expanded folders:', e);
+        }
+      }
+
+      // Restore tabs
+      const savedTabs = localStorage.getItem('editorTabs');
+      const savedCurrentFile = localStorage.getItem('currentEditorFile');
+
+      if (savedTabs) {
+        try {
+          const tabPaths = JSON.parse(savedTabs);
+          const validTabs = tabPaths
+            .map((path: string) => findFileInProject(fullCurrentProject.files, path))
+            .filter((file: FileNode | null) => file !== null);
+
+          if (validTabs.length > 0) {
+            // Open all tabs at once
+            setOpenFiles(validTabs);
+
+            // Set current file to either the previously selected file or the first tab
+            if (savedCurrentFile) {
+              const currentFile = findFileInProject(fullCurrentProject.files, savedCurrentFile);
+              setCurrentFile(currentFile || validTabs[0]);
+            } else {
+              setCurrentFile(validTabs[0]);
+            }
+          }
+        } catch (e) {
+          console.error('Error restoring editor tabs:', e);
+        }
+      }
+    }
+  }, [fullCurrentProject]);
+
   const handleDeploy = async () => {
     if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
       const missing = [];
@@ -571,58 +615,54 @@ const App = () => {
     setIsNewFileDialogOpen(false);
   };
 
+  const saveTabState = useCallback(() => {
+    if (openFiles.length > 0) {
+      localStorage.setItem('editorTabs', JSON.stringify(openFiles.map(f => f.path || f.name)));
+      if (currentFile) {
+        localStorage.setItem('currentEditorFile', currentFile.path || currentFile.name);
+      }
+      // Save expanded folders state
+      localStorage.setItem('expandedFolders', JSON.stringify(Array.from(expandedFolders)));
+    } else {
+      localStorage.removeItem('editorTabs');
+      localStorage.removeItem('currentEditorFile');
+      localStorage.removeItem('expandedFolders');
+    }
+  }, [openFiles, currentFile, expandedFolders]);
+
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
-      // Always use the full path from the file structure
       const filePath = file.path || constructFullPath(file, fullCurrentProject?.files || []);
-
-      // First check if the file is in openFiles
       const openFile = openFiles.find(f => f.path === filePath);
-
-      // Then check project files if not found in open files
       const currentProjectFile = !openFile && fullCurrentProject ?
         findFileInProject(fullCurrentProject.files, filePath) : null;
-
-      // Use openFile first, then project file, then create a new file object
       const fileToUse = openFile || currentProjectFile || {
         ...file,
         path: filePath,
-        name: file.name // Ensure we keep the original filename
+        name: file.name
       };
 
       setCurrentFile(fileToUse);
 
-      // Update openFiles if needed
       if (!openFiles.some(f => f.path === filePath)) {
         setOpenFiles(prev => [...prev, fileToUse]);
       }
+
+      // Call saveTabState directly after updating state
+      saveTabState();
     }
   };
 
-  const handleCloseFile = useCallback((fileToClose: FileNode) => {
-    // Batch state updates using a single setState call
-    setOpenFiles(prevFiles => {
-      const newFiles = prevFiles.filter(f =>
-        (f.path || f.name) !== (fileToClose.path || fileToClose.name)
-      );
+  const handleCloseFile = useCallback((file: FileNode) => {
+    setOpenFiles(prev => prev.filter(f => f.path !== file.path));
+    if (currentFile?.path === file.path) {
+      const nextFile = openFiles[openFiles.length - 2]; // Get previous file
+      setCurrentFile(nextFile || null);
+    }
 
-      // Update current file if needed
-      if (currentFile &&
-          (currentFile.path || currentFile.name) === (fileToClose.path || fileToClose.name)) {
-        // Set current file to the last remaining file or null
-        setCurrentFile(newFiles.length > 0 ? newFiles[newFiles.length - 1] : null);
-      }
-
-      return newFiles;
-    });
-
-    const timeoutId = setTimeout(() => {
-      if (fullCurrentProject) {
-        projectService.saveProject(fullCurrentProject);
-      }
-    }, 1000);
-
-  }, [currentFile, fullCurrentProject]);
+    // Update localStorage after closing
+    saveTabState();
+  }, [currentFile, openFiles, saveTabState]);
 
   const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -944,7 +984,6 @@ const App = () => {
     }
 
     try {
-      console.log(fullCurrentProject.files);
       const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
       const updatedProject = {
         ...fullCurrentProject,
@@ -955,18 +994,17 @@ const App = () => {
       // Save and verify
       await projectService.saveProject(updatedProject);
 
-      // Only update state if save was successful
-      setCurrentFile({ ...currentFile, content: newContent });
+      // Update both currentFile and openFiles to maintain tab state
+      const updatedCurrentFile = { ...currentFile, content: newContent };
+      setCurrentFile(updatedCurrentFile);
+      setOpenFiles(prev => prev.map(f =>
+        f.path === currentFile.path ? updatedCurrentFile : f
+      ));
       setFullCurrentProject(updatedProject);
 
-      console.log('File saved and verified successfully');
+      console.log('File saved successfully');
     } catch (error) {
       console.error('Save failed:', error);
-      // Optionally, reload the current file from storage to ensure consistent state
-      const reloadedProject = await projectService.getProject(fullCurrentProject.id);
-      if (reloadedProject) {
-        setFullCurrentProject(reloadedProject);
-      }
     }
 
     console.groupEnd();
@@ -1219,6 +1257,7 @@ const App = () => {
               onChange={handleFileChange}
               onSave={handleSaveFile}
               currentFile={currentFile}
+              onSelectFile={handleFileSelect}
               key={currentFile?.path || 'welcome'}
             />
             </div>
