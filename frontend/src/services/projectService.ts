@@ -95,9 +95,7 @@ pub struct HelloWorldParams {
 }
 `;
 
-const DEFAULT_CLIENT = String.raw`
-
-const conn = new RpcConnection("http://localhost:9002");
+const DEFAULT_CLIENT = String.raw`const conn = new RpcConnection("http://localhost:9002");
 
 // Get latest block count
 const count = await conn.getBlockCount();

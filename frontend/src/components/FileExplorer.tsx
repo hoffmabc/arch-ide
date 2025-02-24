@@ -22,7 +22,9 @@ import {
   FileKey,
   FileSpreadsheet,
   Package,
-  Upload
+  Upload,
+  Check,
+  X
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -32,7 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import RenameDialog from './RenameDialog';
 import { cn } from '../lib/utils';
-import type { FileNode } from '../types';
+import type { FileNode, Project, ProjectAccount } from '../types';
 import { Button } from '@/components/ui/button';
 import ResizeHandle from './ResizeHandle';
 import Editor from "@monaco-editor/react";
@@ -41,6 +43,8 @@ import { ArchConnection, RpcConnection, MessageUtil, PubkeyUtil } from '@saturnb
 import { url } from 'inspector';
 import { ArchPgClient } from '../utils/archPgClient';
 import NewItemDialog from './NewItemDialog';
+import { Textarea } from '@/components/ui/textarea';
+import { projectService } from '../services/projectService';
 
 window.archSdk = {
   RpcConnection,
@@ -120,6 +124,131 @@ const getFileIcon = (fileName: string) => {
   }
 };
 
+interface ProjectInfoProps {
+  project: Project;
+  onProjectUpdate: (project: Project) => void;
+}
+
+const ProjectInfo = ({ project, onProjectUpdate }: ProjectInfoProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState(project.name);
+  const [editedDescription, setEditedDescription] = useState(project.description || '');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Update local state when project changes
+  useEffect(() => {
+    setEditedName(project.name);
+    setEditedDescription(project.description || '');
+  }, [project]);
+
+  const handleSave = async () => {
+    const updatedProject = {
+      ...project,
+      name: editedName,
+      description: editedDescription,
+      lastModified: new Date()
+    };
+    await projectService.saveProject(updatedProject);
+    onProjectUpdate(updatedProject);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditedName(project.name);
+    setEditedDescription(project.description || '');
+    setIsEditing(false);
+  };
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [isEditing, editedDescription]);
+
+  const getPreviewText = (text: string) => {
+    const lines = text.split('\n').slice(0, 1);
+    const preview = lines.join('\n');
+    return preview + (text.split('\n').length > 1 ? '...' : '');
+  };
+
+  return (
+    <div className="border-b border-gray-700">
+      <div
+        className="flex items-center px-2 py-1 cursor-pointer hover:bg-gray-700 group"
+        onClick={() => !isEditing && setIsExpanded(!isExpanded)}
+      >
+        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <span className="ml-1 text-sm font-medium">Project Info</span>
+        {!isEditing && isExpanded && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            className="ml-auto opacity-0 group-hover:opacity-100 hover:bg-gray-600 p-1 rounded"
+          >
+            <Pencil size={14} />
+          </button>
+        )}
+      </div>
+      <div className="px-4 py-2 text-sm text-gray-400">
+        <div className="mb-1">
+          <span className="font-medium text-gray-300">Name: </span>
+          <span className="text-gray-400">{project.name}</span>
+        </div>
+        {project.description && (
+          <div>
+            <span className="font-medium text-gray-300">Description: </span>
+            <span className="text-gray-400 whitespace-pre-wrap">
+              {isExpanded ? project.description : getPreviewText(project.description)}
+            </span>
+          </div>
+        )}
+      </div>
+      {isExpanded && isEditing && (
+        <div className="px-4 py-2 text-sm text-gray-400">
+          <div className="mb-3">
+            <label className="block text-xs text-gray-500 mb-1">Name</label>
+            <input
+              type="text"
+              value={editedName}
+              onChange={(e) => setEditedName(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-300"
+            />
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs text-gray-500 mb-1">Description</label>
+            <Textarea
+              ref={textareaRef}
+              value={editedDescription}
+              onChange={(e) => setEditedDescription(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-gray-300 min-h-[60px] resize-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700"
+            >
+              <X size={14} />
+              <span className="text-xs">Cancel</span>
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 px-2 py-1 rounded bg-blue-600 hover:bg-blue-700"
+            >
+              <Check size={14} />
+              <span className="text-xs">Save</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface FileExplorerProps {
   hasProjects: boolean;
   files: FileNode[];
@@ -131,6 +260,8 @@ interface FileExplorerProps {
   currentFile: FileNode | null;
   onNewProject?: () => void;
   addOutputMessage: (type: string, message: string) => void;
+  project: Project;
+  onProjectAccountChange?: (account: ProjectAccount | null) => void;
 }
 
 interface FileContextMenuProps {
@@ -376,7 +507,9 @@ const FileExplorer = ({
   onExpandedFoldersChange,
   currentFile,
   onNewProject,
-  addOutputMessage
+  addOutputMessage,
+  project,
+  onProjectAccountChange
 }: FileExplorerProps) => {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -490,10 +623,16 @@ const FileExplorer = ({
     }
 };
 
+  const handleProjectUpdate = (updatedProject: Project) => {
+    // Update the project in the parent component
+    // This will trigger a re-render with the new project info
+    onProjectAccountChange && onProjectAccountChange(updatedProject.account || null);
+  };
+
   return (
-    <div className="bg-gray-800 w-full h-full flex flex-col">
-      <div className="p-2 border-b border-gray-700 font-medium flex justify-between items-center">
-        <span>EXPLORER</span>
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center p-2 border-b border-gray-700">
+        <h2 className="text-sm font-medium">Explorer</h2>
         <div className="flex gap-1">
           <button
             className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
@@ -533,101 +672,19 @@ const FileExplorer = ({
           </div>
         ) : (
           <>
-            {/* Program Section */}
-            <div className="py-2">
-              <div className="px-4 text-sm text-gray-400">Program</div>
-              <div className="mt-1">
-                {programFiles.map((file, i) => (
-                  <FileExplorerItem
-                    key={i}
-                    node={file}
-                    path={[]}
-                    onSelect={onFileSelect}
-                    onUpdateTree={onUpdateTree}
-                    onNewItem={onNewItem}
-                    expandedFolders={expandedFolders}
-                    onExpandedFoldersChange={onExpandedFoldersChange}
-                    currentFile={currentFile}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Client Section */}
-            <div className="py-2">
-              <div className="px-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">Client</span>
-                  <button
-                    className="hover:bg-gray-700 p-1 rounded"
-                    onClick={() => {
-                      // Create client directory if it doesn't exist
-                      if (!clientFiles.length) {
-                        onNewItem([], 'directory', 'client');
-                        // Wait for directory creation then open dialog
-                        setTimeout(() => {
-                          setIsNewItemDialogOpen(true);
-                        }, 100);
-                      } else {
-                        setIsNewItemDialogOpen(true);
-                      }
-                    }}
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-                <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => runClientCode()}>
-                  Run
-                </Button>
-              </div>
-              <div className="mt-1">
-                {clientFiles.map((file, i) => (
-                  <FileExplorerItem
-                    key={i}
-                    node={file}
-                    path={[]}
-                    onSelect={onFileSelect}
-                    onUpdateTree={onUpdateTree}
-                    onNewItem={onNewItem}
-                    expandedFolders={expandedFolders}
-                    onExpandedFoldersChange={onExpandedFoldersChange}
-                    currentFile={currentFile}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* New Item Dialog */}
-            <NewItemDialog
-              isOpen={isNewItemDialogOpen}
-              onClose={() => setIsNewItemDialogOpen(false)}
-              onSubmit={(name) => {
-                onNewItem(['client'], 'file', name, `// ${name}\n// Add your client code here`);
-                setIsNewItemDialogOpen(false);
-              }}
-              type="file"
-            />
-
-            {/* Other Files */}
-            {otherFiles.length > 0 && (
-              <div className="py-2">
-                <div className="mt-1">
-                  {otherFiles.map((file, i) => (
-                    <FileExplorerItem
-                      key={i}
-                      node={file}
-                      path={[]}
-                      onSelect={onFileSelect}
-                      onUpdateTree={onUpdateTree}
-                      onNewItem={onNewItem}
-                      expandedFolders={expandedFolders}
-                      onExpandedFoldersChange={onExpandedFoldersChange}
-                      currentFile={currentFile}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+            <ProjectInfo project={project} onProjectUpdate={handleProjectUpdate} />
+            {files.map((node, index) => (
+              <FileExplorerItem
+                key={index}
+                node={node}
+                onSelect={onFileSelect}
+                onUpdateTree={onUpdateTree}
+                onNewItem={onNewItem}
+                expandedFolders={expandedFolders}
+                onExpandedFoldersChange={onExpandedFoldersChange}
+                currentFile={currentFile}
+              />
+            ))}
           </>
         )}
       </div>
@@ -636,6 +693,7 @@ const FileExplorer = ({
         ref={fileInputRef}
         className="hidden"
         onChange={handleFileSelect}
+        multiple
       />
     </div>
   );

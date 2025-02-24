@@ -46,7 +46,7 @@ interface SidePanelProps {
   onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
   currentFile: FileNode | null;
   project: Project;
-  onProjectAccountChange: (account: ProjectAccount) => void;
+  onProjectAccountChange: (account: ProjectAccount | null) => void;
   onNewProject: () => void;
   binaryFileName: string | null;
   setBinaryFileName: (name: string | null) => void;
@@ -127,6 +127,8 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               currentFile={currentFile}
               onNewProject={onNewProject}
               addOutputMessage={addOutputMessage}
+              project={project}
+              onProjectAccountChange={onProjectAccountChange}
             />
           ) : (
           <BuildPanel
