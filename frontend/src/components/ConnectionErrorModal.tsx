@@ -17,6 +17,8 @@ import {
     network: string;
     persistDismissal?: boolean;
     isConnected: boolean;
+    actualUrl?: string | null;
+    rpcUrl: string;
   }
 
   export const ConnectionErrorModal = ({
@@ -24,7 +26,9 @@ import {
     onClose,
     network,
     persistDismissal = true,
-    isConnected
+    isConnected,
+    actualUrl,
+    rpcUrl
   }: ConnectionErrorModalProps) => {
     const isLocalnet = network === 'devnet';
     const [os, setOs] = useState<'mac' | 'linux' | 'windows' | 'unknown'>('unknown');
@@ -103,7 +107,14 @@ import {
 
           <div className="bg-[#15171E] text-red-400 p-4 rounded-md flex items-center gap-2 mt-4">
             <span className="text-2xl">☹</span>
-            <span>Unable to connect to {network}</span>
+            <span>
+              Unable to connect to {network} using {actualUrl || rpcUrl}
+              {actualUrl && actualUrl !== rpcUrl && (
+                <span className="block text-xs mt-1">
+                  (Attempted connection via {actualUrl})
+                </span>
+              )}
+            </span>
           </div>
 
           <div className="mt-6">

@@ -1,4 +1,4 @@
-import { ClipboardIcon, Plus, Import, Save } from 'lucide-react';
+import { ClipboardIcon, Plus, Import, Save, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { useState } from 'react';
 import { ArchConnection, RpcConnection } from '@saturnbtcio/arch-sdk';
@@ -263,26 +263,33 @@ import {
     };
 
     return (
-        <div className="w-full bg-gray-800 border-r border-gray-700 p-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="w-full bg-gray-800 border-r border-gray-700 p-4 space-y-6">
+          <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>
           </div>
 
           <Button
-            className="w-full mb-4 bg-pink-500 hover:bg-pink-600"
+            className="w-full bg-[#F7931A] hover:bg-[#d47b16] text-white"
             onClick={onBuild}
-            disabled={isBuilding || !hasProjects}
+            disabled={!hasProjects || isBuilding}
           >
-            {isBuilding ? 'Building...' : 'Build'}
+            {isBuilding ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Building...
+              </>
+            ) : (
+              'Build'
+            )}
           </Button>
 
-          <Tabs defaultValue="binary" className="w-full">
-            <TabsList className="w-full mb-4">
+          <Tabs defaultValue="binary" className="w-full space-y-4">
+            <TabsList className="w-full">
               <TabsTrigger value="binary" className="flex-1">Binary</TabsTrigger>
               <TabsTrigger value="idl" className="flex-1">IDL</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="binary">
+            <TabsContent value="binary" className="space-y-6">
               {/* Program ID Section */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { FileNode, Disposable } from '../types';
 import { declareGlobalTypes } from './Editor/languages/typescript/declarations/global';
+import { COMMENT, H_ORANGE, H_YELLOW, H_PURPLE, H_BLUE, ARCH_DARK, ARCH_GRAY, TEXT_PRIMARY } from '../theme/theme';
 
 interface EditorProps {
   code: string;
@@ -146,6 +147,27 @@ const findFileInProject = (files: any[], path: string): FileNode | null => {
   return null;
 };
 
+const defineTheme = (monaco: any) => {
+  monaco.editor.defineTheme('arch-theme', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: COMMENT.substring(1), fontStyle: 'italic' },
+      { token: 'keyword', foreground: H_ORANGE.substring(1) },
+      { token: 'string', foreground: H_YELLOW.substring(1) },
+      { token: 'number', foreground: H_PURPLE.substring(1) },
+      { token: 'type', foreground: H_BLUE.substring(1) },
+    ],
+    colors: {
+      'editor.background': ARCH_DARK,
+      'editor.foreground': TEXT_PRIMARY,
+      'editor.lineHighlightBackground': ARCH_GRAY,
+      'editorLineNumber.foreground': COMMENT,
+      'editorGutter.background': ARCH_DARK,
+    }
+  });
+};
+
 const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectFile }: EditorProps) => {
   const [latestContent, setLatestContent] = useState(code);
   const isWelcomeScreen = !currentFile;
@@ -262,11 +284,13 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
       <MonacoEditor
         height="100%"
         defaultLanguage="plaintext"
-        theme="vs-dark"
+        theme="arch-theme"
         key={currentFile?.path || 'welcome'}
         value={displayCode}
         onChange={handleChange}
-
+        beforeMount={(monaco) => {
+          defineTheme(monaco);
+        }}
         onMount={async (editor, monaco) => {
           editorRef.current = editor;
           editor.onKeyDown((e) => {

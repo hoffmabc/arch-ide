@@ -2,11 +2,14 @@ import React, { useState, Dispatch, SetStateAction, useCallback, useEffect } fro
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
-import { X, Globe, Link, Server, Key, Lock, Eye, AlertTriangle, Coins, Loader2 } from 'lucide-react';
+import { X, Globe, Link, Server, Key, Lock, Eye, AlertTriangle, Coins, Loader2, Wifi, HelpCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import type { Config } from '../types';
 import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
+import { getSmartRpcUrl } from '../utils/smartRpcConnection';
+import { RpcConnection } from '@saturnbtcio/arch-sdk';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 interface ConfigPanelProps {
   isOpen: boolean;
@@ -39,9 +42,22 @@ const debounce = <T extends (...args: any[]) => any>(
   return debounced;
 };
 
+const PRESET_RPC_URLS = {
+  'mainnet-beta': 'https://rpc.arch.network',
+  'testnet': 'https://rpc-01.test.arch.network',
+  'devnet': 'http://localhost:9002',
+  'custom': ''
+};
+
 export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigPanelProps) => {
   const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{success: boolean, message: string} | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'none' | 'success' | 'error'>('none');
+  const [rpcPreset, setRpcPreset] = useState<string>(() => {
+    const currentUrl = config.rpcUrl;
+    const preset = Object.entries(PRESET_RPC_URLS).find(([_, url]) => url === currentUrl)?.[0];
+    return preset || 'custom';
+  });
 
   // Separate debounced test functions for main RPC and Bitcoin RPC
   const debouncedTestBitcoinConnection = useCallback(
@@ -101,30 +117,61 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
     };
   }, [debouncedTestBitcoinConnection, debouncedTestMainConnection]);
 
+  const testConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+
+    try {
+      const smartUrl = getSmartRpcUrl(config.rpcUrl);
+      console.log('Testing connection to:', smartUrl, '(original URL:', config.rpcUrl, ')');
+
+      const connection = new RpcConnection(smartUrl);
+      const blockCount = await connection.getBlockCount();
+
+      if (typeof blockCount !== 'number' || isNaN(blockCount)) {
+        throw new Error('Invalid block count response');
+      }
+
+      setTestResult({
+        success: true,
+        message: `Successfully connected to RPC server: ${config.rpcUrl} (Block height: ${blockCount})`
+      });
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: `Connection failed to ${config.rpcUrl}: ${error instanceof Error ? error.message : String(error)}`
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const connectionTestButton = (
     <div className="mt-4">
       <Button
-        onClick={debouncedTestBitcoinConnection}
+        onClick={testConnection}
         disabled={testingConnection}
         variant="secondary"
-        className="w-full"
+        className="mt-2 w-full bg-gray-700 text-white hover:bg-gray-600"
       >
         {testingConnection ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Testing Connection...
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Testing...
           </>
         ) : (
-          'Test Connection'
+          <>
+            <Wifi className="mr-2 h-4 w-4" />
+            Test Connection
+          </>
         )}
       </Button>
-      {connectionStatus === 'success' && (
-        <p className="text-xs text-green-400 mt-1">Connection successful!</p>
-      )}
-      {connectionStatus === 'error' && (
-        <p className="text-xs text-red-400 mt-1">Connection failed. Please check your settings.</p>
+      {testResult && (
+        <div className={`mt-2 p-2 rounded text-sm ${testResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          {testResult.message}
+        </div>
       )}
     </div>
   );
@@ -171,15 +218,89 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
               </div>
 
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-gray-400" />
-                  RPC URL
-                </Label>
-                <Input
-                  value={config.rpcUrl}
-                  onChange={(e) => handleRpcUrlChange(e.target.value)}
-                  placeholder="Enter RPC URL"
-                />
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Server className="h-4 w-4 text-gray-400" />
+                    RPC Server Configuration
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <HelpCircle className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Configure which Arch Network RPC server to use:</p>
+                        <ul className="list-disc pl-4 mt-1 text-xs">
+                          <li><strong>Mainnet:</strong> Production environment</li>
+                          <li><strong>Testnet:</strong> Testing environment</li>
+                          <li><strong>Local:</strong> For local development (localhost:9002)</li>
+                          <li><strong>Custom:</strong> Specify your own RPC URL</li>
+                        </ul>
+                        <p className="mt-1 text-xs">Local development automatically uses the proxy.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Select
+                  value={rpcPreset}
+                  onValueChange={(value) => {
+                    setRpcPreset(value);
+                    if (value !== 'custom') {
+                      onConfigChange({
+                        ...config,
+                        rpcUrl: PRESET_RPC_URLS[value as keyof typeof PRESET_RPC_URLS],
+                        network: value as 'mainnet-beta' | 'devnet' | 'testnet'
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select RPC server" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mainnet-beta">Mainnet</SelectItem>
+                    <SelectItem value="testnet">Testnet</SelectItem>
+                    <SelectItem value="devnet">Local (localhost:9002)</SelectItem>
+                    <SelectItem value="custom">Custom URL</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Show the custom URL input only if custom is selected */}
+                {rpcPreset === 'custom' && (
+                  <>
+                    <Input
+                      value={config.rpcUrl}
+                      onChange={(e) => onConfigChange({ ...config, rpcUrl: e.target.value })}
+                      placeholder="https://your-rpc-server.com"
+                    />
+                    <Button
+                      onClick={testConnection}
+                      disabled={testingConnection}
+                      variant="secondary"
+                      className="mt-2 w-full bg-gray-700 text-white hover:bg-gray-600"
+                    >
+                      {testingConnection ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Testing...
+                        </>
+                      ) : (
+                        <>
+                          <Wifi className="mr-2 h-4 w-4" />
+                          Test Connection
+                        </>
+                      )}
+                    </Button>
+
+                    {testResult && (
+                      <div className={`mt-2 p-2 rounded text-sm ${testResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {testResult.message}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {config.network === 'devnet' && (

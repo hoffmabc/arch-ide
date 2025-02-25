@@ -18,12 +18,9 @@ const proxyOptions: ServerOptions = {
       if (targetUrl) {
         const decodedTarget = decodeURIComponent(targetUrl);
         const target = new URL(decodedTarget);
-
-        // Set the target properties
         proxyReq.protocol = target.protocol;
         proxyReq.host = target.host;
         proxyReq.path = target.pathname + target.search;
-
         console.log('Proxying to:', decodedTarget);
       }
     });
@@ -36,12 +33,52 @@ const proxyOptions: ServerOptions = {
 
 export default defineConfig({
   plugins: [
-    react(),
     wasm(),
+    react(),
     nodePolyfills({
-      include: ['process', 'buffer']
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true
+      },
+      protocolImports: true,
     })
   ],
+  build: {
+    target: ['esnext'],
+    outDir: 'dist',
+    sourcemap: false,
+    minify: 'esbuild',
+    cssMinify: true,
+    chunkSizeWarningLimit: 1000,
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'monaco-vendor': ['@monaco-editor/react'],
+          'crypto-vendor': ['bitcoinjs-lib', 'noble-secp256k1', 'tiny-secp256k1'],
+        }
+      }
+    },
+    reportCompressedSize: false,
+    cssCodeSplit: true
+  },
+  optimizeDeps: {
+    include: ['@monaco-editor/react', 'buffer', 'bip322-js'],
+    esbuildOptions: {
+      target: 'esnext',
+      plugins: [
+        NodeGlobalsPolyfillPlugin({
+          buffer: true
+        }),
+        NodeModulesPolyfillPlugin()
+      ],
+      supported: {
+        'top-level-await': true
+      },
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -57,33 +94,6 @@ export default defineConfig({
     global: {},
     'process.env': {}
   },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-    minify: true,
-    chunkSizeWarningLimit: 1000,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'monaco-editor': ['@monaco-editor/react']
-        }
-      }
-    },
-    target: ['esnext']
-  },
-  optimizeDeps: {
-    include: ['@monaco-editor/react', 'buffer', 'bip322-js'],
-    esbuildOptions: {
-      plugins: [
-        NodeGlobalsPolyfillPlugin({
-          buffer: true
-        }),
-        NodeModulesPolyfillPlugin()
-      ],
-      target: 'esnext'
-    }
-  },
   server: {
     port: 3000,
     proxy: {
@@ -93,8 +103,30 @@ export default defineConfig({
         secure: false,
         proxyTimeout: 120000,
         timeout: 120000,
+        rewrite: (path) => {
+          const url = new URL(path, 'http://localhost:3000');
+          const targetUrl = url.searchParams.get('target');
+
+          if (targetUrl) {
+            return '';
+          }
+
+          return path;
+        },
         configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req) => {
+            const url = new URL(req.url!, 'http://localhost:3000');
+            const targetUrl = url.searchParams.get('target');
+
+            if (targetUrl) {
+              const decodedTarget = decodeURIComponent(targetUrl);
+              const target = new URL(decodedTarget);
+              proxyReq.protocol = target.protocol;
+              proxyReq.host = target.host;
+              proxyReq.path = target.pathname + target.search;
+              console.log('Proxying to:', decodedTarget);
+            }
+
             if (req.method !== 'OPTIONS') {
               proxyReq.setHeader('Connection', 'keep-alive');
               proxyReq.setHeader('Keep-Alive', 'timeout=120');

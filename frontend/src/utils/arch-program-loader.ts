@@ -9,6 +9,7 @@ import { RpcConnection, Message, Instruction, RuntimeTransaction } from '@saturn
 import { MessageUtil } from '@saturnbtcio/arch-sdk';
 import { signMessage } from './bitcoin-signer';
 import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
+import { getSmartRpcUrl } from '../utils/smartRpcConnection';
 
 const signMessageBIP322 = async (privateKey: Buffer, messageHash: Buffer): Promise<Buffer> => {
   const signature = await signMessage(privateKey as any, messageHash as any);
@@ -146,12 +147,11 @@ export class ArchProgramLoader {
   static async load(options: ArchDeployOptions, onMessage?: (type: 'info' | 'success' | 'error', message: string) => void) {
     console.log('options', options);
 
-    if (window.location.hostname === 'localhost' && options.network === 'testnet') {
-      options.rpcUrl = 'http://localhost:3000/rpc';
-    }
+    // Use the smart RPC connection utility
+    const smartRpcUrl = getSmartRpcUrl(options.rpcUrl);
 
     let createAccountTxid = '';
-    const programAccount = await this.getProgramAccount(options.keypair.pubkey, options.rpcUrl);
+    const programAccount = await this.getProgramAccount(options.keypair.pubkey, smartRpcUrl);
 
     console.log('programAccount', programAccount);
 
@@ -164,13 +164,13 @@ export class ArchProgramLoader {
       const createAccountInstruction = await this.createProgramAccountInstruction(
         options.keypair.pubkey,
         options.network,
-        options.rpcUrl,
+        smartRpcUrl,
         options.regtestConfig
       );
 
       console.log('createAccountInstruction', createAccountInstruction);
       createAccountTxid = await this.sendInstruction(
-        options.rpcUrl,
+        smartRpcUrl,
         createAccountInstruction,
         options.keypair,
         options.network
@@ -188,7 +188,7 @@ export class ArchProgramLoader {
     console.log('uploadInstructions', uploadInstructions);
 
     const txids = await this.sendBatchInstructions(
-      options.rpcUrl,
+      smartRpcUrl,
       uploadInstructions,
       options.keypair,
       options.network
@@ -202,7 +202,7 @@ export class ArchProgramLoader {
     );
 
     const executableTxid = await this.sendInstruction(
-      options.rpcUrl,
+      smartRpcUrl,
       executableInstruction,
       options.keypair,
       options.network

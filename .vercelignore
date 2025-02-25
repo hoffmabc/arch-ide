@@ -9,3 +9,6 @@ backend
 **/build
 rust-server/**
 **/target/*
+node_modules/.cache
+node_modules/.vite
+*.map

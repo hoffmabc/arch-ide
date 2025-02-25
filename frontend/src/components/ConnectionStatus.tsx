@@ -3,6 +3,7 @@ import { Button } from './ui/button';
 import { Loader2, Wifi, WifiOff, HelpCircle } from 'lucide-react';
 import { ArchConnection, RpcConnection } from '@saturnbtcio/arch-sdk';
 import { ConnectionErrorModal } from './ConnectionErrorModal';
+import { getSmartRpcUrl } from '../utils/smartRpcConnection';
 
 interface ConnectionStatusProps {
   rpcUrl: string;
@@ -11,6 +12,7 @@ interface ConnectionStatusProps {
   onConnect: () => void;
   onDisconnect: () => void;
   onPingUpdate: (time: Date | null) => void;
+  onActualUrlChange: (url: string | null) => void;
 }
 
 export const ConnectionStatus = ({
@@ -19,11 +21,13 @@ export const ConnectionStatus = ({
   isConnected,
   onConnect,
   onDisconnect,
-  onPingUpdate
+  onPingUpdate,
+  onActualUrlChange
 }: ConnectionStatusProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Base delay of 2 seconds
@@ -32,6 +36,11 @@ export const ConnectionStatus = ({
   const MAX_DELAY = 60000;
   // When connected, check every 30 seconds
   const CONNECTED_CHECK_INTERVAL = 30000;
+
+  const updateActualUrl = (url: string | null) => {
+    setActualConnectedUrl(url);
+    onActualUrlChange(url);
+  };
 
   const checkConnection = async () => {
     console.group('Connection Check Debug');
@@ -53,38 +62,40 @@ export const ConnectionStatus = ({
     setIsConnecting(true);
 
     try {
-      let connectionUrl = rpcUrl;
-      const isLocalhost = window.location.hostname === 'localhost';
+      // Use the smart RPC URL utility instead of hardcoding logic
+      const smartUrl = getSmartRpcUrl(rpcUrl);
 
-      // Handle different network scenarios
-      if (network === 'devnet') {
-        connectionUrl = isLocalhost ? 'http://localhost:9002' : rpcUrl;
-      } else if (isLocalhost) {
-        connectionUrl = '/rpc';
-      }
+      console.log('Attempting connection to:', smartUrl, '(original URL:', rpcUrl, ')');
+      const connection = new RpcConnection(smartUrl);
 
-      console.log('Attempting connection to:', connectionUrl);
-      const connection = new RpcConnection(connectionUrl);
-
-      // Add timeout to prevent hanging
+      // Make a stricter connection test with timeout
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Connection timeout')), 5000);
       });
 
       // Try to get block count with timeout
       console.log('Requesting block count...');
-      const blockCount = await Promise.race([
-        connection.getBlockCount(),
-        timeoutPromise
-      ]);
+      let blockCount: number;
+      try {
+        blockCount = await Promise.race([
+          connection.getBlockCount(),
+          timeoutPromise
+        ]) as number;
 
-      // Ensure blockCount is a valid number
-      if (typeof blockCount !== 'number') {
-        console.warn('Invalid block count response:', blockCount);
-        throw new Error('Invalid block count response');
+        // Additional validation of the response
+        if (typeof blockCount !== 'number' || isNaN(blockCount)) {
+          console.warn('Invalid block count response:', blockCount);
+          throw new Error('Invalid block count response');
+        }
+      } catch (error) {
+        console.error('Error fetching block count:', error);
+        throw error;
       }
 
+      // If we get here, connection was successful
       console.log('Connection successful! Block count:', blockCount);
+      updateActualUrl(rpcUrl);
+
       const currentTime = new Date();
       onPingUpdate(currentTime);
       setShowErrorModal(false);
@@ -95,6 +106,7 @@ export const ConnectionStatus = ({
       return true;
     } catch (error) {
       console.error('Connection error:', error);
+      updateActualUrl(null);
       setShowErrorModal(true);
       console.log('Calling onDisconnect()');
       onDisconnect();
@@ -138,6 +150,13 @@ export const ConnectionStatus = ({
     }
   };
 
+  // Reset and check connection when the RPC URL changes
+  useEffect(() => {
+    if (isConnected) {
+      handleConnect();
+    }
+  }, [rpcUrl]);
+
   // Initial connection check
   useEffect(() => {
     handleConnect();
@@ -180,6 +199,8 @@ export const ConnectionStatus = ({
         network={network}
         persistDismissal={true}
         isConnected={isConnected}
+        actualUrl={actualConnectedUrl}
+        rpcUrl={rpcUrl}
       />
     </>
   );

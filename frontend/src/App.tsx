@@ -24,6 +24,11 @@ import { Plus, FolderPlus, Download } from 'lucide-react';
 import { Buffer } from 'buffer/';
 import { formatBuildError } from './utils/errorFormatter';
 import { Loader2 } from 'lucide-react';
+import { ArchPgClient } from './utils/archPgClient';
+import { ThemeProvider, useTheme } from './theme/ThemeContext';
+import { ThemeVariableProvider } from './theme/ThemeProvider';
+import ARCH_THEME from './theme/theme';
+import { GlobalStyles } from './styles/GlobalStyles';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -236,6 +241,9 @@ const App = () => {
   const [binaryFileName, setBinaryFileName] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const previousConnectionStatus = useRef(isConnected);
+  const { theme } = useTheme();
+  console.log('Theme loaded:', theme.colors.default);
+  const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -1052,26 +1060,16 @@ const App = () => {
     setProgramId(newProgramId);
   };
 
-  const handleProjectAccountChange = async (account: ProjectAccount) => {
+  const handleProjectAccountChange = async (account: ProjectAccount | null) => {
     if (!fullCurrentProject) return;
 
-    // Update the project with the new account
     const updatedProject = {
       ...fullCurrentProject,
-      account,
-      lastModified: new Date()
+      account: account || undefined
     };
 
-    // Save the updated project
     await projectService.saveProject(updatedProject);
-
-    // Update state
     setFullCurrentProject(updatedProject);
-    setProjects(prev => prev.map(p =>
-      p.id === updatedProject.id ? updatedProject : p
-    ));
-
-    // Also update current account state for immediate use
     setCurrentAccount(account);
   };
 
@@ -1224,112 +1222,189 @@ const App = () => {
     console.log('expandedFolders changed:', Array.from(expandedFolders));
   }, [expandedFolders]);
 
+  const runClientCode = async () => {
+    try {
+      if (!currentFile || !currentFile.name.endsWith('.ts')) {
+        addOutputMessage('error', 'No TypeScript file selected');
+        return;
+      }
+
+      const clientCode = currentFile.content;
+      if (!clientCode) {
+        addOutputMessage('error', 'Client code not found');
+        return;
+      }
+
+      addOutputMessage('info', 'Executing code...');
+
+      try {
+        await ArchPgClient.execute({
+          fileName: currentFile.name,
+          code: clientCode,
+          onMessage: (type: string, message: string) => {
+            // Map the string type to our OutputMessage type
+            const messageType = type === 'error' ? 'error' :
+                              type === 'success' ? 'success' :
+                              type === 'command' ? 'command' : 'info';
+            console.log('onMessage called with:', { type, message });
+            addOutputMessage(messageType, message);
+          }
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          console.error('Error:', error.message);
+          addOutputMessage('error', error.message);
+        } else {
+          console.error('Unknown error:', error);
+          addOutputMessage('error', 'An unknown error occurred');
+        }
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error:', error.message);
+        addOutputMessage('error', error.message);
+      } else {
+        console.error('Unknown error:', error);
+        addOutputMessage('error', 'An unknown error occurred');
+      }
+    }
+  };
+
+  const displayUrl = isConnected ? actualConnectedUrl || config.rpcUrl : config.rpcUrl;
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="h-screen flex flex-col bg-gray-900 text-white">
-        <nav className="border-b border-gray-800 flex items-center justify-between p-4">
-          <h1 className="text-xl font-bold">Arch Network Playground</h1>
-          <ProjectList
-            projects={projects}
-            currentProject={fullCurrentProject || undefined}
-            onSelectProject={handleProjectSelect}
-            onNewProject={handleNewProject}
-            onDeleteProject={handleDeleteProject}
-            onProjectsChange={setProjects}
-          />
-          <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
-            <Settings className="h-5 w-5" />
-          </Button>
-        </nav>
+    <ThemeProvider>
+      <ThemeVariableProvider>
+        <GlobalStyles />
+        <QueryClientProvider client={queryClient}>
+          <div className="h-screen flex flex-col" style={{
+            backgroundColor: theme.colors.default.bgPrimary,
+            color: theme.colors.default.textPrimary
+          }}>
+            <nav className="flex items-center justify-between px-6 py-4" style={{
+              borderBottom: `1px solid ${theme.colors.default.border}`,
+              backgroundColor: theme.colors.default.bgSecondary
+            }}>
+              <div className="flex items-center gap-6">
+                <img src="/images/logo.svg" alt="Logo" className="h-12 w-21" />
+                <h1 className="text-3xl font-bold text-white">Playground</h1>
+              </div>
+              <ProjectList
+                projects={projects}
+                currentProject={fullCurrentProject || undefined}
+                onSelectProject={handleProjectSelect}
+                onNewProject={handleNewProject}
+                onDeleteProject={handleDeleteProject}
+                onProjectsChange={setProjects}
+              />
+              <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
+                <Settings className="h-6 w-6" />
+              </Button>
+            </nav>
 
-        <div className="flex flex-1 overflow-hidden">
-          <SidePanel
-            connected={isConnected}
-            hasProjects={projects.length > 0}
-            currentView={currentView}
-            onViewChange={setCurrentView}
-            currentFile={currentFile}
-            files={fullCurrentProject?.files || []}
-            onFileSelect={handleFileSelect}
-            onUpdateTree={handleUpdateTreeAdapter}
-            onNewItem={handleNewItem}
-            onBuild={handleBuild}
-            onDeploy={handleDeploy}
-            isBuilding={isCompiling}
-            isDeploying={isDeploying}
-            programId={programId}
-            programBinary={programBinary}
-            onProgramBinaryChange={setProgramBinary}
-            programIdl={programIdl}
-            config={config}
-            onConfigChange={setConfig}
-            onConnectionStatusChange={setIsConnected}
-            onProgramIdChange={handleProgramIdChange}
-            currentAccount={currentAccount}
-            onAccountChange={setCurrentAccount}
-            project={fullCurrentProject!}
-            onProjectAccountChange={handleProjectAccountChange}
-            onNewProject={handleNewProject}
-            binaryFileName={binaryFileName}
-            setBinaryFileName={setBinaryFileName}
-            addOutputMessage={addOutputMessage}
-          />
+            <div className="flex flex-1 overflow-hidden">
+              <SidePanel
+                connected={isConnected}
+                hasProjects={projects.length > 0}
+                currentView={currentView}
+                onViewChange={setCurrentView}
+                currentFile={currentFile}
+                files={fullCurrentProject?.files || []}
+                onFileSelect={handleFileSelect}
+                onUpdateTree={handleUpdateTreeAdapter}
+                onNewItem={handleNewItem}
+                onBuild={handleBuild}
+                onDeploy={handleDeploy}
+                isBuilding={isCompiling}
+                isDeploying={isDeploying}
+                programId={programId}
+                programBinary={programBinary}
+                onProgramBinaryChange={setProgramBinary}
+                programIdl={programIdl}
+                config={config}
+                onConfigChange={setConfig}
+                onConnectionStatusChange={setIsConnected}
+                onProgramIdChange={handleProgramIdChange}
+                currentAccount={currentAccount}
+                onAccountChange={setCurrentAccount}
+                project={fullCurrentProject!}
+                onProjectAccountChange={handleProjectAccountChange}
+                onNewProject={handleNewProject}
+                binaryFileName={binaryFileName}
+                setBinaryFileName={setBinaryFileName}
+                addOutputMessage={addOutputMessage}
+              />
 
-          <div className="flex flex-col flex-1 overflow-hidden">
-            <TabBar
-              openFiles={openFiles}
-              currentFile={currentFile}
-              onSelectFile={setCurrentFile}
-              onCloseFile={handleCloseFile}
-              currentProject={fullCurrentProject}
-            />
-            <div className="flex-1 overflow-hidden">
-            <Editor
-              code={currentFile?.content ?? '// Select a file to edit'}
-              onChange={handleFileChange}
-              onSave={handleSaveFile}
-              currentFile={currentFile}
-              onSelectFile={handleFileSelect}
-              key={currentFile?.path || 'welcome'}
-            />
-            </div>
+              <div className="flex flex-col flex-1 overflow-hidden">
+                <TabBar
+                  openFiles={openFiles}
+                  currentFile={currentFile}
+                  onSelectFile={handleFileSelect}
+                  onCloseFile={handleCloseFile}
+                  currentProject={fullCurrentProject}
+                  onRunClientCode={runClientCode}
+                />
+                <div className="flex-1 overflow-hidden">
+                <Editor
+                  code={currentFile?.content ?? '// Select a file to edit'}
+                  onChange={handleFileChange}
+                  onSave={handleSaveFile}
+                  currentFile={currentFile}
+                  onSelectFile={handleFileSelect}
+                  key={currentFile?.path || 'welcome'}
+                />
+                </div>
 
-            <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-              <ResizeHandle onMouseDown={handleResizeStart} />
-              <div className="flex-1 min-h-0">
-                <Output messages={outputMessages} onClear={clearOutputMessages} />
+                <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+                  <ResizeHandle onMouseDown={handleResizeStart} />
+                  <div className="flex-1 min-h-0">
+                    <Output messages={outputMessages} onClear={clearOutputMessages} />
+                  </div>
+                </div>
               </div>
             </div>
+
+            <StatusBar
+              config={config}
+              isConnected={isConnected}
+              onConnectionStatusChange={setIsConnected}
+              pendingChanges={pendingChanges}
+              isSaving={isSaving}
+            >
+              <div className="flex items-center gap-1">
+                {isConnected ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-green-500">✓</span> Connected to {config.network} ({actualConnectedUrl || config.rpcUrl})
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-red-500">✗</span> Not connected to network
+                  </div>
+                )}
+              </div>
+            </StatusBar>
+
+            <NewProjectDialog
+              isOpen={isNewProjectOpen}
+              onClose={() => setIsNewProjectOpen(false)}
+              onCreateProject={handleCreateProject}
+            />
+            <NewItemDialog
+              isOpen={isNewFileDialogOpen}
+              onClose={() => setIsNewFileDialogOpen(false)}
+              onSubmit={handleCreateNewItem}
+              type={newItemType || 'file'}
+            />
+            <ConfigPanel
+              isOpen={isConfigOpen}
+              onClose={() => setIsConfigOpen(false)}
+              config={config}
+              onConfigChange={setConfig}
+            />
           </div>
-        </div>
-
-        <StatusBar
-          config={config}
-          isConnected={isConnected}
-          onConnectionStatusChange={setIsConnected}
-          pendingChanges={pendingChanges}
-          isSaving={isSaving}
-        />
-
-        <NewProjectDialog
-          isOpen={isNewProjectOpen}
-          onClose={() => setIsNewProjectOpen(false)}
-          onCreateProject={handleCreateProject}
-        />
-        <NewItemDialog
-          isOpen={isNewFileDialogOpen}
-          onClose={() => setIsNewFileDialogOpen(false)}
-          onSubmit={handleCreateNewItem}
-          type={newItemType || 'file'}
-        />
-        <ConfigPanel
-          isOpen={isConfigOpen}
-          onClose={() => setIsConfigOpen(false)}
-          config={config}
-          onConfigChange={setConfig}
-        />
-      </div>
-    </QueryClientProvider>
+        </QueryClientProvider>
+      </ThemeVariableProvider>
+    </ThemeProvider>
   );
 };
 
