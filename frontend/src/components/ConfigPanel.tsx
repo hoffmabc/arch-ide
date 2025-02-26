@@ -126,7 +126,16 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
       console.log('Testing connection to:', smartUrl, '(original URL:', config.rpcUrl, ')');
 
       const connection = new RpcConnection(smartUrl);
-      const blockCount = await connection.getBlockCount();
+
+      // Add a timeout to prevent hanging requests
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout after 8 seconds')), 8000);
+      });
+
+      const blockCount = await Promise.race([
+        connection.getBlockCount(),
+        timeoutPromise
+      ]) as number;
 
       if (typeof blockCount !== 'number' || isNaN(blockCount)) {
         throw new Error('Invalid block count response');
@@ -137,6 +146,7 @@ export const ConfigPanel = ({ isOpen, onClose, config, onConfigChange }: ConfigP
         message: `Successfully connected to RPC server: ${config.rpcUrl} (Block height: ${blockCount})`
       });
     } catch (error) {
+      console.error('Connection test error:', error);
       setTestResult({
         success: false,
         message: `Connection failed to ${config.rpcUrl}: ${error instanceof Error ? error.message : String(error)}`

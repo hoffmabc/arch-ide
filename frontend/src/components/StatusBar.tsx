@@ -10,6 +10,7 @@ interface StatusBarProps {
   onConnectionStatusChange: (connected: boolean) => void;
   pendingChanges: Map<string, FileChange>;
   isSaving: boolean;
+  children?: React.ReactNode;
 }
 
 export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendingChanges, isSaving }: StatusBarProps) => {

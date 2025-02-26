@@ -12,7 +12,7 @@ interface ConnectionStatusProps {
   onConnect: () => void;
   onDisconnect: () => void;
   onPingUpdate: (time: Date | null) => void;
-  onActualUrlChange: (url: string | null) => void;
+  onActualUrlChange?: (url: string | null) => void;
 }
 
 export const ConnectionStatus = ({
@@ -22,7 +22,7 @@ export const ConnectionStatus = ({
   onConnect,
   onDisconnect,
   onPingUpdate,
-  onActualUrlChange
+  onActualUrlChange = () => {}
 }: ConnectionStatusProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);

@@ -38,14 +38,14 @@ const NewItemDialog = ({ isOpen, onClose, onSubmit, type }: NewItemDialogProps) 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="bg-background text-foreground border-input">
         <DialogHeader>
-          <DialogTitle>New {type === 'file' ? 'File' : 'Folder'}</DialogTitle>
+          <DialogTitle className="text-foreground">New {type === 'file' ? 'File' : 'Folder'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name" className="text-foreground">Name</Label>
               <Input
                 id="name"
                 value={name}
@@ -55,12 +55,13 @@ const NewItemDialog = ({ isOpen, onClose, onSubmit, type }: NewItemDialogProps) 
                 }}
                 placeholder={type === 'file' ? 'filename.rs' : 'folder-name'}
                 autoFocus
+                className="bg-background text-foreground border-input"
               />
               {error && <p className="text-red-500 text-sm">{error}</p>}
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} className="text-foreground">
               Cancel
             </Button>
             <Button type="submit">Create</Button>
