@@ -431,14 +431,14 @@ const App = () => {
   }, [fullCurrentProject]);
 
   const handleDeploy = async () => {
-    if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
-      const missing = [];
-      if (!fullCurrentProject) missing.push('project');
-      if (!programId) missing.push('program ID');
-      if (!isConnected) missing.push('connection');
-      if (!currentAccount) missing.push('account/keypair');
-      if (!programBinary) missing.push('program binary');
+    const missing = [];
+    if (!fullCurrentProject) missing.push('project');
+    if (!programId) missing.push('program ID');
+    if (!isConnected) missing.push('connection');
+    if (fullCurrentProject && !fullCurrentProject.account) missing.push('program keypair');
+    if (!programBinary) missing.push('program binary');
 
+    if (missing.length > 0) {
       addOutputMessage('error', `Cannot deploy: Missing ${missing.join(', ')}`);
       return;
     }
@@ -449,8 +449,15 @@ const App = () => {
 
   // New function to handle the actual deployment after modal confirmation
   const handleDeployConfirm = async (customUtxoInfo?: { txid: string; vout: number }) => {
-    if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
+    if (!fullCurrentProject || !programId || !isConnected || !programBinary) {
       addOutputMessage('error', 'Cannot deploy: Missing required information');
+      setIsDeploymentModalOpen(false);
+      return;
+    }
+
+    // We should be using fullCurrentProject.account instead of currentAccount
+    if (!fullCurrentProject.account) {
+      addOutputMessage('error', 'Cannot deploy: Missing program keypair. Please generate a program ID in the Build & Deploy sidebar.');
       setIsDeploymentModalOpen(false);
       return;
     }
@@ -468,11 +475,14 @@ const App = () => {
       // Convert using Buffer
       const binaryData = base64ToUint8Array(base64Content);
 
+      // Use fullCurrentProject.account (program keypair) instead of currentAccount (browser wallet)
+      console.log(`keypair:`, fullCurrentProject.account);
+
       const deployOptions = {
         rpcUrl: config.rpcUrl,
         network: config.network,
         programBinary: Buffer.from(binaryData),
-        keypair: currentAccount,
+        keypair: fullCurrentProject.account, // Use program keypair from project
         regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined,
         utxoInfo: customUtxoInfo // Pass the optional UTXO info
       };
