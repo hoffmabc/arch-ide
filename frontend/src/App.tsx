@@ -29,6 +29,7 @@ import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import { ThemeVariableProvider } from './theme/ThemeProvider';
 import ARCH_THEME from './theme/theme';
 import { GlobalStyles } from './styles/GlobalStyles';
+import { DeploymentModal } from './components/DeploymentModal';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -244,6 +245,8 @@ const App = () => {
   const { theme } = useTheme();
   console.log('Theme loaded:', theme.colors.default);
   const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
+  const [isDeploymentModalOpen, setIsDeploymentModalOpen] = useState(false);
+  const [utxoInfo, setUtxoInfo] = useState<{ txid: string; vout: number } | undefined>(undefined);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -440,6 +443,18 @@ const App = () => {
       return;
     }
 
+    // Open the deployment modal instead of immediately deploying
+    setIsDeploymentModalOpen(true);
+  };
+
+  // New function to handle the actual deployment after modal confirmation
+  const handleDeployConfirm = async (customUtxoInfo?: { txid: string; vout: number }) => {
+    if (!fullCurrentProject || !programId || !isConnected || !currentAccount || !programBinary) {
+      addOutputMessage('error', 'Cannot deploy: Missing required information');
+      setIsDeploymentModalOpen(false);
+      return;
+    }
+
     setIsDeploying(true);
     try {
       let base64Content: string;
@@ -458,7 +473,8 @@ const App = () => {
         network: config.network,
         programBinary: Buffer.from(binaryData),
         keypair: currentAccount,
-        regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined
+        regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined,
+        utxoInfo: customUtxoInfo // Pass the optional UTXO info
       };
 
       console.log('deployOptions', deployOptions);
@@ -471,10 +487,39 @@ const App = () => {
         setProgramId(result.programId);
         setBinaryFileName(`${fullCurrentProject.name}.so`);
       }
+
+      // Fetch the binary after successful build
+      try {
+        // Extract the UUID from the current project or build context
+        const uuid = fullCurrentProject.id || ''; // Or wherever your UUID is stored
+        const program_name = fullCurrentProject.name || '';
+
+        const binaryResponse = await fetch(
+          `${API_URL}/deploy/${uuid}/${program_name}`,
+          { headers: { Accept: 'application/octet-stream' } }
+        );
+
+        if (!binaryResponse.ok) {
+          throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
+        }
+
+        // Use arrayBuffer instead of text for binary data
+        const arrayBuffer = await binaryResponse.arrayBuffer();
+
+        // Convert to base64 for storage
+        const base64Binary = Buffer.from(arrayBuffer).toString('base64');
+
+        // Store with proper encoding identifier
+        setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
+        addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
+      } catch (error: any) {
+        addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
+      }
     } catch (error: any) {
       addOutputMessage('error', `Deploy error: ${error.message}`);
     } finally {
       setIsDeploying(false);
+      setIsDeploymentModalOpen(false); // Close the modal when done
     }
   };
 
@@ -869,8 +914,12 @@ const App = () => {
 
           // Fetch the binary after successful build
           try {
+            // Extract the UUID from the current project or build context
+            const uuid = fullCurrentProject.id || ''; // Or wherever your UUID is stored
+            const program_name = fullCurrentProject.name || '';
+
             const binaryResponse = await fetch(
-              `${API_URL}/deploy/${result.uuid}/${result.program_name}`,
+              `${API_URL}/deploy/${uuid}/${program_name}`,
               { headers: { Accept: 'application/octet-stream' } }
             );
 
@@ -878,9 +927,15 @@ const App = () => {
               throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
             }
 
-            const binaryData = await binaryResponse.text();
-            setProgramBinary(binaryData);
-            addOutputMessage('info', 'Program binary retrieved successfully');
+            // Use arrayBuffer instead of text for binary data
+            const arrayBuffer = await binaryResponse.arrayBuffer();
+
+            // Convert to base64 for storage
+            const base64Binary = Buffer.from(arrayBuffer).toString('base64');
+
+            // Store with proper encoding identifier
+            setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
+            addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
           } catch (error: any) {
             addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
           }
@@ -1400,6 +1455,13 @@ const App = () => {
               onClose={() => setIsConfigOpen(false)}
               config={config}
               onConfigChange={setConfig}
+            />
+            <DeploymentModal
+              isOpen={isDeploymentModalOpen}
+              onClose={() => setIsDeploymentModalOpen(false)}
+              onDeploy={handleDeployConfirm}
+              isConnected={isConnected}
+              isDeploying={isDeploying}
             />
           </div>
         </QueryClientProvider>

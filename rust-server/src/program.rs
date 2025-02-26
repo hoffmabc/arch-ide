@@ -8,6 +8,9 @@ use tracing::info;
 use tokio::process::Command as TokioCommand;
 use tokio::io::{BufReader, AsyncBufReadExt};
 use std::process::Stdio;
+use axum::http::{header, HeaderValue};
+use axum::response::IntoResponse;
+use axum::body::Body;
 
 const PROGRAMS_DIR: &str = "programs";
 const MAX_FILE_AMOUNT: usize = 64;
@@ -353,40 +356,95 @@ async fn upload_to_gcs(uuid: &str, program_name: &str, binary_data: &[u8]) -> an
 }
 
 async fn download_from_gcs(uuid: &str, program_name: &str) -> anyhow::Result<Vec<u8>> {
-    let client = GCS_CLIENT.get_or_init(|| {
-        Client::default()
-    });
+    let client = Client::default();
 
     let bucket = get_gcs_bucket();
-    let object_name = format!("binaries/{}/{}.so", uuid, program_name);
-    let data = client.object().download(&bucket, &object_name).await?;
 
-    Ok(data)
+    let object_name = format!("binaries/{}/{}.so", uuid, program_name);
+    println!("Attempting to download from GCS: bucket={}, object={}", bucket, object_name);
+
+    match client.object().download(&bucket, &object_name).await {
+        Ok(data) => {
+            println!("Successfully downloaded binary from GCS, size: {} bytes", data.len());
+            Ok(data)
+        },
+        Err(e) => {
+            println!("Failed to download from GCS: {}", e);
+            Err(anyhow::anyhow!("Failed to download from GCS: {}", e))
+        }
+    }
 }
 
 pub async fn get_binary(uuid: &str, program_name: &str) -> std::io::Result<Vec<u8>> {
     let safe_program_name = program_name.replace(|c: char| !c.is_alphanumeric(), "_");
+    let binary_filename = format!("{}.so", safe_program_name);
 
-    // First try to get from local filesystem
+    // First try to get from the exact UUID path
     let program_path = Path::new(PROGRAMS_DIR)
         .join(uuid)
         .join("target/deploy")
-        .join(format!("{}.so", safe_program_name));
+        .join(&binary_filename);
 
     if program_path.exists() {
-        println!("Reading binary from local path: {:?}", program_path);
-        fs::read(program_path).map_err(|e| {
+        println!("Reading binary from exact UUID path: {:?}", program_path);
+        return fs::read(program_path).map_err(|e| {
             println!("Failed to read local binary: {}", e);
             e
+        });
+    }
+
+    // If not found, try to find the binary in any project directory
+    println!("Binary not found at exact UUID path, searching in all project directories");
+    let programs_dir = Path::new(PROGRAMS_DIR);
+
+    if let Ok(entries) = fs::read_dir(programs_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    let potential_path = entry.path().join("target/deploy").join(&binary_filename);
+                    if potential_path.exists() {
+                        println!("Found binary in alternative location: {:?}", potential_path);
+                        return fs::read(potential_path).map_err(|e| {
+                            println!("Failed to read local binary: {}", e);
+                            e
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // If still not found locally, try to get from GCS
+    println!("Binary not found locally, attempting to fetch from GCS");
+    download_from_gcs(uuid, &safe_program_name)
+        .await
+        .map_err(|e| {
+            println!("Failed to download binary from GCS: {}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
         })
-    } else {
-        // If not found locally, try to get from GCS
-        println!("Binary not found locally, attempting to fetch from GCS");
-        download_from_gcs(uuid, &safe_program_name)
-            .await
-            .map_err(|e| {
-                println!("Failed to download binary from GCS: {}", e);
-                std::io::Error::new(std::io::ErrorKind::NotFound, e)
-            })
+}
+
+// Instead, create a wrapper type for binary data
+#[derive(Debug)]
+pub struct BinaryData(pub Vec<u8>);
+
+impl IntoResponse for BinaryData {
+    fn into_response(self) -> axum::response::Response<axum::body::Body> {
+        let content_length = self.0.len().to_string();
+
+        let mut response = axum::response::Response::new(axum::body::Body::from(self.0));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        );
+        response.headers_mut().insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&content_length).unwrap(),
+        );
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            HeaderValue::from_static("identity"),
+        );
+        response
     }
 }

@@ -19,6 +19,7 @@
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
     "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-radio-group": "^1.2.3",
     "@radix-ui/react-select": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-switch": "^1.1.1",
@@ -30,6 +31,7 @@
     "axios": "^1.7.7",
     "bip322-js": "^2.0.0",
     "bitcoinjs-lib": "^6.1.7",
+    "browserify-zlib": "^0.2.0",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -42,17 +44,16 @@
     "process": "^0.11.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "stream-browserify": "^3.0.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss": "^3.4.15",
     "tailwindcss-animate": "^1.0.7",
     "tiny-secp256k1": "^2.2.3",
+    "util": "^0.12.5",
     "uuid": "^11.0.3",
-    "vite-plugin-wasm": "^3.4.1",
-    "wif": "^2.0.6",
     "vite-plugin-node-polyfills": "^0.21.0",
-    "stream-browserify": "^3.0.0",
-    "browserify-zlib": "^0.2.0",
-    "util": "^0.12.5"
+    "vite-plugin-wasm": "^3.4.1",
+    "wif": "^2.0.6"
   },
   "devDependencies": {
     "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
@@ -63,11 +64,11 @@
     "@types/wif": "^2.0.5",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "babel-plugin-styled-components": "^2.1.4",
     "monaco-editor-core": "^0.52.2",
     "postcss": "^8.4.49",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11",
-    "babel-plugin-styled-components": "^2.1.4"
+    "vite": "^5.4.11"
   },
   "browserslist": [
     "last 2 Chrome versions",

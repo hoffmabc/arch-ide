@@ -34,7 +34,8 @@ async fn main() -> Result<()> {
         .route("/health", get(health))
         .route("/build", post(build))
         .route("/deploy/:uuid/:program_name", get(deploy))
-        .layer(compression())
+        // Comment out this line
+        // .layer(compression())
         .layer(payload_limit(config.payload_limit))
         .layer(cors(config.client_url))
         .layer(middleware::from_fn(log));

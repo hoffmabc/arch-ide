@@ -86,6 +86,10 @@ interface ArchDeployOptions {
     username: string;
     password: string;
   };
+  utxoInfo?: {
+    txid: string;
+    vout: number;
+  };
 }
 
 interface BitcoinWallet {
@@ -165,7 +169,8 @@ export class ArchProgramLoader {
         options.keypair.pubkey,
         options.network,
         smartRpcUrl,
-        options.regtestConfig
+        options.regtestConfig,
+        options.utxoInfo
       );
 
       console.log('createAccountInstruction', createAccountInstruction);
@@ -220,10 +225,13 @@ export class ArchProgramLoader {
     programId: string,
     network: string,
     rpcUrl: string,
-    regtestConfig?: { url: string; username: string; password: string }
+    regtestConfig?: { url: string; username: string; password: string },
+    utxoInfo?: { txid: string; vout: number }
   ): Promise<Instruction> {
     const address = await this.getAccountAddress(programId, rpcUrl);
-    const { txid, vout } = await this.sendUtxo(address, network, regtestConfig);
+
+    // Use provided UTXO info if available, otherwise create a new one
+    const { txid, vout } = utxoInfo || await this.sendUtxo(address, network, regtestConfig);
 
     // Create instruction with UTXO info
     const data = Buffer.alloc(37); // 1 byte for variant + 32 bytes txid + 4 bytes vout
