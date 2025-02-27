@@ -8,29 +8,51 @@ export function getSmartRpcUrl(rpcUrl: string): string {
     return '';
   }
 
-  // Check if we're running on Vercel
-  const isVercel = typeof window !== 'undefined' &&
-    window.location.hostname.includes('vercel.app');
+  // Check if we're running on production (non-localhost)
+  const isProduction = typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1');
 
   // Check if this is a localhost URL
   const isLocalhostUrl = rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1');
 
-  // If we're on Vercel and trying to access localhost
-  if (isVercel && isLocalhostUrl) {
-    console.warn('Cannot access localhost from Vercel deployment');
-    // Return empty to trigger proper error handling rather than falling back to hardcoded URL
-    return '';
+  console.log('Smart RPC URL detection:', {
+    rpcUrl,
+    isProduction,
+    isLocalhostUrl,
+    hostname: window.location.hostname
+  });
+
+  // For special case with /rpc endpoint
+  if (rpcUrl === '/rpc') {
+    // Always use the /rpc endpoint without redirecting
+    // This relies on the vercel.json rewrite
+    return '/rpc';
   }
 
-  // For local development with local URLs
-  if (window.location.hostname === 'localhost') {
-    if (rpcUrl.startsWith('http://localhost') || rpcUrl === '/rpc') {
+  // For local development with other localhost URLs
+  if (!isProduction && isLocalhostUrl) {
+    // Keep using /rpc for localhost URLs
+    return '/rpc';
+  }
+
+  // For external URLs on production, use the API proxy to avoid CORS issues
+  if (isProduction) {
+    // Don't try to proxy localhost URLs in production
+    if (isLocalhostUrl) {
+      console.warn('Cannot access localhost from production deployment');
+      // Return the built-in /rpc endpoint which will use the default URL
       return '/rpc';
     }
+
+    // For external URLs, use our proxy
+    return `/api/proxy?url=${encodeURIComponent(rpcUrl)}`;
   }
 
-  // For external URLs on Vercel, use the API proxy to avoid CORS issues
-  if (isVercel && !isLocalhostUrl) {
+  // For local development with external URLs
+  // We can either proxy through the local server or just use it directly
+  // For most reliable behavior, let's proxy it
+  if (!isProduction && !isLocalhostUrl) {
     return `/api/proxy?url=${encodeURIComponent(rpcUrl)}`;
   }
 

@@ -107,6 +107,47 @@ export class ArchPgClient {
           class __Pg {
             async __run() {
               ${consoleOverride}
+
+              // Add a helper to handle RPC URLs correctly in the iframe
+              const getSmartRpcUrl = (url) => {
+                if (!url) return url;
+
+                const isProduction = !window.location.hostname.includes('localhost') &&
+                  !window.location.hostname.includes('127.0.0.1');
+                const isLocalhostUrl = url.includes('localhost') || url.includes('127.0.0.1');
+
+                // Handle special case for /rpc
+                if (url === '/rpc') {
+                  return isProduction ? '/api/proxy' : '/rpc';
+                }
+
+                // Handle localhost URLs
+                if (isProduction && isLocalhostUrl) {
+                  console.warn('Cannot access localhost from production');
+                  return '/api/proxy';
+                }
+
+                // Handle external URLs in production
+                if (isProduction) {
+                  return \`/api/proxy?url=\${encodeURIComponent(url)}\`;
+                }
+
+                // Handle localhost URLs in development
+                if (!isProduction && url.startsWith('http://localhost')) {
+                  return '/rpc';
+                }
+
+                return url;
+              };
+
+              // Override RpcConnection to use smart URL processing
+              const OriginalRpcConnection = window.RpcConnection;
+              window.RpcConnection = function(url) {
+                const smartUrl = getSmartRpcUrl(url);
+                console.log(\`RpcConnection: \${url} → \${smartUrl}\`);
+                return new OriginalRpcConnection(smartUrl);
+              };
+
               try {
                 // Create tracking for both timeouts and promises
                 const pendingOperations = new Set();

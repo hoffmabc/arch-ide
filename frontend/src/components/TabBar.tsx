@@ -65,14 +65,12 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProj
               "flex items-center gap-2 px-4 py-2 border-r border-gray-700 cursor-pointer hover:bg-gray-700",
               (currentFile?.path || currentFile?.name) === (file.path || file.name) && "bg-gray-700"
             )}
+            onClick={() => handleTabSelect(file)}
           >
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span
-                    className="text-sm"
-                    onClick={() => handleTabSelect(file)}
-                  >
+                  <span className="text-sm">
                     {file.name}
                   </span>
                 </TooltipTrigger>

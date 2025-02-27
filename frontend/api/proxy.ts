@@ -11,18 +11,20 @@ module.exports = async function handler(req, res) {
     return res.status(200).end();
   }
 
-  // Get the target URL from the request query
-  const targetUrl = req.query.url;
+  // Get the target URL from the request query or use environment variable
+  let targetUrl = req.query.url as string;
 
+  // If no URL provided, use the environment variable
   if (!targetUrl) {
-    return res.status(400).json({ error: 'Missing URL parameter' });
+    targetUrl = process.env.RPC_DEFAULT_URL || 'http://localhost:9002';
+    console.log(`No URL provided, using default: ${targetUrl}`);
   }
 
   console.log(`Proxying request to: ${targetUrl}`);
 
   try {
     // For JSON-RPC, we need to make sure we're passing the body correctly
-    let body: string | undefined = undefined;
+    let body = undefined;
     if (req.method !== 'GET' && req.body) {
       body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
       console.log(`Request body: ${body ? body.substring(0, 200) + (body.length > 200 ? '...' : '') : 'empty'}`);
