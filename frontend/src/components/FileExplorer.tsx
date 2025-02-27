@@ -634,7 +634,7 @@ const FileExplorer = ({
       <div className="flex justify-between items-center p-2 border-b border-gray-700">
         <h2 className="text-sm font-medium">Explorer</h2>
         <div className="flex gap-1">
-          <button
+          {/* <button
             className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => onNewItem([], 'file')}
             disabled={!hasProjects}
@@ -654,7 +654,7 @@ const FileExplorer = ({
             disabled={!hasProjects}
           >
             <Upload size={16} />
-          </button>
+          </button> */}
         </div>
       </div>
 

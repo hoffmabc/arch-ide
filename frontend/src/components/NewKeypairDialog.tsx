@@ -78,7 +78,7 @@ export const NewKeypairDialog = ({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} className="text-gray-900 border-gray-300">
             Cancel
           </Button>
           <Button
