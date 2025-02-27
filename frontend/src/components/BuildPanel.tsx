@@ -262,6 +262,18 @@ import {
       reader.readAsText(file);
     };
 
+    const isDeployReady = () => {
+      return {
+        hasBinary: Boolean(programBinary),
+        hasAccount: Boolean(currentAccount),
+        hasProject: Boolean(project),
+        isConnected: connected,
+        ready: Boolean(programBinary && currentAccount && project && connected)
+      };
+    };
+
+    const deployStatus = isDeployReady();
+
     return (
         <div className="w-full bg-gray-800 border-r border-gray-700 p-4 space-y-6">
           <div className="flex items-center justify-between">
@@ -347,7 +359,9 @@ import {
                 />
                 <div className="flex items-center space-x-2">
                   <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
-                    {currentAccount ? currentAccount.pubkey : 'Not deployed'}
+                    {(currentAccount && currentAccount.pubkey && project?.account)
+                      ? currentAccount.pubkey
+                      : 'Not deployed'}
                   </code>
                   <TooltipProvider>
                     <Tooltip>
@@ -417,8 +431,14 @@ import {
                     onChange={handleImportBinary}
                   />
                 </div>
-                <div className="text-xs bg-gray-900 p-2 rounded">
-                  {binaryFileName || 'Import your program binary (.so)'}
+                <div className="flex items-center gap-2">
+                  <div className="text-xs bg-gray-900 p-2 rounded flex-1">
+                    {(programBinary && binaryFileName)
+                      ? binaryFileName
+                      : 'Import your program binary (.so)'}
+                  </div>
+                  <div className={`w-2 h-2 rounded-full ${programBinary ? 'bg-green-500' : 'bg-red-500'}`}
+                       title={programBinary ? 'Binary loaded' : 'No binary loaded'} />
                 </div>
               </div>
             </TabsContent>

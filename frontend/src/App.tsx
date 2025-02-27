@@ -1472,6 +1472,10 @@ const App = () => {
               onDeploy={handleDeployConfirm}
               isConnected={isConnected}
               isDeploying={isDeploying}
+              network={config.network === 'mainnet-beta' ? 'mainnet' :
+                      config.network === 'testnet' ? 'testnet' : 'devnet'}
+              programId={programId}
+              rpcUrl={config.rpcUrl}
             />
           </div>
         </QueryClientProvider>

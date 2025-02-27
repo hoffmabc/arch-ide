@@ -23,10 +23,10 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-background border-input">
+      <DialogContent className="bg-white">
         <DialogHeader>
-          <DialogTitle className="text-foreground">Create New Project</DialogTitle>
-          <DialogDescription className="text-muted-foreground">
+          <DialogTitle className="text-gray-900">Create New Project</DialogTitle>
+          <DialogDescription className="text-gray-500">
             Create a new Arch Network project with the basic template
           </DialogDescription>
         </DialogHeader>
@@ -34,33 +34,36 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <label htmlFor="name" className="text-foreground">
+              <label htmlFor="name" className="text-gray-700">
                 Project Name
               </label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="bg-background text-foreground border-input"
+                className="border-gray-300 bg-white text-gray-900 focus:border-gray-400 focus:ring-gray-400"
               />
             </div>
             <div className="grid gap-2">
-              <label htmlFor="description" className="text-foreground">
+              <label htmlFor="description" className="text-gray-700">
                 Description
               </label>
               <Textarea
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="bg-background text-foreground border-input"
+                className="border-gray-300 bg-white text-gray-900 focus:border-gray-400 focus:ring-gray-400"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose}
+              className="border-gray-300 bg-white text-gray-900 hover:bg-gray-50">
               Cancel
             </Button>
-            <Button type="submit">Create Project</Button>
+            <Button type="submit" className="bg-[#E05A1A] hover:bg-[#d14e12] text-white">
+              Create Project
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
