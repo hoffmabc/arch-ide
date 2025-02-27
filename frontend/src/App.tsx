@@ -1070,6 +1070,7 @@ const App = () => {
     }
 
     try {
+      // Even if content is unchanged, we need to ensure tab state is preserved
       const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
       const updatedProject = {
         ...fullCurrentProject,
@@ -1077,24 +1078,51 @@ const App = () => {
         lastModified: new Date()
       };
 
-      // Save and verify
+      // Save project
       await projectService.saveProject(updatedProject);
 
-      // Update both currentFile and openFiles to maintain tab state
-      const updatedCurrentFile = { ...currentFile, content: newContent };
+      // Create a copy of the current file with updated content
+      const updatedCurrentFile = {
+        ...currentFile,
+        content: newContent,
+        // Explicitly preserve these critical properties
+        path: currentFile.path,
+        name: currentFile.name,
+        type: currentFile.type
+      };
+
+      // Update current file state
       setCurrentFile(updatedCurrentFile);
-      setOpenFiles(prev => prev.map(f =>
-        f.path === currentFile.path ? updatedCurrentFile : f
-      ));
+
+      // Update open files array - use path for matching if available, otherwise use name
+      setOpenFiles(prev => {
+        return prev.map(f => {
+          if ((currentFile.path && f.path === currentFile.path) ||
+              (!currentFile.path && f.name === currentFile.name)) {
+            return updatedCurrentFile;
+          }
+          return f;
+        });
+      });
+
+      // Update project state
       setFullCurrentProject(updatedProject);
 
       console.log('File saved successfully');
+
+      // Force save tab state to localStorage
+      if (openFiles.length > 0) {
+        localStorage.setItem('editorTabs', JSON.stringify(openFiles.map(f => f.path || f.name)));
+        if (currentFile) {
+          localStorage.setItem('currentEditorFile', currentFile.path || currentFile.name);
+        }
+      }
     } catch (error) {
       console.error('Save failed:', error);
     }
 
     console.groupEnd();
-  }, [currentFile, fullCurrentProject]);
+  }, [currentFile, fullCurrentProject, openFiles]);
 
   useEffect(() => {
     console.group('Connection Status Change Debug');
