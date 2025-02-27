@@ -101,38 +101,97 @@ export class ArchPgClient {
 
       iframeWindow.parent.addEventListener('message', completionHandler);
 
-      // Modify the wrapped code to include completion notification
+      // Modify the wrapped code to include completion notification and improved Promise handling
       const wrappedCode = `
         (async () => {
           class __Pg {
             async __run() {
               ${consoleOverride}
               try {
-                // Create a promise that tracks all setTimeout calls
-                const timeouts = new Set();
+                // Create tracking for both timeouts and promises
+                const pendingOperations = new Set();
+
+                // Track unhandled promise rejections
+                window.addEventListener('unhandledrejection', (event) => {
+                  console.error('Unhandled Promise Rejection:', event.reason);
+                });
 
                 // Override setTimeout to track all pending timeouts
                 const originalSetTimeout = window.setTimeout;
                 window.setTimeout = (fn, delay, ...args) => {
                   const timeoutPromise = new Promise(resolve => {
                     const timeoutId = originalSetTimeout(() => {
-                      timeouts.delete(timeoutPromise);
-                      fn.apply(this, args);
+                      pendingOperations.delete(timeoutPromise);
+                      try {
+                        fn.apply(this, args);
+                      } catch (error) {
+                        console.error('Error in setTimeout callback:', error);
+                      }
                       resolve();
                     }, delay);
                     return timeoutId;
                   });
-                  timeouts.add(timeoutPromise);
+                  pendingOperations.add(timeoutPromise);
                   return timeoutPromise;
                 };
 
-                // Execute the user's code
-                ${code}
+                // Create a proxy for Promise to track all promises
+                const OriginalPromise = window.Promise;
+                window.Promise = new Proxy(OriginalPromise, {
+                  construct(target, args) {
+                    const promise = new target(...args);
+                    const trackingPromise = promise.then(
+                      result => {
+                        pendingOperations.delete(trackingPromise);
+                        return result;
+                      },
+                      error => {
+                        pendingOperations.delete(trackingPromise);
+                        throw error;
+                      }
+                    );
+                    pendingOperations.add(trackingPromise);
+                    return promise;
+                  }
+                });
 
-                // Wait for all timeouts to complete
-                await Promise.all(Array.from(timeouts));
+                // Execute the user's code within a try/catch to capture top-level errors
+                try {
+                  ${code}
+                } catch (error) {
+                  console.error('Error executing code:', error);
+                }
+
+                // Wait for all pending operations to complete
+                const checkCompletion = () => {
+                  if (pendingOperations.size === 0) {
+                    return Promise.resolve();
+                  }
+
+                  // Create a promise that resolves when all current operations are done
+                  return Promise.all(Array.from(pendingOperations))
+                    .then(() => {
+                      // Check again in case new operations were created while waiting
+                      if (pendingOperations.size > 0) {
+                        return new Promise(resolve => {
+                          setTimeout(() => resolve(checkCompletion()), 100);
+                        });
+                      }
+                    })
+                    .catch(error => {
+                      console.error('Error waiting for operations:', error);
+                    });
+                };
+
+                // Wait for all pending operations to complete
+                await checkCompletion();
+              } catch (error) {
+                console.error('Runtime error:', error);
               } finally {
-                window.parent.postMessage({ type: 'completion' }, '*');
+                // Add a small delay to ensure all messages are processed
+                setTimeout(() => {
+                  window.parent.postMessage({ type: 'completion' }, '*');
+                }, 100);
               }
             }
           }
@@ -147,7 +206,7 @@ export class ArchPgClient {
 
       // Transpile the code
       const transpiled = transpile(wrappedCode, {
-        target: ScriptTarget.ES5,
+        target: ScriptTarget.ES2017, // Using ES2017 to better support async/await
         module: ModuleKind.None,
         removeComments: true,
       });
@@ -160,7 +219,7 @@ export class ArchPgClient {
       scriptEl.textContent = transpiled;
       iframeDocument.head.appendChild(scriptEl);
 
-      // Add after line 98 (after script injection)
+      // Debug log after script injection
       console.log('Script injected:', {
         bodyContent: iframeDocument.body.innerHTML,
         scriptContent: scriptEl.textContent,
