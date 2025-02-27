@@ -55,7 +55,7 @@ export const NewKeypairDialog = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create a new program keypair?</DialogTitle>
+          <DialogTitle className="text-xl font-mono text-gray-900">Create a new program keypair?</DialogTitle>
           <DialogDescription className="pt-4">
             This will create a brand new keypair for your program.
           </DialogDescription>
