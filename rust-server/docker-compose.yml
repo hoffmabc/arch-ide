@@ -8,7 +8,7 @@ services:
       target: development
     volumes:
       - .:/app
-      - cargo-cache:/usr/local/cargo/registry
+      - cargo-cache:/root/.cargo/registry
       - target-cache:/app/target
     ports:
       - "8080:8080"
@@ -18,6 +18,9 @@ services:
       - CARGO_TARGET_DIR=/app/target
       - CARGO_INCREMENTAL=1
       - RUST_BACKTRACE=1
+      - PATH=/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:${PATH}
+      - RUSTUP_HOME=/root/.rustup
+      - CARGO_HOME=/root/.cargo
       # Don't use GCS in local development by default
       - USE_GCS=false
     healthcheck:

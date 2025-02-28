@@ -2,7 +2,6 @@
 target/
 .cargo/
 **/*.rs.bk
-Cargo.lock
 
 # Git
 .git/

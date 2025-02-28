@@ -3,6 +3,9 @@ import MonacoEditor from '@monaco-editor/react';
 import { FileNode, Disposable } from '../types';
 import { declareGlobalTypes } from './Editor/languages/typescript/declarations/global';
 import { COMMENT, H_ORANGE, H_YELLOW, H_PURPLE, H_BLUE, ARCH_DARK, ARCH_GRAY, TEXT_PRIMARY } from '../theme/theme';
+import { MonacoFileSystem } from '../services/MonacoFileSystem';
+import * as monaco from 'monaco-editor';
+import { editor as monacoEditor } from 'monaco-editor';
 
 interface EditorProps {
   code: string;
@@ -13,76 +16,6 @@ interface EditorProps {
   onSelectFile: (file: FileNode) => void;
 }
 
-const getFileType = (fileName: string): 'text' | 'image' | 'video' | 'audio' | 'svg' => {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-
-  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'];
-  const videoExtensions = ['mp4', 'webm', 'ogg', 'mov'];
-  const audioExtensions = ['mp3', 'wav', 'ogg', 'aac'];
-
-  if (extension === 'svg') return 'svg';
-  if (imageExtensions.includes(extension || '')) return 'image';
-  if (videoExtensions.includes(extension || '')) return 'video';
-  if (audioExtensions.includes(extension || '')) return 'audio';
-  return 'text';
-};
-const MediaViewer = ({ type, content }: { type: 'image' | 'video' | 'audio' | 'svg', content: string }) => {
-  // Use content directly as it should already be a data URL
-  const mediaContent = content;
-
-  switch (type) {
-    case 'svg':
-      return (
-        <div className="h-full w-full flex items-center justify-center bg-gray-900">
-          {content.startsWith('<?xml') || content.startsWith('<svg') ? (
-            // If content is SVG markup, render it directly
-            <div
-              className="max-h-full max-w-full"
-              dangerouslySetInnerHTML={{ __html: content }}
-            />
-          ) : (
-            // If content is a data URL or file path
-            <img
-              src={mediaContent}
-              alt="SVG Preview"
-              className="max-h-full max-w-full object-contain"
-            />
-          )}
-        </div>
-      );
-    case 'image':
-      return (
-        <div className="h-full w-full flex items-center justify-center bg-gray-900">
-          <img
-            src={mediaContent}
-            alt="Preview"
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
-      );
-    case 'video':
-      return (
-        <div className="h-full w-full flex items-center justify-center bg-gray-900">
-          <video
-            controls
-            className="max-h-full max-w-full"
-          >
-            <source src={mediaContent} />
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      );
-    case 'audio':
-      return (
-        <div className="h-full w-full flex items-center justify-center bg-gray-900">
-          <audio controls className="w-3/4">
-            <source src={mediaContent} type="audio/mpeg" />
-            Your browser does not support the audio tag.
-          </audio>
-        </div>
-      );
-  }
-};
 
 const DEFAULT_WELCOME_MESSAGE = `
 //  █████╗ ██████╗  ██████╗██╗  ██╗    ███╗   ██╗███████╗████████╗██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
@@ -123,10 +56,14 @@ const DEFAULT_WELCOME_MESSAGE = `
  */
 `;
 
-const decodeContent = (content: string): string => {
-  if (content.startsWith('data:') && content.includes(';base64,')) {
+// Helper function to decode base64 content
+const decodeBase64Content = (content: string): string => {
+  // Check if the content starts with 'data:text/plain;base64,'
+  const base64Prefix = 'data:text/plain;base64,';
+  if (content && typeof content === 'string' && content.startsWith(base64Prefix)) {
     try {
-      const base64Content = content.split(';base64,')[1];
+      // Remove the prefix and decode
+      const base64Content = content.slice(base64Prefix.length);
       return atob(base64Content);
     } catch (e) {
       console.error('Failed to decode base64 content:', e);
@@ -169,22 +106,26 @@ const defineTheme = (monaco: any) => {
 };
 
 const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectFile }: EditorProps) => {
-  const [latestContent, setLatestContent] = useState(code);
+  const [editorContent, setEditorContent] = useState<string>(code || '');
   const isWelcomeScreen = !currentFile;
-  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeContent(code);
-  const editorRef = useRef<any>(null);
+  const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeBase64Content(code);
+  const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const monacoFsRef = useRef<MonacoFileSystem | null>(null);
   const [disposables, setDisposables] = useState<Disposable[]>([]);
 
   const getLanguage = (fileName: string) => {
-    console.log('Getting language for:', fileName);
     if (fileName.endsWith('.ts')) return 'typescript';
     if (fileName.endsWith('.js')) return 'javascript';
     if (fileName.endsWith('.rs')) return 'rust';
     return 'plaintext';
   };
 
+  // Decode content when it changes
   useEffect(() => {
-    setLatestContent(code);
+    if (code) {
+      const decodedContent = decodeBase64Content(code);
+      setEditorContent(decodedContent);
+    }
   }, [code]);
 
   useEffect(() => {
@@ -229,9 +170,28 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
     }
   }, [currentProject]); // Only run when project loads
 
+  // Initialize Monaco file system
+  useEffect(() => {
+    if (!monacoFsRef.current) {
+      monacoFsRef.current = new MonacoFileSystem();
+    }
+  }, []);
+
+  // Register project files when they change
+  useEffect(() => {
+    if (currentProject?.files && monacoFsRef.current) {
+      currentProject.files.forEach((file: { content: string; name: string; }) => {
+        if (file.content) {
+          const decodedContent = decodeBase64Content(file.content);
+          monacoFsRef.current?.registerFile(file.name, decodedContent);
+        }
+      });
+    }
+  }, [currentProject?.files]);
+
   const handleChange = useCallback((value: string | undefined) => {
     if (!isWelcomeScreen && value !== undefined) {
-      setLatestContent(value);
+      setEditorContent(value);
       onChange(value);
     }
   }, [isWelcomeScreen, onChange]);
@@ -303,33 +263,30 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
           const language = getLanguage(currentFile?.name || '');
           console.log('Initial language:', language);
 
-          // Get the current model
-          const currentModel = editor.getModel();
-
-          // If the file is TypeScript or JavaScript, we need to ensure proper language support
-          if (currentModel && ['typescript', 'javascript'].includes(language)) {
-            // Create a new URI with the proper extension
-            const fileName = currentFile?.name || 'file.ts';
-            const fileExtension = fileName.endsWith('.ts') ? '.ts' : fileName.endsWith('.js') ? '.js' : '.ts';
-            const newUri = monaco.Uri.parse(`file:///${fileName}`);
-
-            // Create a new model with the same content but proper URI
-            const newModel = monaco.editor.createModel(
-              currentModel.getValue(),
-              language,
-              newUri
+          if (currentFile && monacoFsRef.current) {
+            // Ensure the current file is registered with decoded content
+            const decodedContent = currentFile.content ? decodeBase64Content(currentFile.content) : '';
+            monacoFsRef.current.registerFile(
+              currentFile.name,
+              decodedContent
             );
 
-            // Set the new model to the editor
-            editor.setModel(newModel);
+            // Create model with proper URI and decoded content
+            const uri = monaco.Uri.parse(`file:///${currentFile.name}`);
+            let model = monaco.editor.getModel(uri);
 
-            // Dispose the old model to prevent memory leaks
-            currentModel.dispose();
+            if (!model) {
+              model = monaco.editor.createModel(
+                decodedContent,
+                undefined,
+                uri
+              );
+            } else {
+              // Update existing model with decoded content
+              model.setValue(decodedContent);
+            }
 
-            console.log('Created new model with proper TypeScript URI:', {
-              uri: newModel.uri.toString(),
-              languageId: newModel.getLanguageId()
-            });
+            editor.setModel(model);
           }
 
           // Rest of your code remains the same...
@@ -367,9 +324,16 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
 
               // Add global type declarations
               monaco.languages.typescript.typescriptDefaults.addExtraLib(`
-                declare const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
-                declare const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
-                declare const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
+                // Import actual types from the module
+                import type { RpcConnection as RpcConnectionType } from "@saturnbtcio/arch-sdk";
+
+                // Declare the types globally
+                declare global {
+                  type RpcConnection = RpcConnectionType;  // Make the type available globally
+                  const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
+                  const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
+                  const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
+                }
               `, 'globals.d.ts');
               break;
             case 'javascript':

@@ -201,6 +201,15 @@ pub async fn build(
     }
 
     // Check Cargo version to determine if we need the lockfile bump flag
+    println!("Checking Cargo version...");
+    // Check if cargo is installed
+    let cargo_path = Command::new("which").arg("cargo").output()?;
+    if cargo_path.status.success() {
+        println!("Cargo is installed at: {}", String::from_utf8_lossy(&cargo_path.stdout));
+    } else {
+        println!("Cargo is not installed.");
+    }
+
     let cargo_version_output = Command::new("cargo")
         .arg("--version")
         .output()?;

@@ -162,7 +162,18 @@ export const declareGlobalTypes = async (): Promise<Disposable> => {
       "file:///node_modules/@types/arch-sdk/index.d.ts"
     ),
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      `declare global {
+      `
+      // Import the types
+      import type {
+        RpcConnection as RpcConnectionType,
+        // Add other types you need here
+      } from "@saturnbtcio/arch-sdk";
+
+      declare global {
+        // Make types available globally
+        type RpcConnection = RpcConnectionType;
+
+        // Values
         const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
         const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
         const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;

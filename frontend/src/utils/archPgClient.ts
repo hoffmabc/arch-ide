@@ -17,6 +17,12 @@ interface ClientParams {
   onMessage: (type: string, message: string) => void;
 }
 
+interface ProjectFile {
+  path: string;
+  content: string;
+  dependencies: string[]; // File paths this file depends on
+}
+
 export class ArchPgClient {
   private static _IframeWindow: Window | null = null;
   private static _isClientRunning = false;
@@ -38,14 +44,57 @@ export class ArchPgClient {
         scriptEls[0].remove();
       }
 
+      // IMPORTANT: Add message handler BEFORE injecting script
+      const messageHandler = (event: MessageEvent) => {
+        if (event.source === iframeWindow) {
+          const data = event.data;
+          if (data && typeof data === 'object') {
+            if (data.type === 'console') {
+              console.log('Received console message:', data);
+              onMessage(data.level || 'info', data.message || '');
+            } else if (data.type === 'completion') {
+              window.removeEventListener('message', messageHandler);
+              console.log('Execution completed');
+            }
+          }
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+
       // Set up SDK in iframe
       if (iframeWindow) {
         (iframeWindow as any).RpcConnection = RpcConnection;
         (iframeWindow as any).MessageUtil = MessageUtil;
         (iframeWindow as any).PubkeyUtil = PubkeyUtil;
+
+        // Add the createConnection helper function
+        (iframeWindow as any).createConnection = function(url: string) {
+          console.log('Creating connection to:', url);
+          return new RpcConnection(url);
+        };
+
+        // Add helper functions that are commonly used
+        (iframeWindow as any).getAddressFromPubkey = async function(pubkeyHex: string, conn: any) {
+          try {
+            return await conn.getAccountAddress(PubkeyUtil.fromHex(pubkeyHex));
+          } catch (error) {
+            console.error('Error in getAddressFromPubkey:', error);
+            throw error;
+          }
+        };
+
+        (iframeWindow as any).formatAccountData = function(data: any) {
+          try {
+            if (!data) return 'No data';
+            return JSON.stringify(data, null, 2);
+          } catch (error) {
+            console.error('Error in formatAccountData:', error);
+            return String(data);
+          }
+        };
       }
 
-      // Create a more robust console override
       const consoleOverride = `
         window.console = {
           log: function() {
@@ -81,27 +130,10 @@ export class ArchPgClient {
         };
       `;
 
-      // Add message event listener to parent window
-      const messageHandler = (event: MessageEvent) => {
-        if (event.data?.type === 'console') {
-          onMessage(event.data.level, event.data.message);
-          console.log('Message received:', event.data); // Debug log
-        }
-      };
-      iframeWindow.parent.addEventListener('message', messageHandler);
+      // Remove all import statements from user code
+      const processedCode = code.replace(/import\s+.*?from\s+['"].*?['"];?/g, '// Import removed');
 
-      // Add completion handler
-      const completionHandler = (event: MessageEvent) => {
-        if (event.data?.type === 'completion') {
-          iframeWindow.parent.removeEventListener('message', messageHandler);
-          iframeWindow.parent.removeEventListener('message', completionHandler);
-          onMessage('success', 'Code executed successfully');
-        }
-      };
-
-      iframeWindow.parent.addEventListener('message', completionHandler);
-
-      // Modify the wrapped code to include completion notification and improved Promise handling
+      // Create final wrapped code without imports
       const wrappedCode = `
         (async () => {
           class __Pg {
@@ -198,7 +230,7 @@ export class ArchPgClient {
 
                 // Execute the user's code within a try/catch to capture top-level errors
                 try {
-                  ${code}
+                  ${processedCode}
                 } catch (error) {
                   console.error('Error executing code:', error);
                 }
@@ -245,11 +277,11 @@ export class ArchPgClient {
         })();
       `;
 
-      // Transpile the code
+      // Transpile with less aggressive settings
       const transpiled = transpile(wrappedCode, {
-        target: ScriptTarget.ES2017, // Using ES2017 to better support async/await
-        module: ModuleKind.None,
-        removeComments: true,
+        target: ScriptTarget.ES2017,
+        module: ModuleKind.None, // Important - keep as None since we're running in browser
+        removeComments: false,   // Might be useful to keep comments for debugging
       });
 
       console.log('Transpiled code:', transpiled);
@@ -258,17 +290,87 @@ export class ArchPgClient {
       const scriptEl = document.createElement("script");
       scriptEl.type = 'text/javascript';
       scriptEl.textContent = transpiled;
+
+      // Add error handling for script execution
+      scriptEl.onerror = (error) => {
+        console.error('Script execution error:', error);
+        onMessage('error', 'Script execution error: ' + (error instanceof Error ? error.message : String(error)));
+      };
+
       iframeDocument.head.appendChild(scriptEl);
 
       // Debug log after script injection
       console.log('Script injected:', {
         bodyContent: iframeDocument.body.innerHTML,
-        scriptContent: scriptEl.textContent,
         hasConsole: typeof (iframeWindow as any).console !== 'undefined'
       });
     } finally {
       this._isClientRunning = false;
     }
+  }
+
+  static async executeProject(params: {
+    mainFile: string;
+    files: ProjectFile[];
+    onMessage: (type: string, message: string) => void;
+  }) {
+    const { mainFile, files, onMessage } = params;
+
+    // Create a map of files for easy lookup
+    const fileMap = new Map<string, ProjectFile>();
+    files.forEach(file => fileMap.set(file.path, file));
+
+    // Determine execution order (topological sort)
+    const executionOrder = this.resolveExecutionOrder(mainFile, fileMap);
+
+    // Combine code in the correct order
+    let combinedCode = '';
+    executionOrder.forEach(filePath => {
+      const file = fileMap.get(filePath);
+      if (file) {
+        combinedCode += `\n// File: ${filePath}\n${file.content}\n`;
+      }
+    });
+
+    // Execute the combined code
+    return this.execute({
+      fileName: mainFile,
+      code: combinedCode,
+      onMessage
+    });
+  }
+
+  private static resolveExecutionOrder(
+    mainFile: string,
+    fileMap: Map<string, ProjectFile>
+  ): string[] {
+    // Implement topological sort for dependencies
+    const visited = new Set<string>();
+    const result: string[] = [];
+
+    function visit(filePath: string) {
+      if (visited.has(filePath)) return;
+      visited.add(filePath);
+
+      const file = fileMap.get(filePath);
+      if (!file) return;
+
+      // Visit all dependencies first
+      file.dependencies.forEach(dep => visit(dep));
+
+      // Then add this file
+      result.push(filePath);
+    }
+
+    // Start with the main file's dependencies
+    const mainFileObj = fileMap.get(mainFile);
+    if (mainFileObj) {
+      mainFileObj.dependencies.forEach(dep => visit(dep));
+    }
+
+    // Finally add the main file
+    result.push(mainFile);
+    return result;
   }
 
   private static _getIframeWindow() {
