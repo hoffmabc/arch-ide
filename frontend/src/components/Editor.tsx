@@ -176,6 +176,7 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
   const [disposables, setDisposables] = useState<Disposable[]>([]);
 
   const getLanguage = (fileName: string) => {
+    console.log('Getting language for:', fileName);
     if (fileName.endsWith('.ts')) return 'typescript';
     if (fileName.endsWith('.js')) return 'javascript';
     if (fileName.endsWith('.rs')) return 'rust';
@@ -283,7 +284,8 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
     <div className="h-full w-full">
       <MonacoEditor
         height="100%"
-        defaultLanguage="plaintext"
+        language={getLanguage(currentFile?.name || '')}
+        // defaultLanguage="plaintext"
         theme="arch-theme"
         key={currentFile?.path || 'welcome'}
         value={displayCode}
@@ -301,10 +303,44 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
           const language = getLanguage(currentFile?.name || '');
           console.log('Initial language:', language);
 
+          // Get the current model
+          const currentModel = editor.getModel();
+
+          // If the file is TypeScript or JavaScript, we need to ensure proper language support
+          if (currentModel && ['typescript', 'javascript'].includes(language)) {
+            // Create a new URI with the proper extension
+            const fileName = currentFile?.name || 'file.ts';
+            const fileExtension = fileName.endsWith('.ts') ? '.ts' : fileName.endsWith('.js') ? '.js' : '.ts';
+            const newUri = monaco.Uri.parse(`file:///${fileName}`);
+
+            // Create a new model with the same content but proper URI
+            const newModel = monaco.editor.createModel(
+              currentModel.getValue(),
+              language,
+              newUri
+            );
+
+            // Set the new model to the editor
+            editor.setModel(newModel);
+
+            // Dispose the old model to prevent memory leaks
+            currentModel.dispose();
+
+            console.log('Created new model with proper TypeScript URI:', {
+              uri: newModel.uri.toString(),
+              languageId: newModel.getLanguageId()
+            });
+          }
+
+          // Rest of your code remains the same...
           const editorModel = editor.getModel();
           if (editorModel) {
-            monaco.editor.setModelLanguage(editorModel, language);
-            console.log('Model language after setting:', editorModel.getLanguageId());
+            // Log the final model details
+            console.log('Final model details:', {
+              languageId: editorModel.getLanguageId(),
+              uri: editorModel.uri.toString(),
+              modelId: editorModel.id
+            });
           }
 
           // Initialize appropriate language support based on file type
@@ -349,13 +385,37 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
           }
         }}
         options={{
+          // Current options
           minimap: { enabled: false },
           fontSize: 12,
           scrollBeyondLastLine: false,
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           tabSize: 2,
-          readOnly: isWelcomeScreen
+          readOnly: isWelcomeScreen,
+
+          // New options
+          automaticLayout: true,
+          bracketPairColorization: { enabled: true },
+          wordWrap: 'on',
+          formatOnPaste: true,
+          hover: {
+            enabled: true,
+            delay: 300,
+            sticky: true
+          },
+          folding: true,
+          foldingStrategy: 'indentation',
+          guides: {
+            indentation: true,
+            bracketPairs: true
+          },
+          quickSuggestions: {
+            other: true,
+            comments: true,
+            strings: true
+          },
+          suggestSelection: 'first'
         }}
       />
     </div>
