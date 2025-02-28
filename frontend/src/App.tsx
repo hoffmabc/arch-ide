@@ -243,7 +243,6 @@ const App = () => {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const previousConnectionStatus = useRef(isConnected);
   const { theme } = useTheme();
-  console.log('Theme loaded:', theme.colors.default);
   const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
   const [isDeploymentModalOpen, setIsDeploymentModalOpen] = useState(false);
   const [utxoInfo, setUtxoInfo] = useState<{ txid: string; vout: number } | undefined>(undefined);

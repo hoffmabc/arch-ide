@@ -43,7 +43,7 @@ export const DeploymentModal = ({
   const [addressError, setAddressError] = useState<string | null>(null);
 
   // Log the network for debugging purposes
-  console.log('Current network:', network);
+  // console.log('Current network:', network);
 
   // Fetch address from RPC server
   const fetchBitcoinAddress = async () => {
