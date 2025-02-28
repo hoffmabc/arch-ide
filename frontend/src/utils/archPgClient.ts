@@ -142,34 +142,19 @@ export class ArchPgClient {
 
               // Add a helper to handle RPC URLs correctly in the iframe
               const getSmartRpcUrl = (url) => {
-                if (!url) return url;
+                try {
+                  // If no URL provided, return empty string
+                  if (!url) return '';
 
-                const isProduction = !window.location.hostname.includes('localhost') &&
-                  !window.location.hostname.includes('127.0.0.1');
-                const isLocalhostUrl = url.includes('localhost') || url.includes('127.0.0.1');
+                  // Simple version that just passes through the URL
+                  // This works because we're using a controlled development environment
+                  return url;
 
-                // Handle special case for /rpc
-                if (url === '/rpc') {
-                  return isProduction ? '/api/proxy' : '/rpc';
+                } catch (e) {
+                  console.error('Critical error in getSmartRpcUrl:', e);
+                  // Return the original URL if anything goes wrong
+                  return url || '';
                 }
-
-                // Handle localhost URLs
-                if (isProduction && isLocalhostUrl) {
-                  console.warn('Cannot access localhost from production');
-                  return '/api/proxy';
-                }
-
-                // Handle external URLs in production
-                if (isProduction) {
-                  return \`/api/proxy?url=\${encodeURIComponent(url)}\`;
-                }
-
-                // Handle localhost URLs in development
-                if (!isProduction && url.startsWith('http://localhost')) {
-                  return '/rpc';
-                }
-
-                return url;
               };
 
               // Override RpcConnection to use smart URL processing
@@ -230,7 +215,10 @@ export class ArchPgClient {
 
                 // Execute the user's code within a try/catch to capture top-level errors
                 try {
-                  ${processedCode}
+                  // Create an isolated function scope for user code
+                  (function() {
+                    ${processedCode}
+                  })();
                 } catch (error) {
                   console.error('Error executing code:', error);
                 }

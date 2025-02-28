@@ -322,7 +322,7 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
                 noImplicitAny: false
               });
 
-              // Add global type declarations
+              // Add global type declarations with improved error handling
               monaco.languages.typescript.typescriptDefaults.addExtraLib(`
                 // Import actual types from the module
                 import type { RpcConnection as RpcConnectionType } from "@saturnbtcio/arch-sdk";
@@ -333,6 +333,28 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
                   const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
                   const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
                   const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
+
+                  // Add safe wrapper for getSmartRpcUrl function
+                  function getSmartRpcUrl(network?: string): string;
+
+                  // Add console object for better error handling
+                  interface Console {
+                    log(...data: any[]): void;
+                    error(...data: any[]): void;
+                    warn(...data: any[]): void;
+                    info(...data: any[]): void;
+                  }
+                  const console: Console;
+                }
+
+                // Add utility functions for error handling
+                function safeExecute<T>(fn: () => T, fallback: T): T {
+                  try {
+                    return fn();
+                  } catch (error) {
+                    console.error('Error executing function:', error);
+                    return fallback;
+                  }
                 }
               `, 'globals.d.ts');
               break;
