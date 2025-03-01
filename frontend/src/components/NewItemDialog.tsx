@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,19 @@ interface NewItemDialogProps {
 const NewItemDialog = ({ isOpen, onClose, onSubmit, type }: NewItemDialogProps) => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the input field when the dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      // Use a small timeout to ensure the dialog is fully rendered
+      const timeoutId = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +68,7 @@ const NewItemDialog = ({ isOpen, onClose, onSubmit, type }: NewItemDialogProps) 
                 }}
                 placeholder={type === 'file' ? 'filename.rs' : 'folder-name'}
                 autoFocus
+                ref={inputRef}
                 className="bg-background text-foreground border-input"
               />
               {error && <p className="text-red-500 text-sm">{error}</p>}
