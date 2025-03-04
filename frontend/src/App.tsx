@@ -30,6 +30,7 @@ import { ThemeVariableProvider } from './theme/ThemeProvider';
 import ARCH_THEME from './theme/theme';
 import { GlobalStyles } from './styles/GlobalStyles';
 import { DeploymentModal } from './components/DeploymentModal';
+import { BrowserCompatibilityAlert } from './components/BrowserCompatibilityAlert';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -1504,6 +1505,7 @@ const App = () => {
               programId={programId}
               rpcUrl={config.rpcUrl}
             />
+            <BrowserCompatibilityAlert />
           </div>
         </QueryClientProvider>
       </ThemeVariableProvider>
