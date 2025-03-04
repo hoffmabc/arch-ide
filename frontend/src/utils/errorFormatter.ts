@@ -1,74 +1,93 @@
+// Define message types
+type MessageCategory = 'error' | 'warning' | 'info' | 'success';
+
+interface BuildMessage {
+  category: MessageCategory;
+  content: string;
+  severity?: number; // Optional severity level
+}
+
 export const formatBuildError = (stderr: string): string => {
-  // Remove ANSI color codes and timestamps
-  const cleanError = stderr
+  // Early success check
+  if (isSuccessfulBuild(stderr)) {
+    return "";
+  }
+
+  // Clean ANSI and timestamps once
+  const cleanError = cleanBuildOutput(stderr);
+
+  // Parse messages into structured format
+  const messages = parseMessages(cleanError);
+
+  // Filter and format based on rules
+  const relevantMessages = filterMessages(messages);
+
+  return formatOutput(relevantMessages);
+};
+
+const isSuccessfulBuild = (output: string): boolean => {
+  const successIndicators = [
+    "Build successful",
+    "Finished release",
+    "Program binary retrieved successfully"
+  ];
+  return successIndicators.some(indicator => output.includes(indicator));
+};
+
+const cleanBuildOutput = (output: string): string => {
+  return output
     .replace(/\x1B\[\d+m/g, '')
-    .replace(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+Z\s+\w+\s+[^\]]+\]\s*/g, '');
+    .replace(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+Z\s+\w+\s+[^\]]+\]\s*/g, '')
+    .replace(/\d{1,2}:\d{2}:\d{2}\s(?:AM|PM)\s/g, '')
+    .replace(/\n\s*\n/g, '\n'); // Replace multiple newlines with single newline
+};
 
-  // Split into lines
-  const lines = cleanError.split('\n');
-
-  // Filter and format relevant lines
-  const relevantLines = lines
-    .filter(line => {
-      const trimmedLine = line.trim();
-
-      // Keep all important compiler output
-      return (
-        // Rust compiler errors and warnings
-        trimmedLine.includes('error[') ||
-        trimmedLine.includes('warning[') ||
-        trimmedLine.includes('error:') ||
-        trimmedLine.includes('warning:') ||
-        // File and location references
-        trimmedLine.includes('-->') ||
-        trimmedLine.includes('|') ||
-        // Solana specific errors
-        trimmedLine.includes('Stack offset') ||
-        trimmedLine.includes('Error deploying') ||
-        trimmedLine.includes('Failed to parse IDL') ||
-        // Helpful compiler messages
-        trimmedLine.startsWith('help:') ||
-        trimmedLine.startsWith('note:') ||
-        // Build process messages
-        trimmedLine.includes('Compiling') ||
-        trimmedLine.includes('Finished') ||
-        // Remove common noise but keep important messages
-        (!trimmedLine.includes('Blocking waiting for file lock') &&
-         !trimmedLine.includes('spawn:') &&
-         !trimmedLine.includes('Solana SDK:') &&
-         !trimmedLine.includes('Running:') &&
-         !trimmedLine.includes('Updating crates.io index') &&
-         trimmedLine !== '')
-      );
-    })
+const parseMessages = (output: string): BuildMessage[] => {
+  return output.split('\n')
     .map(line => {
       const trimmedLine = line.trim();
+      if (!trimmedLine) return null;
 
-      // Add spacing for better readability
-      if (
-        trimmedLine.startsWith('error[') ||
-        trimmedLine.startsWith('warning[') ||
-        trimmedLine.startsWith('Compiling') ||
-        trimmedLine.startsWith('Stack offset') ||
-        trimmedLine.startsWith('Error deploying')
-      ) {
-        return '\n' + line;
+      // Use regex patterns to identify message types
+      if (trimmedLine.match(/^error(\[.*?\])?:/i)) {
+        return { category: 'error', content: trimmedLine, severity: 1 };
       }
-
-      // Indent help and note messages
-      if (
-        trimmedLine.startsWith('help:') ||
-        trimmedLine.startsWith('note:')
-      ) {
-        return '    ' + line;
+      if (trimmedLine.match(/^warning(\[.*?\])?:/i)) {
+        return { category: 'warning', content: trimmedLine, severity: 0 };
       }
+      if (trimmedLine.includes('Stack offset of')) {
+        return { category: 'info', content: trimmedLine, severity: 0 };
+      }
+      // Add more patterns as needed
 
-      return line;
-    });
+      return { category: 'info', content: trimmedLine };
+    })
+    .filter((msg): msg is BuildMessage => msg !== null);
+};
 
-  // Join lines and ensure consistent spacing
-  return relevantLines
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n') // Replace multiple blank lines with double line break
-    .trim();
+const filterMessages = (messages: BuildMessage[]): BuildMessage[] => {
+  // Define filtering rules
+  const ignorePatterns = [
+    /functions are undefined and not known syscalls/,
+    /should have a snake case name/,
+    /To deploy this program/,
+    /The program address will default/
+  ];
+
+  return messages.filter(msg =>
+    // Keep all errors except specific ones we want to ignore
+    msg.category === 'error' ||
+    // Filter out known noise
+    !ignorePatterns.some(pattern => pattern.test(msg.content))
+  );
+};
+
+const formatOutput = (messages: BuildMessage[]): string => {
+  if (messages.length === 0) return '';
+
+  return messages
+    .sort((a, b) => (b.severity || 0) - (a.severity || 0))
+    .map(msg => msg.content.trim())  // Ensure each line is trimmed
+    .filter(content => content)      // Remove any empty lines
+    .join('\n');
 };
