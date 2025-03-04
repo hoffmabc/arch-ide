@@ -497,34 +497,6 @@ const App = () => {
         setProgramId(result.programId);
         setBinaryFileName(`${fullCurrentProject.name}.so`);
       }
-
-      // Fetch the binary after successful build
-      try {
-        // Extract the UUID from the current project or build context
-        const uuid = fullCurrentProject.id || ''; // Or wherever your UUID is stored
-        const program_name = fullCurrentProject.name || '';
-
-        const binaryResponse = await fetch(
-          `${API_URL}/deploy/${uuid}/${program_name}`,
-          { headers: { Accept: 'application/octet-stream' } }
-        );
-
-        if (!binaryResponse.ok) {
-          throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
-        }
-
-        // Use arrayBuffer instead of text for binary data
-        const arrayBuffer = await binaryResponse.arrayBuffer();
-
-        // Convert to base64 for storage
-        const base64Binary = Buffer.from(arrayBuffer).toString('base64');
-
-        // Store with proper encoding identifier
-        setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
-        addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
-      } catch (error: any) {
-        addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
-      }
     } catch (error: any) {
       addOutputMessage('error', `Deploy error: ${error.message}`);
     } finally {
@@ -921,34 +893,6 @@ const App = () => {
           // Show any warnings but mark as success
           addOutputMessage('info', formattedError);
           addOutputMessage('success', 'Build successful');
-
-          // Fetch the binary after successful build
-          try {
-            // Extract the UUID from the current project or build context
-            const uuid = fullCurrentProject.id || ''; // Or wherever your UUID is stored
-            const program_name = fullCurrentProject.name || '';
-
-            const binaryResponse = await fetch(
-              `${API_URL}/deploy/${uuid}/${program_name}`,
-              { headers: { Accept: 'application/octet-stream' } }
-            );
-
-            if (!binaryResponse.ok) {
-              throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
-            }
-
-            // Use arrayBuffer instead of text for binary data
-            const arrayBuffer = await binaryResponse.arrayBuffer();
-
-            // Convert to base64 for storage
-            const base64Binary = Buffer.from(arrayBuffer).toString('base64');
-
-            // Store with proper encoding identifier
-            setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
-            addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
-          } catch (error: any) {
-            addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
-          }
         } else if (
           result.stderr.includes("error:") ||
           result.stderr.includes("error[") ||
