@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { projectService } from '../services/projectService';
+import DeleteProjectDialog from './DeleteProjectDialog';
 
 interface ProjectListProps {
   projects: Project[];
@@ -25,6 +26,7 @@ interface ProjectListProps {
   onNewProject: () => void;
   onDeleteProject: (projectId: string) => Promise<void>;
   onProjectsChange: (projects: Project[]) => void;
+  onDeleteAllProjects: () => Promise<void>;
 }
 
 const ProjectList = ({
@@ -33,9 +35,11 @@ const ProjectList = ({
   onSelectProject,
   onNewProject,
   onDeleteProject,
-  onProjectsChange
+  onProjectsChange,
+  onDeleteAllProjects
 }: ProjectListProps) => {
   const [selectedId, setSelectedId] = useState(currentProject?.id || '');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     setSelectedId(currentProject?.id || '');
@@ -119,6 +123,15 @@ const ProjectList = ({
     }
   };
 
+  const handleDeleteConfirm = async (deleteAll: boolean) => {
+    if (deleteAll) {
+      await onDeleteAllProjects();
+    } else if (currentProject) {
+      await onDeleteProject(currentProject.id);
+    }
+    setIsDeleteDialogOpen(false);
+  };
+
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
       <Select
@@ -165,21 +178,17 @@ const ProjectList = ({
       </Button>
 
       {currentProject && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Trash2 className="h-5 w-5 text-red-500" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem
-              className="text-red-500"
-              onClick={() => onDeleteProject(currentProject.id)}
-            >
-              Delete Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <>
+          <Button variant="ghost" size="icon" onClick={() => setIsDeleteDialogOpen(true)}>
+            <Trash2 className="h-5 w-5 text-red-500" />
+          </Button>
+          <DeleteProjectDialog
+            isOpen={isDeleteDialogOpen}
+            onClose={() => setIsDeleteDialogOpen(false)}
+            onConfirm={handleDeleteConfirm}
+            projectName={currentProject.name}
+          />
+        </>
       )}
     </div>
   );

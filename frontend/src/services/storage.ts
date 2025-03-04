@@ -13,7 +13,23 @@ interface ArchIDEDB {
   };
 }
 
-export class StorageService {
+export interface IStorageService {
+  init: () => Promise<void>;
+  isTextFile: (fileName: string) => boolean;
+  saveProject: (project: Project) => Promise<void>;
+  getProject: (id: string) => Promise<Project | undefined>;
+  getAllProjects: () => Promise<Project[]>;
+  deleteProject: (id: string) => Promise<void>;
+  clearProgramBinary: () => void;
+  clearProgramId: () => void;
+  clearCurrentAccount: () => void;
+  saveConfig: (config: any) => void;
+  getConfig: () => any;
+  saveProgramBinary: (binary: string | null) => void;
+  getProgramBinary: () => string | null;
+}
+
+export class StorageService implements IStorageService {
   private db: IDBPDatabase<ArchIDEDB> | null = null;
 
   async init() {
@@ -311,6 +327,23 @@ export class StorageService {
 
     nodes.forEach(node => checkNode(node, parentPath));
   }
+
+  clearProgramBinary(): void {
+    localStorage.removeItem('programBinary');
+  }
+
+  clearProgramId(): void {
+    localStorage.removeItem('programId');
+  }
+
+  clearCurrentAccount(): void {
+    localStorage.removeItem('currentAccount');
+  }
+
+  saveConfig: (config: any) => void = (config) => localStorage.setItem('config', JSON.stringify(config));
+  getConfig: () => any = () => JSON.parse(localStorage.getItem('config') || 'null');
+  saveProgramBinary: (binary: string | null) => void = (binary) => localStorage.setItem('programBinary', binary || '');
+  getProgramBinary: () => string | null = () => localStorage.getItem('programBinary');
 }
 
-export const storage = new StorageService();
+export const storage: IStorageService = new StorageService();

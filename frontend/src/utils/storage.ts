@@ -59,5 +59,13 @@ const STORAGE_KEYS = {
 
     getCurrentView: () => {
       return (localStorage.getItem(STORAGE_KEYS.CURRENT_VIEW) as 'explorer' | 'build') || 'explorer';
+    },
+
+    getHasCompletedTutorial: () => {
+      return localStorage.getItem('hasCompletedTutorial') === 'true';
+    },
+
+    saveHasCompletedTutorial: (completed: boolean) => {
+      localStorage.setItem('hasCompletedTutorial', String(completed));
     }
   };

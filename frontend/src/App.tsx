@@ -31,6 +31,7 @@ import ARCH_THEME from './theme/theme';
 import { GlobalStyles } from './styles/GlobalStyles';
 import { DeploymentModal } from './components/DeploymentModal';
 import { BrowserCompatibilityAlert } from './components/BrowserCompatibilityAlert';
+import { TutorialProvider } from './context/TutorialContext';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -1309,10 +1310,34 @@ const App = () => {
 
   const displayUrl = isConnected ? actualConnectedUrl || config.rpcUrl : config.rpcUrl;
 
+  const handleDeleteAllProjects = async () => {
+    try {
+      // Delete all projects from storage
+      const projectIds = projects.map(p => p.id);
+      await Promise.all(projectIds.map(id => projectService.deleteProject(id)));
+
+      // Clear state
+      setProjects([]);
+      setFullCurrentProject(null);
+      setCurrentFile(null);
+      setOpenFiles([]);
+      setPendingChanges(new Map());
+
+      // Clear storage
+      storage.saveProgramBinary(null);
+      storage.saveProgramId(undefined);
+      storage.saveCurrentAccount(null);
+
+      addOutputMessage('success', 'All projects have been deleted');
+    } catch (error) {
+      console.error('Failed to delete all projects:', error);
+      addOutputMessage('error', 'Failed to delete all projects');
+    }
+  };
+
   return (
     <ThemeProvider>
-      <ThemeVariableProvider>
-        <GlobalStyles />
+      <TutorialProvider>
         <QueryClientProvider client={queryClient}>
           <div className="h-screen flex flex-col" style={{
             backgroundColor: theme.colors.default.bgPrimary,
@@ -1333,6 +1358,7 @@ const App = () => {
                 onNewProject={handleNewProject}
                 onDeleteProject={handleDeleteProject}
                 onProjectsChange={setProjects}
+                onDeleteAllProjects={handleDeleteAllProjects}
               />
               <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
                 <Settings className="h-6 w-6" />
@@ -1452,7 +1478,7 @@ const App = () => {
             <BrowserCompatibilityAlert />
           </div>
         </QueryClientProvider>
-      </ThemeVariableProvider>
+      </TutorialProvider>
     </ThemeProvider>
   );
 };
