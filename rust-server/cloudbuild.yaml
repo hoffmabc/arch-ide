@@ -6,6 +6,8 @@ steps:
       '-t', 'gcr.io/$PROJECT_ID/arch-server',
       '--target', 'production',
       '--cache-from', 'gcr.io/$PROJECT_ID/arch-server:latest',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '--build-arg', 'PROJECT_ID=$PROJECT_ID',
       '.'
     ]
 
@@ -32,9 +34,13 @@ steps:
     - '--memory'
     - '4Gi'
     - '--set-env-vars'
-    - 'USE_GCS=true,RUST_LOG=info,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+    - 'USE_GCS=true,RUST_LOG=debug,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
     - '--service-account'
     - 'arch-server@$PROJECT_ID.iam.gserviceaccount.com'
+    - '--cpu'
+    - '2'
+    - '--min-instances'
+    - '1'
 
 images:
   - 'gcr.io/$PROJECT_ID/arch-server'

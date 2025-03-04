@@ -9,7 +9,10 @@ declare global {
       PubkeyUtil: typeof PubkeyUtil;
     };
   }
+  var console: Console;
 }
+
+export {};
 
 interface ClientParams {
   fileName: string;
@@ -109,7 +112,7 @@ export class ArchPgClient {
               message: message
             }, '*');
             // Debug log to see if function is called
-            window.parent.console.log('iframe log:', message);
+            // window.parent.console.log('iframe log:', message);
           },
           error: function() {
             const args = Array.from(arguments);
@@ -130,146 +133,58 @@ export class ArchPgClient {
         };
       `;
 
-      // Remove all import statements from user code
+      // Process the code (remove imports, etc.)
       const processedCode = code.replace(/import\s+.*?from\s+['"].*?['"];?/g, '// Import removed');
 
-      // Create final wrapped code without imports
+      // Create a simpler wrapper
       const wrappedCode = `
         (async () => {
+          ${consoleOverride}
+
+          // Add a helper to handle RPC URLs correctly in the iframe
+          const getSmartRpcUrl = (url) => {
+            try {
+              // If no URL provided, return empty string
+              if (!url) return '';
+              return url;
+            } catch (e) {
+              console.error('Critical error in getSmartRpcUrl:', e);
+              return url || '';
+            }
+          };
+
+          // Override RpcConnection to use smart URL processing
+          const OriginalRpcConnection = window.RpcConnection;
+          window.RpcConnection = function(url) {
+            const smartUrl = getSmartRpcUrl(url);
+            console.log(\`RpcConnection: \${url} → \${smartUrl}\`);
+            return new OriginalRpcConnection(smartUrl);
+          };
+
           class __Pg {
             async __run() {
-              ${consoleOverride}
-
-              // Add a helper to handle RPC URLs correctly in the iframe
-              const getSmartRpcUrl = (url) => {
-                try {
-                  // If no URL provided, return empty string
-                  if (!url) return '';
-
-                  // Simple version that just passes through the URL
-                  // This works because we're using a controlled development environment
-                  return url;
-
-                } catch (e) {
-                  console.error('Critical error in getSmartRpcUrl:', e);
-                  // Return the original URL if anything goes wrong
-                  return url || '';
-                }
-              };
-
-              // Override RpcConnection to use smart URL processing
-              const OriginalRpcConnection = window.RpcConnection;
-              window.RpcConnection = function(url) {
-                const smartUrl = getSmartRpcUrl(url);
-                console.log(\`RpcConnection: \${url} → \${smartUrl}\`);
-                return new OriginalRpcConnection(smartUrl);
-              };
-
               try {
-                // Create tracking for both timeouts and promises
-                const pendingOperations = new Set();
-
-                // Track unhandled promise rejections
-                window.addEventListener('unhandledrejection', (event) => {
-                  console.error('Unhandled Promise Rejection:', event.reason);
-                });
-
-                // Override setTimeout to track all pending timeouts
-                const originalSetTimeout = window.setTimeout;
-                window.setTimeout = (fn, delay, ...args) => {
-                  const timeoutPromise = new Promise(resolve => {
-                    const timeoutId = originalSetTimeout(() => {
-                      pendingOperations.delete(timeoutPromise);
-                      try {
-                        fn.apply(this, args);
-                      } catch (error) {
-                        console.error('Error in setTimeout callback:', error);
-                      }
-                      resolve();
-                    }, delay);
-                    return timeoutId;
-                  });
-                  pendingOperations.add(timeoutPromise);
-                  return timeoutPromise;
-                };
-
-                // Create a proxy for Promise to track all promises
-                const OriginalPromise = window.Promise;
-                window.Promise = new Proxy(OriginalPromise, {
-                  construct(target, args) {
-                    const promise = new target(...args);
-                    const trackingPromise = promise.then(
-                      result => {
-                        pendingOperations.delete(trackingPromise);
-                        return result;
-                      },
-                      error => {
-                        pendingOperations.delete(trackingPromise);
-                        throw error;
-                      }
-                    );
-                    pendingOperations.add(trackingPromise);
-                    return promise;
-                  }
-                });
-
-                // Execute the user's code within a try/catch to capture top-level errors
-                try {
-                  // Create an isolated function scope for user code
-                  (function() {
-                    ${processedCode}
-                  })();
-                } catch (error) {
-                  console.error('Error executing code:', error);
-                }
-
-                // Wait for all pending operations to complete
-                const checkCompletion = () => {
-                  if (pendingOperations.size === 0) {
-                    return Promise.resolve();
-                  }
-
-                  // Create a promise that resolves when all current operations are done
-                  return Promise.all(Array.from(pendingOperations))
-                    .then(() => {
-                      // Check again in case new operations were created while waiting
-                      if (pendingOperations.size > 0) {
-                        return new Promise(resolve => {
-                          setTimeout(() => resolve(checkCompletion()), 100);
-                        });
-                      }
-                    })
-                    .catch(error => {
-                      console.error('Error waiting for operations:', error);
-                    });
-                };
-
-                // Wait for all pending operations to complete
-                await checkCompletion();
+                ${processedCode}
               } catch (error) {
-                console.error('Runtime error:', error);
-              } finally {
-                // Add a small delay to ensure all messages are processed
-                setTimeout(() => {
-                  window.parent.postMessage({ type: 'completion' }, '*');
-                }, 100);
+                console.error('Error executing code:', error);
               }
             }
           }
+
           const __pg = new __Pg();
           try {
             await __pg.__run();
           } catch (e) {
-            console.error(e);
+            console.error("Uncaught error:", e.message);
+          } finally {
+            window.parent.postMessage({ type: 'completion' }, '*');
           }
-        })();
-      `;
+        })()`;
 
-      // Transpile with less aggressive settings
+      // Transpile with simpler settings
       const transpiled = transpile(wrappedCode, {
-        target: ScriptTarget.ES2017,
-        module: ModuleKind.None, // Important - keep as None since we're running in browser
-        removeComments: false,   // Might be useful to keep comments for debugging
+        target: ScriptTarget.ES5,
+        removeComments: true,
       });
 
       console.log('Transpiled code:', transpiled);

@@ -188,7 +188,21 @@ pub async fn build(
     let programs_dir = Path::new(PROGRAMS_DIR);
     let target_dir = programs_dir.join("target");
     fs::create_dir_all(&target_dir)?;
-    let shared_target = target_dir.canonicalize()?;
+
+    // Make sure target directory has proper permissions
+    let _ = Command::new("chmod")
+        .arg("-R")
+        .arg("777")
+        .arg(&target_dir)
+        .output();
+
+    let shared_target = match target_dir.canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            println!("Warning: Failed to canonicalize target path: {}", e);
+            target_dir.clone()
+        }
+    };
     println!("Using shared target directory: {:?}", shared_target);
 
     // Clean up any existing Cargo.lock
@@ -200,55 +214,99 @@ pub async fn build(
         println!("No existing Cargo.lock file found.");
     }
 
+    // Check if cargo is installed
+    println!("Checking if cargo is installed...");
+    let cargo_path = Command::new("which").arg("cargo").output();
+
+    if let Ok(output) = cargo_path {
+        if output.status.success() {
+            println!("Cargo is installed at: {}", String::from_utf8_lossy(&output.stdout));
+        } else {
+            println!("Cargo is not installed. Attempting to use PATH environment variable.");
+            // Try to find cargo in PATH
+            if let Ok(path) = env::var("PATH") {
+                println!("PATH: {}", path);
+            }
+
+            // Try to install cargo if not found
+            println!("Attempting to install Rust and Cargo...");
+            let install_result = Command::new("sh")
+                .arg("-c")
+                .arg("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
+                .output();
+
+            match install_result {
+                Ok(output) => {
+                    println!("Rust installation output: {}", String::from_utf8_lossy(&output.stdout));
+                    println!("Rust installation error: {}", String::from_utf8_lossy(&output.stderr));
+                },
+                Err(e) => println!("Failed to install Rust: {}", e)
+            }
+        }
+    } else {
+        println!("Failed to check if cargo is installed: {}", cargo_path.err().unwrap());
+    }
+
     // Check Cargo version to determine if we need the lockfile bump flag
     println!("Checking Cargo version...");
-    // Check if cargo is installed
-    let cargo_path = Command::new("which").arg("cargo").output()?;
-    if cargo_path.status.success() {
-        println!("Cargo is installed at: {}", String::from_utf8_lossy(&cargo_path.stdout));
-    } else {
-        println!("Cargo is not installed.");
-    }
-
     let cargo_version_output = Command::new("cargo")
         .arg("--version")
-        .output()?;
-    let cargo_version = String::from_utf8_lossy(&cargo_version_output.stdout);
-    println!("Detected Cargo version: {}", cargo_version);
-    let needs_lockfile_bump = cargo_version.contains("1.75");
-    if needs_lockfile_bump {
-        println!("Cargo version requires lockfile bump.");
-    } else {
-        println!("Cargo version does not require lockfile bump.");
-    }
+        .output();
 
-    // Create string bindings to ensure paths live long enough
-    let manifest_path_str = manifest_path
+    let needs_lockfile_bump = match cargo_version_output {
+        Ok(output) => {
+            if output.status.success() {
+                let cargo_version = String::from_utf8_lossy(&output.stdout);
+                println!("Detected Cargo version: {}", cargo_version);
+                cargo_version.contains("1.75")
+            } else {
+                println!("Failed to get Cargo version: {}", String::from_utf8_lossy(&output.stderr));
+                false
+            }
+        },
+        Err(e) => {
+            println!("Error checking Cargo version: {}", e);
+            false
+        }
+    };
+
+    // Create string bindings with absolute paths
+    let manifest_path_str = program_path
         .canonicalize()
-        .unwrap_or(manifest_path.clone())
+        .unwrap_or(program_path.clone())
+        .join("Cargo.toml")
         .to_str()
         .expect("Manifest path should be UTF-8")
         .to_string();
 
     let deploy_dir_str = program_path
-        .join("target/deploy")
         .canonicalize()
-        .unwrap_or_else(|_| program_path.join("target/deploy"))
+        .unwrap_or(program_path.clone())
+        .join("target/deploy")
         .to_str()
         .expect("Deploy directory path should be UTF-8")
         .to_string();
 
     let shared_target_str = shared_target
+        .canonicalize()
+        .unwrap_or(shared_target.clone())
         .to_str()
         .expect("Shared target directory path should be UTF-8")
         .to_string();
 
+    // Verify paths exist
+    println!("Verifying paths exist:");
+    println!("Manifest path exists: {}", Path::new(&manifest_path_str).exists());
+    println!("Deploy dir exists: {}", Path::new(&deploy_dir_str).exists());
+    println!("Shared target exists: {}", Path::new(&shared_target_str).exists());
+
+    // Print absolute paths for debugging
     println!("Using absolute paths:");
     println!("Manifest path: {}", manifest_path_str);
     println!("Deploy dir: {}", deploy_dir_str);
     println!("Shared target: {}", shared_target_str);
 
-    // Build the args vector conditionally
+    // Build the args vector with absolute paths
     let mut build_args = vec![
         "build-sbf",
         "--manifest-path",
@@ -256,12 +314,27 @@ pub async fn build(
         "--sbf-out-dir",
         &deploy_dir_str,
     ];
-    // if needs_lockfile_bump {
+
+    if needs_lockfile_bump {
         println!("Adding lockfile bump flag to build args.");
         build_args.extend(["--", "-Znext-lockfile-bump"]);
-    // }
+    }
 
     println!("Executing build command with args: {:?}", build_args);
+    println!("Current working directory: {:?}", std::env::current_dir()?);
+
+    // Make sure the cargo-build-sbf command is in PATH
+    let cargo_build_sbf_path = Command::new("which")
+        .arg("cargo-build-sbf")
+        .output();
+
+    if let Ok(output) = cargo_build_sbf_path {
+        if !output.status.success() {
+            println!("cargo-build-sbf not found in PATH. This may cause build failures.");
+        } else {
+            println!("cargo-build-sbf found at: {}", String::from_utf8_lossy(&output.stdout));
+        }
+    }
 
     let mut child = TokioCommand::new("cargo-build-sbf")
         .args(&build_args)
@@ -271,7 +344,7 @@ pub async fn build(
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "1")
-        .current_dir(&program_path)
+        .current_dir(&program_path)  // Keep this to maintain relative path resolution
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
