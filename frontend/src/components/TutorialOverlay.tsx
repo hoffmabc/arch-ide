@@ -127,6 +127,64 @@ export const TutorialOverlay: React.FC = () => {
     };
   }, [isActive, currentStep, steps]);
 
+  useEffect(() => {
+    if (!isActive || !steps[currentStep].validation) return;
+
+    const { validation } = steps[currentStep];
+    let modalCheckPassed = false;
+    let checkTimeout: NodeJS.Timeout;
+
+    const handleAction = async (e: Event) => {
+      const targetElement = e.target as HTMLElement;
+      if (!targetElement.matches(validation.selector)) return;
+
+      // If we need to check for modal
+      if (validation.checkModal) {
+        // Wait for modal to appear/disappear
+        checkTimeout = setTimeout(() => {
+          modalCheckPassed = true;
+          runAdditionalChecks();
+        }, 500);
+        return;
+      }
+
+      runAdditionalChecks();
+    };
+
+    const runAdditionalChecks = () => {
+      if (validation.additionalChecks) {
+        for (const check of validation.additionalChecks) {
+          const element = document.querySelector(check.selector);
+
+          switch (check.condition) {
+            case 'exists':
+              if (!element) return;
+              break;
+            case 'notExists':
+              if (element) return;
+              break;
+            case 'hasClass':
+              if (!element?.classList.contains(check.className!)) return;
+              break;
+            case 'notHasClass':
+              if (element?.classList.contains(check.className!)) return;
+              break;
+          }
+        }
+      }
+
+      // All checks passed, move to next step
+      nextStep();
+    };
+
+    document.addEventListener(validation.event, handleAction);
+
+    return () => {
+      document.removeEventListener(validation.event, handleAction);
+      if (checkTimeout) clearTimeout(checkTimeout);
+    };
+  }, [isActive, currentStep, steps, nextStep]);
+
   if (!isActive || !isVisible) return null;
 
   return (

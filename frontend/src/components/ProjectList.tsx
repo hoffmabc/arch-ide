@@ -173,7 +173,7 @@ const ProjectList = ({
         <Download className="h-5 w-5" />
       </Button>
 
-      <Button variant="ghost" size="icon" onClick={onNewProject}>
+      <Button variant="ghost" data-tutorial="create-project-button" size="icon" onClick={onNewProject}>
         <PlusCircle className="h-5 w-5" />
       </Button>
 

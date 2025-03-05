@@ -664,7 +664,6 @@ const FileExplorer = ({
             <p className="text-sm">No projects found</p>
             <Button
               variant="default"
-              data-tutorial="create-project-button"
               onClick={onNewProject}
               className="bg-pink-500 hover:bg-pink-600 text-white"
             >
