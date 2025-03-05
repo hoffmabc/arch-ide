@@ -218,7 +218,7 @@ import {
 
             <div className="mt-6 text-gray-400 text-sm">
               {isLocalnet ? (
-                <a href="https://docs.arch.network" target="_blank" rel="noopener noreferrer" className="text-white font-mono flex items-center gap-2">
+                <a href="https://docs.arch.network/book/" target="_blank" rel="noopener noreferrer" className="text-white font-mono flex items-center gap-2">
                   <span>❯</span> Having issues?
                 </a>
               ) : (
