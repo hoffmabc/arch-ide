@@ -23,40 +23,22 @@ export function getSmartRpcUrl(rpcUrl: string): string {
     hostname: window.location.hostname
   });
 
-  // For special case with /rpc endpoint
-  if (rpcUrl === '/rpc') {
-    // Always use the /rpc endpoint without redirecting
-    // This relies on the vercel.json rewrite
-    return '/rpc';
-  }
-
-  // For local development with other localhost URLs
-  if (!isProduction && isLocalhostUrl) {
-    // Keep using /rpc for localhost URLs
-    return '/rpc';
-  }
-
-  // For external URLs on production, use the API proxy to avoid CORS issues
+  // For production environment, use direct URLs
   if (isProduction) {
-    // Don't try to proxy localhost URLs in production
+    return rpcUrl;
+  }
+
+  // For local development
+  if (!isProduction) {
+    // If it's already a localhost URL, use it directly
     if (isLocalhostUrl) {
-      console.warn('Cannot access localhost from production deployment');
-      // Return the built-in /rpc endpoint which will use the default URL
-      return '/rpc';
+      return rpcUrl;
     }
 
-    // For external URLs, use our proxy
+    // For external URLs in local development, use the proxy
     return `/api/proxy?url=${encodeURIComponent(rpcUrl)}`;
   }
 
-  // For local development with external URLs
-  // We can either proxy through the local server or just use it directly
-  // For most reliable behavior, let's proxy it
-  if (!isProduction && !isLocalhostUrl) {
-    return `/api/proxy?url=${encodeURIComponent(rpcUrl)}`;
-  }
-
-  // Otherwise use the original URL
   return rpcUrl;
 }
 

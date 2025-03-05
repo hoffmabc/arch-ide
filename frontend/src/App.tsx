@@ -913,6 +913,30 @@ const AppContent = () => {
           addOutputMessage('info', formattedError);
         }
       }
+
+      // After successful build, fetch the binary
+      try {
+        const uuid = fullCurrentProject.id;
+        const program_name = fullCurrentProject.name;
+
+        const binaryResponse = await fetch(
+          `${API_URL}/deploy/${uuid}/${program_name}`,
+          { headers: { Accept: 'application/octet-stream' } }
+        );
+
+        if (!binaryResponse.ok) {
+          throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
+        }
+
+        const arrayBuffer = await binaryResponse.arrayBuffer();
+        const base64Binary = Buffer.from(arrayBuffer).toString('base64');
+        setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
+        setBinaryFileName(`${fullCurrentProject.name}.so`);
+        addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
+      } catch (error: any) {
+        addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
+      }
+
     } catch (error: any) {
       addOutputMessage('error', `Build error: ${error.message}`);
       console.error('Build error:', error);
