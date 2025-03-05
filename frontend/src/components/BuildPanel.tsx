@@ -310,7 +310,7 @@ import {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button size="icon" variant="ghost" onClick={handleNewKeypairClick}>
+                          <Button size="icon" data-tutorial="generate-key" variant="ghost" onClick={handleNewKeypairClick}>
                             <Plus className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
@@ -450,6 +450,7 @@ import {
 
           <Button
             className="w-full mt-4"
+            data-tutorial="deploy"
             onClick={onDeploy}
             disabled={isDeploying || !currentAccount || !hasProjects}
           >

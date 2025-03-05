@@ -31,7 +31,9 @@ import ARCH_THEME from './theme/theme';
 import { GlobalStyles } from './styles/GlobalStyles';
 import { DeploymentModal } from './components/DeploymentModal';
 import { BrowserCompatibilityAlert } from './components/BrowserCompatibilityAlert';
-import { TutorialProvider } from './context/TutorialContext';
+import { TutorialProvider, useTutorial } from './context/TutorialContext';
+import { TutorialOverlay } from './components/TutorialOverlay';
+import { WelcomeModal } from './components/WelcomeModal';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -214,7 +216,8 @@ const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null 
   return null;
 };
 
-const App = () => {
+const AppContent = () => {
+  const { isActive, startTutorial, skipTutorial } = useTutorial();
   const [projects, setProjects] = useState<Project[]>([]);
   const [fullCurrentProject, setFullCurrentProject] = useState<Project | null>(null);
   const [currentFile, setCurrentFile] = useState<FileNode | null>(null);
@@ -248,6 +251,7 @@ const App = () => {
   const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
   const [isDeploymentModalOpen, setIsDeploymentModalOpen] = useState(false);
   const [utxoInfo, setUtxoInfo] = useState<{ txid: string; vout: number } | undefined>(undefined);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -1335,151 +1339,163 @@ const App = () => {
     }
   };
 
+  useEffect(() => {
+    const hasCompletedTutorial = storage.getHasCompletedTutorial();
+    if (!hasCompletedTutorial && !isActive) {
+      setShowWelcome(true);
+    }
+  }, []);
+
   return (
-    <ThemeProvider>
-      <TutorialProvider>
-        <QueryClientProvider client={queryClient}>
-          <div className="h-screen flex flex-col" style={{
-            backgroundColor: theme.colors.default.bgPrimary,
-            color: theme.colors.default.textPrimary
-          }}>
-            <nav className="flex items-center justify-between px-6 py-4" style={{
-              borderBottom: `1px solid ${theme.colors.default.border}`,
-              backgroundColor: theme.colors.default.bgSecondary
-            }}>
-              <div className="flex items-center gap-6">
-                <img src="/images/logo.svg" alt="Logo" className="h-12 w-21" />
-                <h1 className="text-3xl font-bold text-white">Playground</h1>
-              </div>
-              <ProjectList
-                projects={projects}
-                currentProject={fullCurrentProject || undefined}
-                onSelectProject={handleProjectSelect}
-                onNewProject={handleNewProject}
-                onDeleteProject={handleDeleteProject}
-                onProjectsChange={setProjects}
-                onDeleteAllProjects={handleDeleteAllProjects}
-              />
-              <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
-                <Settings className="h-6 w-6" />
-              </Button>
-            </nav>
+    <div className="h-screen flex flex-col" style={{
+      backgroundColor: theme.colors.default.bgPrimary,
+      color: theme.colors.default.textPrimary
+    }}>
+      <nav className="flex items-center justify-between px-6 py-4" style={{
+        borderBottom: `1px solid ${theme.colors.default.border}`,
+        backgroundColor: theme.colors.default.bgSecondary
+      }}>
+        <div className="flex items-center gap-6">
+          <img src="/images/logo.svg" alt="Logo" className="h-12 w-21" />
+          <h1 className="text-3xl font-bold text-white">Playground</h1>
+        </div>
+        <ProjectList
+          projects={projects}
+          currentProject={fullCurrentProject || undefined}
+          onSelectProject={handleProjectSelect}
+          onNewProject={handleNewProject}
+          onDeleteProject={handleDeleteProject}
+          onProjectsChange={setProjects}
+          onDeleteAllProjects={handleDeleteAllProjects}
+        />
+        <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
+          <Settings className="h-6 w-6" />
+        </Button>
+      </nav>
 
-            <div className="flex flex-1 overflow-hidden">
-              <SidePanel
-                connected={isConnected}
-                hasProjects={projects.length > 0}
-                currentView={currentView}
-                onViewChange={setCurrentView}
-                currentFile={currentFile}
-                files={fullCurrentProject?.files || []}
-                onFileSelect={handleFileSelect}
-                onUpdateTree={handleUpdateTreeAdapter}
-                onNewItem={handleNewItem}
-                onBuild={handleBuild}
-                onDeploy={handleDeploy}
-                isBuilding={isCompiling}
-                isDeploying={isDeploying}
-                programId={programId}
-                programBinary={programBinary}
-                onProgramBinaryChange={setProgramBinary}
-                programIdl={programIdl}
-                config={config}
-                onConfigChange={setConfig}
-                onConnectionStatusChange={setIsConnected}
-                onProgramIdChange={handleProgramIdChange}
-                currentAccount={currentAccount}
-                onAccountChange={setCurrentAccount}
-                project={fullCurrentProject!}
-                onProjectAccountChange={handleProjectAccountChange}
-                onNewProject={handleNewProject}
-                binaryFileName={binaryFileName}
-                setBinaryFileName={setBinaryFileName}
-                addOutputMessage={addOutputMessage}
-              />
+      <div className="flex flex-1 overflow-hidden">
+        <SidePanel
+          connected={isConnected}
+          hasProjects={projects.length > 0}
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          currentFile={currentFile}
+          files={fullCurrentProject?.files || []}
+          onFileSelect={handleFileSelect}
+          onUpdateTree={handleUpdateTreeAdapter}
+          onNewItem={handleNewItem}
+          onBuild={handleBuild}
+          onDeploy={handleDeploy}
+          isBuilding={isCompiling}
+          isDeploying={isDeploying}
+          programId={programId}
+          programBinary={programBinary}
+          onProgramBinaryChange={setProgramBinary}
+          programIdl={programIdl}
+          config={config}
+          onConfigChange={setConfig}
+          onConnectionStatusChange={setIsConnected}
+          onProgramIdChange={handleProgramIdChange}
+          currentAccount={currentAccount}
+          onAccountChange={setCurrentAccount}
+          project={fullCurrentProject!}
+          onProjectAccountChange={handleProjectAccountChange}
+          onNewProject={handleNewProject}
+          binaryFileName={binaryFileName}
+          setBinaryFileName={setBinaryFileName}
+          addOutputMessage={addOutputMessage}
+        />
 
-              <div className="flex flex-col flex-1 overflow-hidden">
-                <TabBar
-                  openFiles={openFiles}
-                  currentFile={currentFile}
-                  onSelectFile={handleFileSelect}
-                  onCloseFile={handleCloseFile}
-                  currentProject={fullCurrentProject}
-                  onRunClientCode={runClientCode}
-                />
-                <div className="flex-1 overflow-hidden">
-                <Editor
-                  code={currentFile?.content ?? '// Select a file to edit'}
-                  onChange={handleFileChange}
-                  onSave={handleSaveFile}
-                  currentFile={currentFile}
-                  onSelectFile={handleFileSelect}
-                  key={currentFile?.path || 'welcome'}
-                />
-                </div>
-
-                <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-                  <ResizeHandle onMouseDown={handleResizeStart} />
-                  <div className="flex-1 min-h-0">
-                    <Output messages={outputMessages} onClear={clearOutputMessages} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <StatusBar
-              config={config}
-              isConnected={isConnected}
-              onConnectionStatusChange={setIsConnected}
-              pendingChanges={pendingChanges}
-              isSaving={isSaving}
-            >
-              <div className="flex items-center gap-1">
-                {isConnected ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-green-500">✓</span> Connected to {config.network} ({actualConnectedUrl || config.rpcUrl})
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-red-500">✗</span> Not connected to network
-                  </div>
-                )}
-              </div>
-            </StatusBar>
-
-            <NewProjectDialog
-              isOpen={isNewProjectOpen}
-              onClose={() => setIsNewProjectOpen(false)}
-              onCreateProject={handleCreateProject}
-            />
-            <NewItemDialog
-              isOpen={isNewFileDialogOpen}
-              onClose={() => setIsNewFileDialogOpen(false)}
-              onSubmit={handleCreateNewItem}
-              type={newItemType || 'file'}
-            />
-            <ConfigPanel
-              isOpen={isConfigOpen}
-              onClose={() => setIsConfigOpen(false)}
-              config={config}
-              onConfigChange={setConfig}
-            />
-            <DeploymentModal
-              isOpen={isDeploymentModalOpen}
-              onClose={() => setIsDeploymentModalOpen(false)}
-              onDeploy={handleDeployConfirm}
-              isConnected={isConnected}
-              isDeploying={isDeploying}
-              network={config.network === 'mainnet-beta' ? 'mainnet' :
-                      config.network === 'testnet' ? 'testnet' : 'devnet'}
-              programId={programId}
-              rpcUrl={config.rpcUrl}
-            />
-            <BrowserCompatibilityAlert />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TabBar
+            openFiles={openFiles}
+            currentFile={currentFile}
+            onSelectFile={handleFileSelect}
+            onCloseFile={handleCloseFile}
+            currentProject={fullCurrentProject}
+            onRunClientCode={runClientCode}
+          />
+          <div className="flex-1 overflow-hidden">
+          <Editor
+            code={currentFile?.content ?? '// Select a file to edit'}
+            onChange={handleFileChange}
+            onSave={handleSaveFile}
+            currentFile={currentFile}
+            onSelectFile={handleFileSelect}
+            key={currentFile?.path || 'welcome'}
+          />
           </div>
-        </QueryClientProvider>
-      </TutorialProvider>
-    </ThemeProvider>
+
+          <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+            <ResizeHandle onMouseDown={handleResizeStart} />
+            <div className="flex-1 min-h-0">
+              <Output messages={outputMessages} onClear={clearOutputMessages} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <StatusBar
+        config={config}
+        isConnected={isConnected}
+        onConnectionStatusChange={setIsConnected}
+        pendingChanges={pendingChanges}
+        isSaving={isSaving}
+      >
+        <div className="flex items-center gap-1">
+          {isConnected ? (
+            <div className="flex items-center gap-1">
+              <span className="text-green-500">✓</span> Connected to {config.network} ({actualConnectedUrl || config.rpcUrl})
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="text-red-500">✗</span> Not connected to network
+            </div>
+          )}
+        </div>
+      </StatusBar>
+
+      <NewProjectDialog
+        isOpen={isNewProjectOpen}
+        onClose={() => setIsNewProjectOpen(false)}
+        onCreateProject={handleCreateProject}
+      />
+      <NewItemDialog
+        isOpen={isNewFileDialogOpen}
+        onClose={() => setIsNewFileDialogOpen(false)}
+        onSubmit={handleCreateNewItem}
+        type={newItemType || 'file'}
+      />
+      <ConfigPanel
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+        config={config}
+        onConfigChange={setConfig}
+      />
+      <DeploymentModal
+        isOpen={isDeploymentModalOpen}
+        onClose={() => setIsDeploymentModalOpen(false)}
+        onDeploy={handleDeployConfirm}
+        isConnected={isConnected}
+        isDeploying={isDeploying}
+        network={config.network === 'mainnet-beta' ? 'mainnet' :
+                config.network === 'testnet' ? 'testnet' : 'devnet'}
+        programId={programId}
+        rpcUrl={config.rpcUrl}
+      />
+      <BrowserCompatibilityAlert />
+      <WelcomeModal
+        isOpen={showWelcome}
+        onStart={() => {
+          setShowWelcome(false);
+          startTutorial();
+        }}
+        onSkip={() => {
+          setShowWelcome(false);
+          skipTutorial();
+        }}
+      />
+    </div>
   );
 };
 
@@ -1602,6 +1618,19 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     binary += String.fromCharCode.apply(null, Array.from(uint8Array.slice(i, i + chunkSize)));
   }
   return btoa(binary);
+};
+
+const App = () => {
+  return (
+    <ThemeProvider>
+      <TutorialProvider>
+        <TutorialOverlay />
+        <QueryClientProvider client={queryClient}>
+          <AppContent />
+        </QueryClientProvider>
+      </TutorialProvider>
+    </ThemeProvider>
+  );
 };
 
 export default App;

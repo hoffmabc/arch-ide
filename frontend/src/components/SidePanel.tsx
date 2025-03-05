@@ -104,6 +104,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
         </Button>
         <Button
           variant="ghost"
+          data-tutorial="build-tab"
           size="sm"
           className={cn(
             'flex-1 rounded-none border-b-2',
