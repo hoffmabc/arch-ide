@@ -624,7 +624,15 @@ const AppContent = () => {
   };
 
   const handleFileChange = useCallback((newContent: string | undefined) => {
-    if (!newContent || !currentFile || !fullCurrentProject) return;
+    if (!newContent || !currentFile || !fullCurrentProject) {
+      console.warn('Attempted to save empty content - operation blocked');
+      return;
+    }
+
+    if (newContent.trim().length === 0) {
+      addOutputMessage('error', 'Cannot save empty file content');
+      return;
+    }
 
     // Update current file
     setCurrentFile(prev => ({
