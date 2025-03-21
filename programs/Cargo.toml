@@ -1,0 +1,40 @@
+[package]
+name = "archpg"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+path = "default/src/lib.rs"
+
+[profile.release]
+overflow-checks = true
+incremental = true
+
+[dependencies]
+arch_program = "0.3.2"
+
+# Core serialization/encoding
+borsh = { version = "1.5.1", features = ["derive"] }
+
+# Utilities
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+hex = { version = "0.4.3", default-features = false }
+sha256 = { version = "1.5.0", default-features = false }
+
+# Error handling
+thiserror = "*"
+
+# Logging
+log = "0.4.17"
+
+# Serialization
+serde = { version = "1.0.136", features = ["derive"], default-features = false }
+
+# Explicitly pin bytemuck and bytemuck_derive to versions that work with rustc 1.75.0-dev
+bytemuck = { version = "1.14.0", features = ["derive"] }
+bytemuck_derive = "1.5.0"
+
+# Testing
+[dev-dependencies]
+proptest = "1.5.0"

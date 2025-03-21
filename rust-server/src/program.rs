@@ -50,6 +50,10 @@ thiserror = "=1.0.50"
 # Serialization
 serde = { version = "=1.0.198", features = ["derive"], default-features = false }
 
+# Explicitly pin bytemuck and bytemuck_derive to versions that work with rustc 1.75.0-dev
+bytemuck = { version = "=1.14.0", features = ["derive"] }
+bytemuck_derive = "=1.5.0"
+
 [profile.release]
 overflow-checks = true
 incremental = true
@@ -103,6 +107,10 @@ log = "0.4.17"
 
 # Serialization
 serde = { version = "1.0.136", features = ["derive"], default-features = false }
+
+# Explicitly pin bytemuck and bytemuck_derive to versions that work with rustc 1.75.0-dev
+bytemuck = { version = "1.14.0", features = ["derive"] }
+bytemuck_derive = "1.5.0"
 
 # Testing
 [dev-dependencies]
@@ -208,8 +216,23 @@ pub async fn build(
     // Clean up any existing Cargo.lock
     let lock_file = program_path.join("Cargo.lock");
     if lock_file.exists() {
-        println!("Removing existing Cargo.lock file...");
-        fs::remove_file(&lock_file)?;
+        println!("Found existing Cargo.lock file.");
+        // Instead of removing it, try to modify it to fix the bytemuck_derive version
+        let lock_content = fs::read_to_string(&lock_file)?;
+
+        // If the lock file contains bytemuck_derive with version 1.9.2, replace it with 1.5.0
+        let modified_content = lock_content.replace(
+            "name = \"bytemuck_derive\"\nversion = \"1.9.2\"",
+            "name = \"bytemuck_derive\"\nversion = \"1.5.0\""
+        );
+
+        if modified_content != lock_content {
+            println!("Updating bytemuck_derive version in Cargo.lock...");
+            fs::write(&lock_file, modified_content)?;
+        } else {
+            println!("No bytemuck_derive 1.9.2 found in Cargo.lock, removing the file...");
+            fs::remove_file(&lock_file)?;
+        }
     } else {
         println!("No existing Cargo.lock file found.");
     }
@@ -300,6 +323,41 @@ pub async fn build(
     println!("Deploy dir exists: {}", Path::new(&deploy_dir_str).exists());
     println!("Shared target exists: {}", Path::new(&shared_target_str).exists());
 
+    // Run cargo update to force bytemuck_derive to use 1.5.0
+    println!("Running cargo update to pin bytemuck_derive to 1.5.0...");
+    let update_status = Command::new("cargo")
+        .args(["update", "-p", "bytemuck_derive", "--precise", "1.5.0"])
+        .current_dir(&program_path)
+        .output();
+
+    match update_status {
+        Ok(output) => {
+            println!("Cargo update output: {}", String::from_utf8_lossy(&output.stdout));
+            if !output.status.success() {
+                println!("Cargo update stderr: {}", String::from_utf8_lossy(&output.stderr));
+                println!("Warning: cargo update failed, but continuing with build anyway");
+            }
+        },
+        Err(e) => println!("Failed to run cargo update: {}", e),
+    }
+
+    // Check the Solana rust version
+    println!("Checking Solana rust version...");
+    let solana_rust_version = Command::new("/root/.cache/solana/v1.41/platform-tools/rust/bin/rustc")
+        .arg("--version")
+        .output();
+
+    match solana_rust_version {
+        Ok(output) => {
+            if output.status.success() {
+                println!("Solana rust version: {}", String::from_utf8_lossy(&output.stdout));
+            } else {
+                println!("Failed to get Solana rust version: {}", String::from_utf8_lossy(&output.stderr));
+            }
+        },
+        Err(e) => println!("Error checking Solana rust version: {}", e),
+    }
+
     // Print absolute paths for debugging
     println!("Using absolute paths:");
     println!("Manifest path: {}", manifest_path_str);
@@ -344,6 +402,8 @@ pub async fn build(
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "1")
+        .env("CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG", "false")
+        .env("CARGO_DEP_BYTEMUCK_DERIVE_VERSION", "1.5.0")
         .current_dir(&program_path)  // Keep this to maintain relative path resolution
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
