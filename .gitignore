@@ -16,3 +16,6 @@ rust-server/programs/*
 rust-server/target/*
 
 **/target/*
+
+# Remove .terraform
+.terraform/*
