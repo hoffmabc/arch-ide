@@ -552,13 +552,8 @@ const FileExplorer = ({
   }, [addOutputMessage]);
 
   useEffect(() => {
-    console.log('Expanded folders set to:', Array.from(expandedFolders));
-    // Add src to expandedFolders
-    // expandedFolders.add('src');
-    // // Add client to expandedFolders
-    // expandedFolders.add('client');
-    // We should update every FileExplorerItem with the new expandedFolders
-
+    console.log('🔍 FileExplorer - expandedFolders changed:', Array.from(expandedFolders));
+    console.log('🔍 FileExplorer - expandedFolders size:', expandedFolders.size);
   }, [expandedFolders]);
 
   // Group files by section

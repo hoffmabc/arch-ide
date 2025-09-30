@@ -27,6 +27,26 @@ fn get_gcs_bucket() -> String {
     env::var("GCS_BUCKET").unwrap_or_else(|_| "arch-ide-build-artifacts".to_string())
 }
 
+fn find_solana_rustc_path() -> Option<String> {
+    // Probe common Solana cache locations for the bundled rustc used by cargo-build-sbf
+    let cache_root = Path::new("/root/.cache/solana");
+    if let Ok(entries) = fs::read_dir(cache_root) {
+        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+        for entry in entries.flatten() {
+            let p = entry.path().join("platform-tools/rust/bin/rustc");
+            if p.exists() {
+                candidates.push(p);
+            }
+        }
+        // Prefer lexicographically last (usually highest vXX directory)
+        candidates.sort();
+        if let Some(p) = candidates.last() {
+            return Some(p.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
 const CARGO_TOML_TEMPLATE: &str = r#"[package]
 name = "{}"
 version = "0.1.0"
@@ -36,23 +56,26 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-arch_program = "0.3.2"
+arch_program = "0.5.12"
+arch_sdk = "0.5.12"
+apl-associated-token-account = "0.5.12"
+apl-token = "0.5.12"
+apl-token-metadata = "0.5.12"
 
 # Core serialization/encoding
-borsh = "=1.5.1"
+borsh = "^1.5.3"
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 hex = { version = "=0.4.3", default-features = false }
 sha256 = { version = "=1.5.0", default-features = false }
 
 # Error handling
-thiserror = "=1.0.50"
+thiserror = "^1.0.57"
 
 # Serialization
-serde = { version = "=1.0.198", features = ["derive"], default-features = false }
+serde = { version = "^1.0.216", features = ["derive"], default-features = false }
 
-# Explicitly pin bytemuck and bytemuck_derive to versions that work with rustc 1.75.0-dev
-bytemuck = { version = "=1.14.0", features = ["derive"] }
-bytemuck_derive = "=1.5.0"
+# Memory casting utilities
+bytemuck = { version = "^1.20.0", features = ["derive"] }
 
 [profile.release]
 overflow-checks = true
@@ -89,7 +112,11 @@ overflow-checks = true
 incremental = true
 
 [dependencies]
-arch_program = "0.3.2"
+arch_program = "0.5.12"
+arch_sdk = "0.5.12"
+apl-associated-token-account = "0.5.12"
+apl-token = "0.5.12"
+apl-token-metadata = "0.5.12"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
@@ -108,9 +135,8 @@ log = "0.4.17"
 # Serialization
 serde = { version = "1.0.136", features = ["derive"], default-features = false }
 
-# Explicitly pin bytemuck and bytemuck_derive to versions that work with rustc 1.75.0-dev
-bytemuck = { version = "1.14.0", features = ["derive"] }
-bytemuck_derive = "1.5.0"
+# Memory casting utilities
+bytemuck = { version = "^1.20.0", features = ["derive"] }
 
 # Testing
 [dev-dependencies]
@@ -323,10 +349,39 @@ pub async fn build(
     println!("Deploy dir exists: {}", Path::new(&deploy_dir_str).exists());
     println!("Shared target exists: {}", Path::new(&shared_target_str).exists());
 
-    // Run cargo update to force bytemuck_derive to use 1.5.0
-    println!("Running cargo update to pin bytemuck_derive to 1.5.0...");
+    // Pre-build diagnostic: find who depends on getrandom
+    println!("Running 'cargo tree -i getrandom' to diagnose dependency source...");
+    let tree_diag_output = Command::new("cargo")
+        .args(["tree", "-i", "getrandom"]) // show inverse deps of getrandom
+        .current_dir(&program_path)
+        .output();
+
+    let mut getrandom_diag = String::new();
+    match tree_diag_output {
+        Ok(output) => {
+            let out = String::from_utf8_lossy(&output.stdout);
+            let err = String::from_utf8_lossy(&output.stderr);
+            println!("cargo tree (stdout):\n{}", out);
+            if !err.is_empty() { println!("cargo tree (stderr):\n{}", err); }
+            getrandom_diag.push_str("\n--- cargo tree -i getrandom ---\n");
+            getrandom_diag.push_str(&out);
+            if !err.is_empty() {
+                getrandom_diag.push_str("\n[stderr from cargo tree]\n");
+                getrandom_diag.push_str(&err);
+            }
+        },
+        Err(e) => {
+            let msg = format!("Failed to run cargo tree: {}", e);
+            println!("{}", msg);
+            getrandom_diag.push_str("\n--- cargo tree -i getrandom failed ---\n");
+            getrandom_diag.push_str(&msg);
+        }
+    }
+
+    // Update bytemuck to latest compatible (align with apl-associated-token-account)
+    println!("Running cargo update for bytemuck to >=1.20.0...");
     let update_status = Command::new("cargo")
-        .args(["update", "-p", "bytemuck_derive", "--precise", "1.5.0"])
+        .args(["update", "-p", "bytemuck"]) // allow resolver to pick >=1.20
         .current_dir(&program_path)
         .output();
 
@@ -343,7 +398,8 @@ pub async fn build(
 
     // Check the Solana rust version
     println!("Checking Solana rust version...");
-    let solana_rust_version = Command::new("/root/.cache/solana/v1.41/platform-tools/rust/bin/rustc")
+    let rustc_path = find_solana_rustc_path().unwrap_or_else(|| "rustc".to_string());
+    let solana_rust_version = Command::new(&rustc_path)
         .arg("--version")
         .output();
 
@@ -352,7 +408,11 @@ pub async fn build(
             if output.status.success() {
                 println!("Solana rust version: {}", String::from_utf8_lossy(&output.stdout));
             } else {
-                println!("Failed to get Solana rust version: {}", String::from_utf8_lossy(&output.stderr));
+                println!(
+                    "Failed to get Solana rust version using '{}': {}",
+                    rustc_path,
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
         },
         Err(e) => println!("Error checking Solana rust version: {}", e),
@@ -438,6 +498,11 @@ pub async fn build(
 
     // Instead of returning error, we return the stderr output along with the status
     if !status.success() && !build_succeeded {
+        // Include pre-build diagnostics to help identify the source of getrandom
+        if !getrandom_diag.is_empty() {
+            stderr_lines.push_str(&getrandom_diag);
+            stderr_lines.push('\n');
+        }
         // Return the stderr output even on failure
         return Ok((stderr_lines, safe_program_name));
     }

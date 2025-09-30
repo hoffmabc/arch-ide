@@ -9,7 +9,7 @@ interface WelcomeModalProps {
 
 export const WelcomeModal = ({ isOpen, onStart, onSkip }: WelcomeModalProps) => {
   return (
-    <Dialog open={isOpen}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onSkip(); }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Welcome to Arch Network!</DialogTitle>

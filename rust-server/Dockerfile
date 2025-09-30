@@ -14,6 +14,8 @@ RUN apt-get update -qq && apt-get upgrade -qq && \
     apt-get install -qq \
     build-essential \
     curl \
+    ca-certificates \
+    bzip2 \
     pkg-config \
     libssl-dev \
     libudev-dev \
@@ -23,16 +25,21 @@ RUN apt-get update -qq && apt-get upgrade -qq && \
     vim
 
 # Install Rust with specific toolchain and verify installation
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.81.0 && \
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0 && \
     echo 'source "$HOME/.cargo/env"' >> ~/.bashrc && \
     /bin/bash -c "source $HOME/.cargo/env && \
     cargo --version && \
     rustc --version"
 
-# Install Solana
-ARG SOLANA_VERSION="1.18.26"
-RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
-ENV PATH="${HOME}/.local/share/solana/install/active_release/bin:${PATH}"
+# Install Solana (installer method for 2.2.x)
+ARG SOLANA_VERSION="2.2.20"
+RUN set -e; \
+    curl --retry 5 --retry-all-errors --retry-delay 3 --http1.1 -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install -o /tmp/install.sh && \
+    sh /tmp/install.sh && \
+    ln -sf /root/.local/share/solana/install/active_release/bin /usr/local/solana && \
+    ln -sf /usr/local/solana/solana /usr/local/bin/solana && \
+    ln -sf /usr/local/solana/cargo-build-sbf /usr/local/bin/cargo-build-sbf
+ENV PATH="/usr/local/solana:${PATH}"
 
 WORKDIR /app
 
@@ -51,28 +58,34 @@ RUN apt-get update -qq && \
     dpkg --add-architecture i386 && \
     apt-get update -qq && \
     apt-get install -qq \
-    build-essential curl pkg-config libssl-dev \
+    build-essential curl ca-certificates bzip2 pkg-config libssl-dev \
     libudev-dev gcc-multilib libc6-dev-i386 git vim
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Install Rust toolchain
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.81.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.89.0
 ENV PATH="/root/.cargo/bin:${PATH}"
 ENV RUSTUP_HOME="/root/.rustup"
 ENV CARGO_HOME="/root/.cargo"
 
-# Install Solana
-ARG SOLANA_VERSION="1.18.26"
-RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
-ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+# Install Solana (installer method for 2.2.x)
+ARG SOLANA_VERSION="2.2.20"
+RUN set -e; \
+    curl --retry 5 --retry-all-errors --retry-delay 3 --http1.1 -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install -o /tmp/install.sh && \
+    sh /tmp/install.sh && \
+    ln -sf /root/.local/share/solana/install/active_release/bin /usr/local/solana && \
+    ln -sf /usr/local/solana/solana /usr/local/bin/solana && \
+    ln -sf /usr/local/solana/cargo-build-sbf /usr/local/bin/cargo-build-sbf
+ENV PATH="/usr/local/solana:${PATH}"
 
 # Verify installations in base image
 RUN echo "Verifying base image installations..." && \
     cargo --version && \
     rustc --version && \
-    solana --version
+    /usr/local/bin/solana --version && \
+    /usr/local/bin/cargo-build-sbf --version
 
 # Create a separate stage for dependencies
 FROM base as cargo-deps
@@ -118,23 +131,22 @@ COPY programs /app/programs/
 # Ensure proper permissions
 RUN chmod -R 777 /app/programs
 
-# Copy Rust and Solana installations from base
+# Copy Rust installations from base
 COPY --from=base /root/.cargo /root/.cargo
 COPY --from=base /root/.rustup /root/.rustup
-COPY --from=base /root/.local/share/solana /root/.local/share/solana
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/programs/target/deploy && \
     # Fix permissions - make sure all directories are accessible
     chmod -R 755 /app && \
     chmod -R 755 /root/.cargo && \
-    chmod -R 755 /root/.local/share/solana && \
+    chmod -R 755 /usr/local/solana && \
     chmod +x /usr/local/bin/arch-server
 
 # Set environment variables
 ENV PORT=8080
 ENV RUST_LOG=info
-ENV PATH="/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:${PATH}"
+ENV PATH="/root/.cargo/bin:/usr/local/solana:${PATH}"
 ENV RUSTUP_HOME="/root/.rustup"
 ENV CARGO_HOME="/root/.cargo"
 
@@ -142,7 +154,8 @@ ENV CARGO_HOME="/root/.cargo"
 RUN echo "Verifying production image installations..." && \
     cargo --version && \
     rustc --version && \
-    solana --version && \
+    /usr/local/bin/solana --version && \
+    /usr/local/bin/cargo-build-sbf --version && \
     ls -la /root/.cargo/bin
 
 # Health check

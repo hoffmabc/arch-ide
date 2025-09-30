@@ -8,37 +8,31 @@ export function getSmartRpcUrl(rpcUrl: string): string {
     return '';
   }
 
-  // Check if we're running on production (non-localhost)
-  const isProduction = typeof window !== 'undefined' &&
-    !window.location.hostname.includes('localhost') &&
-    !window.location.hostname.includes('127.0.0.1');
-
   // Check if this is a localhost URL
   const isLocalhostUrl = rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1');
 
+  // Check if this is an external HTTPS URL
+  const isExternalHttps = rpcUrl.startsWith('https://');
+
   console.log('Smart RPC URL detection:', {
     rpcUrl,
-    isProduction,
     isLocalhostUrl,
-    hostname: window.location.hostname
+    isExternalHttps,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown'
   });
 
-  // For production environment, use direct URLs
-  if (isProduction) {
+  // Always use localhost URLs directly
+  if (isLocalhostUrl) {
     return rpcUrl;
   }
 
-  // For local development
-  if (!isProduction) {
-    // If it's already a localhost URL, use it directly
-    if (isLocalhostUrl) {
-      return rpcUrl;
-    }
-
-    // For external URLs in local development, use the proxy
-    return `/api/proxy?url=${encodeURIComponent(rpcUrl)}`;
+  // Always use external HTTPS URLs directly (they have CORS configured)
+  if (isExternalHttps) {
+    return rpcUrl;
   }
 
+  // For other cases (http external URLs), we might need a proxy
+  // but for now, try direct connection
   return rpcUrl;
 }
 

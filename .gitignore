@@ -9,7 +9,7 @@ backend/temp
 .vscode
 .vercel
 
-# progrsm folder in rust-server
+# programs folder in rust-server
 rust-server/programs/*
 
 # target folder in rust-server
@@ -17,10 +17,11 @@ rust-server/target/*
 
 **/target/*
 
-# Remove .terraform
+# Terraform
 **/.terraform/*
-**/.tfstate
-**/.tfstate.backup
+**/*.tfstate
+**/*.tfstate.backup
 **/.terraform.lock.hcl
 
-solana-playground
+# Third-party repositories
+solana-playground/

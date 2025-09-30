@@ -11,7 +11,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arch_program = "0.3.2"
+arch_program = "0.5.12"
+arch_sdk = "0.5.12"
+apl-associated-token-account = "0.5.12"
+apl-token = "0.5.12"
+apl-token-metadata = "0.5.12"
 borsh = { version = "1.5.1", features = ["derive"] }
 
 [lib]
@@ -95,22 +99,57 @@ pub struct HelloWorldParams {
 }
 `;
 
-const DEFAULT_CLIENT = String.raw`const conn = new RpcConnection("http://localhost:9002");
+const DEFAULT_CLIENT = String.raw`const conn = new RpcConnection("https://rpc-beta.test.arch.network");
 
 // Get latest block count
-const count = await conn.getBlockCount();
-console.log(JSON.stringify(count));
+const blockCount = await conn.getBlockCount();
+console.log("Block Count:", blockCount);
 
-// Get account address from hex pubkey
-const pubkey = PubkeyUtil.fromHex('c2e770ee15a878b111a88a4bd94229d2472f84a5b46818868e51ada469723f72');
-console.log("Account Address:", await conn.getAccountAddress(pubkey));
+// Get best (latest) block hash
+const bestBlockHash = await conn.getBestBlockHash();
+console.log("Best Block Hash:", bestBlockHash.slice(0, 16) + "...");
 
+// Create a new account and request airdrop (new in 0.0.21)
+const archConn = ArchConnection(conn);
+const newAccount = await archConn.createNewAccount();
+console.log("\nNew Account Created:");
+console.log("  Address:", newAccount.address);
+console.log("  Pubkey (hex):", newAccount.pubkey.slice(0, 20) + "...");
+console.log("  Pubkey (base58):", toBase58(PubkeyUtil.fromHex(newAccount.pubkey)));
+
+// Request airdrop for the new account
 try {
-  const data = await conn.readAccountInfo(pubkey);
-  console.log('Data:', data);
+  // Note: createNewAccount() returns hex format, so use fromHex
+  const pubkey = PubkeyUtil.fromHex(newAccount.pubkey);
+  await conn.requestAirdrop(pubkey);
+  console.log("✓ Airdrop requested successfully!");
+
+  // Read account info to verify
+  const accountInfo = await conn.readAccountInfo(pubkey);
+  console.log("\nAccount Info:");
+  console.log("  Lamports:", accountInfo.lamports);
+  console.log("  Owner (base58):", toBase58(accountInfo.owner));
+  console.log("  Data:", accountInfo.data.length, "bytes");
+  console.log("  UTXO:", accountInfo.utxo);
 } catch(e) {
-  console.log(e);
+  console.log("✗ Airdrop error:", e.error ? e.error.message : e.message);
 }
+
+// Example: Query multiple accounts at once (new in 0.0.21)
+console.log("\n--- Batch Operations ---");
+const systemProgram = PubkeyUtil.systemProgram();
+const accounts = await conn.getMultipleAccounts([
+  systemProgram,
+  PubkeyUtil.fromHex(newAccount.pubkey)
+]);
+console.log("Queried", accounts.length, "accounts");
+accounts.forEach((acc, i) => {
+  if (acc) {
+    console.log("Account " + i + ":", acc.lamports, "lamports");
+  } else {
+    console.log("Account " + i + ": not found");
+  }
+});
 `;
 
 const PROGRAM_TEMPLATE: FileNode[] = [

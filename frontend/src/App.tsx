@@ -216,6 +216,35 @@ const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null 
   return null;
 };
 
+// Debug helper function
+if (typeof window !== 'undefined') {
+  (window as any).debugStorage = () => {
+    console.group('🔍 DEBUG: LocalStorage State');
+    console.log('Current Project ID:', localStorage.getItem('currentProjectId'));
+
+    // Find all expandedFolders keys
+    const expandedFoldersKeys = Object.keys(localStorage).filter(key =>
+      key.startsWith('expandedFolders_')
+    );
+
+    console.log('Expanded Folders Keys:', expandedFoldersKeys);
+    expandedFoldersKeys.forEach(key => {
+      console.log(`  ${key}:`, localStorage.getItem(key));
+    });
+
+    console.log('All localStorage keys:', Object.keys(localStorage));
+    console.groupEnd();
+
+    return {
+      currentProjectId: localStorage.getItem('currentProjectId'),
+      expandedFoldersData: expandedFoldersKeys.reduce((acc, key) => {
+        acc[key] = localStorage.getItem(key);
+        return acc;
+      }, {} as Record<string, string | null>)
+    };
+  };
+}
+
 const AppContent = () => {
   const { isActive, startTutorial, skipTutorial } = useTutorial();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -262,9 +291,9 @@ const AppContent = () => {
 
   useEffect(() => {
     const loadProjects = async () => {
-      console.group('Initial Project Load');
+      console.group('🔍 Initial Project Load - DEBUGGING');
       const loadedProjects = await projectService.getAllProjects();
-      console.log('Loaded projects:', loadedProjects);
+      console.log('📦 Loaded projects:', loadedProjects.map(p => ({ id: p.id, name: p.name })));
 
       // Only strip in production
       if (import.meta.env.PROD) {
@@ -272,13 +301,31 @@ const AppContent = () => {
       } else {
         setProjects(loadedProjects);
       }
+
       if (loadedProjects.length > 0) {
-        console.log('Setting initial project:', loadedProjects[0]);
-        setFullCurrentProject(loadedProjects[0]);
-        // Ensure src and client folders are expanded by default
-        const defaultExpandedFolders = new Set(['src', 'client']);
-        console.log('Setting initial expanded folders:', Array.from(defaultExpandedFolders));
-        setExpandedFolders(defaultExpandedFolders);
+        // Try to restore the last active project
+        const lastActiveProjectId = localStorage.getItem('currentProjectId');
+        console.log('💾 Last active project ID from localStorage:', lastActiveProjectId);
+        console.log('📋 Available project IDs:', loadedProjects.map(p => p.id));
+
+        let projectToLoad = loadedProjects[0];
+
+        if (lastActiveProjectId) {
+          const savedProject = loadedProjects.find(p => p.id === lastActiveProjectId);
+          if (savedProject) {
+            projectToLoad = savedProject;
+            console.log('✅ Restoring last active project:', projectToLoad.name);
+          } else {
+            console.log('❌ Last active project not found, using first project');
+          }
+        } else {
+          console.log('⚠️ No last active project ID found, using first project');
+        }
+
+        console.log('🎯 Setting initial project:', { id: projectToLoad.id, name: projectToLoad.name });
+        setFullCurrentProject(projectToLoad);
+      } else {
+        console.log('❌ No projects found');
       }
       console.groupEnd();
     };
@@ -302,8 +349,8 @@ const AppContent = () => {
   const [config, setConfig] = useState<Config>(() => {
     const savedConfig = storage.getConfig();
     const defaultConfig = {
-      network: 'devnet',
-      rpcUrl: 'http://localhost:9002',
+      network: 'testnet',
+      rpcUrl: 'https://rpc-beta.test.arch.network',
       showTransactionDetails: false,
       improveErrors: true,
       automaticAirdrop: true,
@@ -390,20 +437,39 @@ const AppContent = () => {
   // Add this with your other initialization effects
   useEffect(() => {
     if (fullCurrentProject) {
-      // Restore expanded folders
-      const savedExpandedFolders = localStorage.getItem('expandedFolders');
-      const defaultExpandedFolders = new Set(['src', 'client']); // Add default folders to expand
+      console.group('🔍 Restore Expanded Folders - DEBUGGING');
+      console.log('📦 Current project:', { id: fullCurrentProject.id, name: fullCurrentProject.name });
+
+      // Restore expanded folders (project-specific)
+      const storageKey = `expandedFolders_${fullCurrentProject.id}`;
+      console.log('🔑 Storage key:', storageKey);
+
+      const savedExpandedFolders = localStorage.getItem(storageKey);
+      console.log('💾 Saved expanded folders from localStorage:', savedExpandedFolders);
+
+      let foldersToSet: Set<string>;
 
       if (savedExpandedFolders) {
         try {
           const expandedPaths = JSON.parse(savedExpandedFolders);
-          expandedPaths.forEach((path: string) => defaultExpandedFolders.add(path));
+          console.log('📂 Parsed expanded paths:', expandedPaths);
+          // Use ONLY the saved data, don't add defaults
+          foldersToSet = new Set(expandedPaths);
+          console.log('✅ Using saved expanded folders (no defaults)');
         } catch (e) {
-          console.error('Error restoring expanded folders:', e);
+          console.error('❌ Error restoring expanded folders:', e);
+          // On error, use defaults
+          foldersToSet = new Set(['src', 'client']);
         }
+      } else {
+        console.log('⚠️ No saved expanded folders found - using defaults');
+        // Only use defaults for new projects (no saved data)
+        foldersToSet = new Set(['src', 'client']);
       }
 
-      setExpandedFolders(defaultExpandedFolders);
+      console.log('✅ Setting expanded folders to:', Array.from(foldersToSet));
+      setExpandedFolders(foldersToSet);
+      console.groupEnd();
 
       // Restore tabs
       const savedTabs = localStorage.getItem('editorTabs');
@@ -682,14 +748,11 @@ const AppContent = () => {
       if (currentFile) {
         localStorage.setItem('currentEditorFile', currentFile.path || currentFile.name);
       }
-      // Save expanded folders state
-      localStorage.setItem('expandedFolders', JSON.stringify(Array.from(expandedFolders)));
     } else {
       localStorage.removeItem('editorTabs');
       localStorage.removeItem('currentEditorFile');
-      localStorage.removeItem('expandedFolders');
     }
-  }, [openFiles, currentFile, expandedFolders]);
+  }, [openFiles, currentFile]);
 
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
@@ -1021,6 +1084,12 @@ const AppContent = () => {
         setOpenFiles([]);
       }
 
+      // Clean up localStorage entries for this project
+      localStorage.removeItem(`expandedFolders_${projectId}`);
+      if (isCurrentProject) {
+        localStorage.removeItem('currentProjectId');
+      }
+
       // Delete from storage
       await projectService.deleteProject(projectId);
 
@@ -1148,17 +1217,19 @@ const AppContent = () => {
   };
 
   const handleProjectSelect = async (project: Project) => {
-    console.group('Project Selection');
-    console.log('Selected project:', project);
+    console.group('🔄 Project Selection - DEBUGGING');
+    console.log('📌 Selected project:', project);
+    console.log('📌 Previous project:', fullCurrentProject?.name);
 
     const fullProject = await projectService.getProject(project.id);
     if (!fullProject) {
-      console.warn('Project not found');
+      console.warn('❌ Project not found');
       console.groupEnd();
       return;
     }
 
-    console.log('Loading full project:', fullProject);
+    console.log('✅ Loading full project:', { id: fullProject.id, name: fullProject.name });
+    console.log('📂 About to call setFullCurrentProject - this should trigger expandedFolders restore');
     setFullCurrentProject(fullProject);
     setCurrentAccount(fullProject.account || null);
     setProgramId(fullProject.account?.pubkey);
@@ -1166,10 +1237,7 @@ const AppContent = () => {
     setOpenFiles([]);
     setCurrentFile(null);
 
-    // Ensure src and client folders are expanded by default
-    const defaultExpandedFolders = new Set(['src', 'client']);
-    console.log('Setting expanded folders for new project:', Array.from(defaultExpandedFolders));
-    setExpandedFolders(defaultExpandedFolders);
+    console.log('✅ Project switch complete - useEffect should now run to restore expanded folders');
     console.groupEnd();
   };
 
@@ -1291,10 +1359,28 @@ const AppContent = () => {
     console.groupEnd();
   };
 
-  // Monitor expandedFolders changes
+  // Save current project ID whenever it changes
   useEffect(() => {
-    console.log('expandedFolders changed:', Array.from(expandedFolders));
-  }, [expandedFolders]);
+    if (fullCurrentProject) {
+      localStorage.setItem('currentProjectId', fullCurrentProject.id);
+      console.log('💾 Saved current project ID:', fullCurrentProject.id);
+      console.log('🔍 Verify - reading back:', localStorage.getItem('currentProjectId'));
+    }
+  }, [fullCurrentProject]);
+
+  // Save expandedFolders whenever it changes (project-specific)
+  useEffect(() => {
+    if (fullCurrentProject) {
+      const storageKey = `expandedFolders_${fullCurrentProject.id}`;
+      const foldersArray = Array.from(expandedFolders);
+      localStorage.setItem(storageKey, JSON.stringify(foldersArray));
+      console.log('💾 Saved expandedFolders for project', fullCurrentProject.name);
+      console.log('  - Storage key:', storageKey);
+      console.log('  - Folders:', foldersArray);
+      console.log('  - Size:', expandedFolders.size);
+      console.log('🔍 Verify - reading back:', localStorage.getItem(storageKey));
+    }
+  }, [expandedFolders, fullCurrentProject]);
 
   const runClientCode = async () => {
     try {
@@ -1303,10 +1389,32 @@ const AppContent = () => {
         return;
       }
 
-      const clientCode = currentFile.content;
+      let clientCode = currentFile.content;
       if (!clientCode) {
         addOutputMessage('error', 'Client code not found');
         return;
+      }
+
+      // Decode base64 content if necessary (with UTF-8 support)
+      const base64Prefix = 'data:text/plain;base64,';
+      if (clientCode.startsWith(base64Prefix)) {
+        try {
+          const base64Content = clientCode.slice(base64Prefix.length);
+          const decoded = atob(base64Content);
+
+          // Convert from Latin1 bytes to UTF-8 string
+          try {
+            const utf8Bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+            clientCode = new TextDecoder().decode(utf8Bytes);
+          } catch (e) {
+            // Fallback: try legacy decoding
+            clientCode = decodeURIComponent(escape(decoded));
+          }
+        } catch (e) {
+          console.error('Failed to decode base64 content:', e);
+          addOutputMessage('error', 'Failed to decode file content');
+          return;
+        }
       }
 
       addOutputMessage('info', 'Executing code...');
@@ -1436,6 +1544,8 @@ const AppContent = () => {
           binaryFileName={binaryFileName}
           setBinaryFileName={setBinaryFileName}
           addOutputMessage={addOutputMessage}
+          expandedFolders={expandedFolders}
+          onExpandedFoldersChange={setExpandedFolders}
         />
 
         <div className="flex flex-col flex-1 overflow-hidden">

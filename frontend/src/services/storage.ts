@@ -132,7 +132,19 @@ export class StorageService implements IStorageService {
         if (node.type === 'file' && node.content && shouldEncodeContent(node.content)) {
           console.log(`Encoding file: ${node.name}`);
           console.log('Original content length:', node.content.length);
-          const base64Content = btoa(node.content);
+
+          // Use TextEncoder to handle UTF-8 characters properly
+          let base64Content: string;
+          try {
+            // Convert string to UTF-8 bytes, then to base64
+            const utf8Bytes = new TextEncoder().encode(node.content);
+            base64Content = btoa(String.fromCharCode(...utf8Bytes));
+          } catch (e) {
+            // Fallback for very large content: use btoa directly (may fail on Unicode)
+            console.warn(`UTF-8 encoding failed for ${node.name}, falling back to btoa:`, e);
+            base64Content = btoa(unescape(encodeURIComponent(node.content)));
+          }
+
           console.log('Encoded content length:', base64Content.length);
 
           const encoded = {
@@ -142,7 +154,9 @@ export class StorageService implements IStorageService {
 
           // Verify encoding
           try {
-            const decodedContent = atob(base64Content);
+            const decoded = atob(base64Content);
+            const utf8Bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+            const decodedContent = new TextDecoder().decode(utf8Bytes);
             const encodingValid = decodedContent === node.content;
             console.log(`Encoding verification for ${node.name}: ${encodingValid ? 'PASSED' : 'FAILED'}`);
             if (!encodingValid) {

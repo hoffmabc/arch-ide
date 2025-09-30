@@ -52,13 +52,14 @@ interface SidePanelProps {
   setBinaryFileName: (name: string | null) => void;
   addOutputMessage: (type: any, message: any) => void;
   connected: boolean;
+  expandedFolders: Set<string>;
+  onExpandedFoldersChange: (folders: Set<string>) => void;
 }
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
-    const [expandedFolders, setExpandedFolders] = useState<ExpandedFolders>(new Set());
 
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -128,7 +129,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               onUpdateTree={onUpdateTree}
               onNewItem={onNewItem}
               expandedFolders={expandedFolders}
-              onExpandedFoldersChange={setExpandedFolders}
+              onExpandedFoldersChange={onExpandedFoldersChange}
               currentFile={currentFile}
               onNewProject={onNewProject}
               addOutputMessage={addOutputMessage}

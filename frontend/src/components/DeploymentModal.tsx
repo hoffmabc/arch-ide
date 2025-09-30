@@ -28,9 +28,9 @@ export const DeploymentModal = ({
   onDeploy,
   isConnected,
   isDeploying,
-  network = 'devnet', // Default to devnet if not specified
+  network = 'testnet', // Default to testnet if not specified
   programId,
-  rpcUrl = 'http://localhost:9002' // Default RPC URL
+  rpcUrl = 'https://rpc-beta.test.arch.network' // Default RPC URL
 }: DeploymentModalProps) => {
   // Step management
   const [currentStep, setCurrentStep] = useState<Step>('select');
