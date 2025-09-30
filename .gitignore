@@ -23,4 +23,4 @@ rust-server/target/*
 **/.tfstate.backup
 **/.terraform.lock.hcl
 
-**/solana-playground/*
+solana-playground
