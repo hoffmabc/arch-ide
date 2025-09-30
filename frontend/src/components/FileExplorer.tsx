@@ -138,20 +138,41 @@ const ProjectInfo = ({ project, onProjectUpdate }: ProjectInfoProps) => {
 
   // Update local state when project changes
   useEffect(() => {
+    console.log('🔔 ProjectInfo useEffect - project changed:', {
+      projectId: project?.id,
+      name: project?.name,
+      description: project?.description,
+      hasDescription: !!project?.description
+    });
     setEditedName(project?.name || '');
     setEditedDescription(project?.description || '');
   }, [project]);
 
   const handleSave = async () => {
     if (!project) return;
+
+    console.log('💾 ProjectInfo.handleSave called:', {
+      oldName: project.name,
+      newName: editedName,
+      oldDescription: project.description,
+      newDescription: editedDescription
+    });
+
     const updatedProject = {
       ...project,
       name: editedName,
       description: editedDescription,
       lastModified: new Date()
     };
+
+    console.log('💾 Saving project to storage...');
     await projectService.saveProject(updatedProject);
+    console.log('✅ Project saved to storage');
+
+    console.log('📢 Calling onProjectUpdate callback...');
     onProjectUpdate(updatedProject);
+    console.log('✅ onProjectUpdate callback complete');
+
     setIsEditing(false);
   };
 
@@ -625,8 +646,8 @@ const FileExplorer = ({
     // Update the full project in the parent component
     // This will trigger a re-render with the new project info
     onProjectUpdate && onProjectUpdate(updatedProject);
-    // Also update the account if the callback is provided
-    onProjectAccountChange && onProjectAccountChange(updatedProject.account || null);
+    // Don't call onProjectAccountChange here - onProjectUpdate already handles the full project update
+    // Calling it here causes a race condition where it uses stale state from fullCurrentProject
   };
 
   return (

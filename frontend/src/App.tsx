@@ -248,7 +248,21 @@ if (typeof window !== 'undefined') {
 const AppContent = () => {
   const { isActive, startTutorial, skipTutorial } = useTutorial();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [fullCurrentProject, setFullCurrentProject] = useState<Project | null>(null);
+  const [fullCurrentProjectRaw, setFullCurrentProjectRaw] = useState<Project | null>(null);
+
+  // Wrap setFullCurrentProject to log all calls
+  const setFullCurrentProject = useCallback((project: Project | null | ((prev: Project | null) => Project | null)) => {
+    const newProject = typeof project === 'function' ? project(fullCurrentProjectRaw) : project;
+    console.log('🔄 setFullCurrentProject called:', {
+      name: newProject?.name,
+      description: newProject?.description,
+      hasDescription: !!newProject?.description,
+      stack: new Error().stack?.split('\n').slice(2, 5).join('\n')
+    });
+    setFullCurrentProjectRaw(newProject);
+  }, [fullCurrentProjectRaw]);
+
+  const fullCurrentProject = fullCurrentProjectRaw;
   const [currentFile, setCurrentFile] = useState<FileNode | null>(null);
   const [output, setOutput] = useState('');
   const [isCompiling, setIsCompiling] = useState(false);
@@ -386,7 +400,16 @@ const AppContent = () => {
 
   // Modify the project update effect to prevent unnecessary saves
   useEffect(() => {
+      console.log('⚠️ fullCurrentProject changed useEffect triggered:', {
+      isDev: import.meta.env.DEV,
+      hasProject: !!fullCurrentProject,
+      willRun: !!(fullCurrentProject && !import.meta.env.DEV),
+      projectName: fullCurrentProject?.name,
+      projectDescription: fullCurrentProject?.description
+    });
+
     if (fullCurrentProject && !import.meta.env.DEV) {
+      console.log('🔄 Auto-saving project due to fullCurrentProject change');
       const updateProjects = async () => {
         await projectService.saveProject(fullCurrentProject);
         const updatedProjects = await projectService.getAllProjects();
@@ -486,6 +509,7 @@ const AppContent = () => {
   }, [programBinary, fullCurrentProject?.name]);
 
   // Add this with your other initialization effects
+  // Only restore state when project ID changes (i.e., switching projects), not when metadata updates
   useEffect(() => {
     if (fullCurrentProject) {
       console.group('🔍 Restore Expanded Folders - DEBUGGING');
@@ -569,7 +593,7 @@ const AppContent = () => {
         console.log('⚠️ No saved tabs found in localStorage');
       }
     }
-  }, [fullCurrentProject]);
+  }, [fullCurrentProject?.id]); // Only trigger when project ID changes, not when name/description changes
 
   const handleDeploy = async () => {
     const missing = [];
@@ -1298,13 +1322,29 @@ const AppContent = () => {
   };
 
   const handleProjectUpdate = async (updatedProject: Project) => {
+    console.log('🔄 handleProjectUpdate called:', {
+      id: updatedProject.id,
+      name: updatedProject.name,
+      description: updatedProject.description
+    });
+
     // Update the project state with the new metadata (name, description, etc.)
     setFullCurrentProject(updatedProject);
 
     // Also update the projects list to reflect the changes
+    const strippedProject = stripProjectContent(updatedProject);
+    console.log('📋 Stripped project for list:', {
+      id: strippedProject.id,
+      name: strippedProject.name,
+      description: strippedProject.description,
+      hasDescription: !!strippedProject.description
+    });
+
     setProjects(prev => prev.map(p =>
-      p.id === updatedProject.id ? stripProjectContent(updatedProject) : p
+      p.id === updatedProject.id ? strippedProject : p
     ));
+
+    console.log('✅ handleProjectUpdate complete');
   };
 
   const handleProjectSelect = async (project: Project) => {
