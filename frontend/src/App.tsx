@@ -31,7 +31,9 @@ import ARCH_THEME from './theme/theme';
 import { GlobalStyles } from './styles/GlobalStyles';
 import { DeploymentModal } from './components/DeploymentModal';
 import { BrowserCompatibilityAlert } from './components/BrowserCompatibilityAlert';
-import { TutorialProvider } from './context/TutorialContext';
+import { TutorialProvider, useTutorial } from './context/TutorialContext';
+import { TutorialOverlay } from './components/TutorialOverlay';
+import { WelcomeModal } from './components/WelcomeModal';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -214,7 +216,37 @@ const findFileByPath = (nodes: FileNode[], targetPath: string): FileNode | null 
   return null;
 };
 
-const App = () => {
+// Debug helper function
+if (typeof window !== 'undefined') {
+  (window as any).debugStorage = () => {
+    console.group('🔍 DEBUG: LocalStorage State');
+    console.log('Current Project ID:', localStorage.getItem('currentProjectId'));
+
+    // Find all expandedFolders keys
+    const expandedFoldersKeys = Object.keys(localStorage).filter(key =>
+      key.startsWith('expandedFolders_')
+    );
+
+    console.log('Expanded Folders Keys:', expandedFoldersKeys);
+    expandedFoldersKeys.forEach(key => {
+      console.log(`  ${key}:`, localStorage.getItem(key));
+    });
+
+    console.log('All localStorage keys:', Object.keys(localStorage));
+    console.groupEnd();
+
+    return {
+      currentProjectId: localStorage.getItem('currentProjectId'),
+      expandedFoldersData: expandedFoldersKeys.reduce((acc, key) => {
+        acc[key] = localStorage.getItem(key);
+        return acc;
+      }, {} as Record<string, string | null>)
+    };
+  };
+}
+
+const AppContent = () => {
+  const { isActive, startTutorial, skipTutorial } = useTutorial();
   const [projects, setProjects] = useState<Project[]>([]);
   const [fullCurrentProject, setFullCurrentProject] = useState<Project | null>(null);
   const [currentFile, setCurrentFile] = useState<FileNode | null>(null);
@@ -248,6 +280,7 @@ const App = () => {
   const [actualConnectedUrl, setActualConnectedUrl] = useState<string | null>(null);
   const [isDeploymentModalOpen, setIsDeploymentModalOpen] = useState(false);
   const [utxoInfo, setUtxoInfo] = useState<{ txid: string; vout: number } | undefined>(undefined);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const debouncedSave = useCallback(
     debounce((projectToSave: Project) => {
@@ -258,9 +291,9 @@ const App = () => {
 
   useEffect(() => {
     const loadProjects = async () => {
-      console.group('Initial Project Load');
+      console.group('🔍 Initial Project Load - DEBUGGING');
       const loadedProjects = await projectService.getAllProjects();
-      console.log('Loaded projects:', loadedProjects);
+      console.log('📦 Loaded projects:', loadedProjects.map(p => ({ id: p.id, name: p.name })));
 
       // Only strip in production
       if (import.meta.env.PROD) {
@@ -268,13 +301,31 @@ const App = () => {
       } else {
         setProjects(loadedProjects);
       }
+
       if (loadedProjects.length > 0) {
-        console.log('Setting initial project:', loadedProjects[0]);
-        setFullCurrentProject(loadedProjects[0]);
-        // Ensure src and client folders are expanded by default
-        const defaultExpandedFolders = new Set(['src', 'client']);
-        console.log('Setting initial expanded folders:', Array.from(defaultExpandedFolders));
-        setExpandedFolders(defaultExpandedFolders);
+        // Try to restore the last active project
+        const lastActiveProjectId = localStorage.getItem('currentProjectId');
+        console.log('💾 Last active project ID from localStorage:', lastActiveProjectId);
+        console.log('📋 Available project IDs:', loadedProjects.map(p => p.id));
+
+        let projectToLoad = loadedProjects[0];
+
+        if (lastActiveProjectId) {
+          const savedProject = loadedProjects.find(p => p.id === lastActiveProjectId);
+          if (savedProject) {
+            projectToLoad = savedProject;
+            console.log('✅ Restoring last active project:', projectToLoad.name);
+          } else {
+            console.log('❌ Last active project not found, using first project');
+          }
+        } else {
+          console.log('⚠️ No last active project ID found, using first project');
+        }
+
+        console.log('🎯 Setting initial project:', { id: projectToLoad.id, name: projectToLoad.name });
+        setFullCurrentProject(projectToLoad);
+      } else {
+        console.log('❌ No projects found');
       }
       console.groupEnd();
     };
@@ -298,8 +349,8 @@ const App = () => {
   const [config, setConfig] = useState<Config>(() => {
     const savedConfig = storage.getConfig();
     const defaultConfig = {
-      network: 'devnet',
-      rpcUrl: 'http://localhost:9002',
+      network: 'testnet',
+      rpcUrl: 'https://rpc-beta.test.arch.network',
       showTransactionDetails: false,
       improveErrors: true,
       automaticAirdrop: true,
@@ -386,20 +437,39 @@ const App = () => {
   // Add this with your other initialization effects
   useEffect(() => {
     if (fullCurrentProject) {
-      // Restore expanded folders
-      const savedExpandedFolders = localStorage.getItem('expandedFolders');
-      const defaultExpandedFolders = new Set(['src', 'client']); // Add default folders to expand
+      console.group('🔍 Restore Expanded Folders - DEBUGGING');
+      console.log('📦 Current project:', { id: fullCurrentProject.id, name: fullCurrentProject.name });
+
+      // Restore expanded folders (project-specific)
+      const storageKey = `expandedFolders_${fullCurrentProject.id}`;
+      console.log('🔑 Storage key:', storageKey);
+
+      const savedExpandedFolders = localStorage.getItem(storageKey);
+      console.log('💾 Saved expanded folders from localStorage:', savedExpandedFolders);
+
+      let foldersToSet: Set<string>;
 
       if (savedExpandedFolders) {
         try {
           const expandedPaths = JSON.parse(savedExpandedFolders);
-          expandedPaths.forEach((path: string) => defaultExpandedFolders.add(path));
+          console.log('📂 Parsed expanded paths:', expandedPaths);
+          // Use ONLY the saved data, don't add defaults
+          foldersToSet = new Set(expandedPaths);
+          console.log('✅ Using saved expanded folders (no defaults)');
         } catch (e) {
-          console.error('Error restoring expanded folders:', e);
+          console.error('❌ Error restoring expanded folders:', e);
+          // On error, use defaults
+          foldersToSet = new Set(['src', 'client']);
         }
+      } else {
+        console.log('⚠️ No saved expanded folders found - using defaults');
+        // Only use defaults for new projects (no saved data)
+        foldersToSet = new Set(['src', 'client']);
       }
 
-      setExpandedFolders(defaultExpandedFolders);
+      console.log('✅ Setting expanded folders to:', Array.from(foldersToSet));
+      setExpandedFolders(foldersToSet);
+      console.groupEnd();
 
       // Restore tabs
       const savedTabs = localStorage.getItem('editorTabs');
@@ -620,7 +690,15 @@ const App = () => {
   };
 
   const handleFileChange = useCallback((newContent: string | undefined) => {
-    if (!newContent || !currentFile || !fullCurrentProject) return;
+    if (!newContent || !currentFile || !fullCurrentProject) {
+      console.warn('Attempted to save empty content - operation blocked');
+      return;
+    }
+
+    if (newContent.trim().length === 0) {
+      addOutputMessage('error', 'Cannot save empty file content');
+      return;
+    }
 
     // Update current file
     setCurrentFile(prev => ({
@@ -670,14 +748,11 @@ const App = () => {
       if (currentFile) {
         localStorage.setItem('currentEditorFile', currentFile.path || currentFile.name);
       }
-      // Save expanded folders state
-      localStorage.setItem('expandedFolders', JSON.stringify(Array.from(expandedFolders)));
     } else {
       localStorage.removeItem('editorTabs');
       localStorage.removeItem('currentEditorFile');
-      localStorage.removeItem('expandedFolders');
     }
-  }, [openFiles, currentFile, expandedFolders]);
+  }, [openFiles, currentFile]);
 
   const handleFileSelect = (file: FileNode) => {
     if (file.type === 'file') {
@@ -909,6 +984,30 @@ const App = () => {
           addOutputMessage('info', formattedError);
         }
       }
+
+      // After successful build, fetch the binary
+      try {
+        const uuid = fullCurrentProject.id;
+        const program_name = fullCurrentProject.name;
+
+        const binaryResponse = await fetch(
+          `${API_URL}/deploy/${uuid}/${program_name}`,
+          { headers: { Accept: 'application/octet-stream' } }
+        );
+
+        if (!binaryResponse.ok) {
+          throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
+        }
+
+        const arrayBuffer = await binaryResponse.arrayBuffer();
+        const base64Binary = Buffer.from(arrayBuffer).toString('base64');
+        setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
+        setBinaryFileName(`${fullCurrentProject.name}.so`);
+        addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
+      } catch (error: any) {
+        addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
+      }
+
     } catch (error: any) {
       addOutputMessage('error', `Build error: ${error.message}`);
       console.error('Build error:', error);
@@ -983,6 +1082,12 @@ const App = () => {
         // Clear editor state first
         setCurrentFile(null);
         setOpenFiles([]);
+      }
+
+      // Clean up localStorage entries for this project
+      localStorage.removeItem(`expandedFolders_${projectId}`);
+      if (isCurrentProject) {
+        localStorage.removeItem('currentProjectId');
       }
 
       // Delete from storage
@@ -1112,17 +1217,19 @@ const App = () => {
   };
 
   const handleProjectSelect = async (project: Project) => {
-    console.group('Project Selection');
-    console.log('Selected project:', project);
+    console.group('🔄 Project Selection - DEBUGGING');
+    console.log('📌 Selected project:', project);
+    console.log('📌 Previous project:', fullCurrentProject?.name);
 
     const fullProject = await projectService.getProject(project.id);
     if (!fullProject) {
-      console.warn('Project not found');
+      console.warn('❌ Project not found');
       console.groupEnd();
       return;
     }
 
-    console.log('Loading full project:', fullProject);
+    console.log('✅ Loading full project:', { id: fullProject.id, name: fullProject.name });
+    console.log('📂 About to call setFullCurrentProject - this should trigger expandedFolders restore');
     setFullCurrentProject(fullProject);
     setCurrentAccount(fullProject.account || null);
     setProgramId(fullProject.account?.pubkey);
@@ -1130,10 +1237,7 @@ const App = () => {
     setOpenFiles([]);
     setCurrentFile(null);
 
-    // Ensure src and client folders are expanded by default
-    const defaultExpandedFolders = new Set(['src', 'client']);
-    console.log('Setting expanded folders for new project:', Array.from(defaultExpandedFolders));
-    setExpandedFolders(defaultExpandedFolders);
+    console.log('✅ Project switch complete - useEffect should now run to restore expanded folders');
     console.groupEnd();
   };
 
@@ -1255,10 +1359,28 @@ const App = () => {
     console.groupEnd();
   };
 
-  // Monitor expandedFolders changes
+  // Save current project ID whenever it changes
   useEffect(() => {
-    console.log('expandedFolders changed:', Array.from(expandedFolders));
-  }, [expandedFolders]);
+    if (fullCurrentProject) {
+      localStorage.setItem('currentProjectId', fullCurrentProject.id);
+      console.log('💾 Saved current project ID:', fullCurrentProject.id);
+      console.log('🔍 Verify - reading back:', localStorage.getItem('currentProjectId'));
+    }
+  }, [fullCurrentProject]);
+
+  // Save expandedFolders whenever it changes (project-specific)
+  useEffect(() => {
+    if (fullCurrentProject) {
+      const storageKey = `expandedFolders_${fullCurrentProject.id}`;
+      const foldersArray = Array.from(expandedFolders);
+      localStorage.setItem(storageKey, JSON.stringify(foldersArray));
+      console.log('💾 Saved expandedFolders for project', fullCurrentProject.name);
+      console.log('  - Storage key:', storageKey);
+      console.log('  - Folders:', foldersArray);
+      console.log('  - Size:', expandedFolders.size);
+      console.log('🔍 Verify - reading back:', localStorage.getItem(storageKey));
+    }
+  }, [expandedFolders, fullCurrentProject]);
 
   const runClientCode = async () => {
     try {
@@ -1267,10 +1389,32 @@ const App = () => {
         return;
       }
 
-      const clientCode = currentFile.content;
+      let clientCode = currentFile.content;
       if (!clientCode) {
         addOutputMessage('error', 'Client code not found');
         return;
+      }
+
+      // Decode base64 content if necessary (with UTF-8 support)
+      const base64Prefix = 'data:text/plain;base64,';
+      if (clientCode.startsWith(base64Prefix)) {
+        try {
+          const base64Content = clientCode.slice(base64Prefix.length);
+          const decoded = atob(base64Content);
+
+          // Convert from Latin1 bytes to UTF-8 string
+          try {
+            const utf8Bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+            clientCode = new TextDecoder().decode(utf8Bytes);
+          } catch (e) {
+            // Fallback: try legacy decoding
+            clientCode = decodeURIComponent(escape(decoded));
+          }
+        } catch (e) {
+          console.error('Failed to decode base64 content:', e);
+          addOutputMessage('error', 'Failed to decode file content');
+          return;
+        }
       }
 
       addOutputMessage('info', 'Executing code...');
@@ -1335,151 +1479,165 @@ const App = () => {
     }
   };
 
+  useEffect(() => {
+    const hasCompletedTutorial = storage.getHasCompletedTutorial();
+    if (!hasCompletedTutorial && !isActive) {
+      setShowWelcome(true);
+    }
+  }, []);
+
   return (
-    <ThemeProvider>
-      <TutorialProvider>
-        <QueryClientProvider client={queryClient}>
-          <div className="h-screen flex flex-col" style={{
-            backgroundColor: theme.colors.default.bgPrimary,
-            color: theme.colors.default.textPrimary
-          }}>
-            <nav className="flex items-center justify-between px-6 py-4" style={{
-              borderBottom: `1px solid ${theme.colors.default.border}`,
-              backgroundColor: theme.colors.default.bgSecondary
-            }}>
-              <div className="flex items-center gap-6">
-                <img src="/images/logo.svg" alt="Logo" className="h-12 w-21" />
-                <h1 className="text-3xl font-bold text-white">Playground</h1>
-              </div>
-              <ProjectList
-                projects={projects}
-                currentProject={fullCurrentProject || undefined}
-                onSelectProject={handleProjectSelect}
-                onNewProject={handleNewProject}
-                onDeleteProject={handleDeleteProject}
-                onProjectsChange={setProjects}
-                onDeleteAllProjects={handleDeleteAllProjects}
-              />
-              <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
-                <Settings className="h-6 w-6" />
-              </Button>
-            </nav>
+    <div className="h-screen flex flex-col" style={{
+      backgroundColor: theme.colors.default.bgPrimary,
+      color: theme.colors.default.textPrimary
+    }}>
+      <nav className="flex items-center justify-between px-6 py-4" style={{
+        borderBottom: `1px solid ${theme.colors.default.border}`,
+        backgroundColor: theme.colors.default.bgSecondary
+      }}>
+        <div className="flex items-center gap-6">
+          <img src="/images/logo.svg" alt="Logo" className="h-12 w-21" />
+          <h1 className="text-3xl font-bold text-white">Playground</h1>
+        </div>
+        <ProjectList
+          projects={projects}
+          currentProject={fullCurrentProject || undefined}
+          onSelectProject={handleProjectSelect}
+          onNewProject={handleNewProject}
+          onDeleteProject={handleDeleteProject}
+          onProjectsChange={setProjects}
+          onDeleteAllProjects={handleDeleteAllProjects}
+        />
+        <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)}>
+          <Settings className="h-6 w-6" />
+        </Button>
+      </nav>
 
-            <div className="flex flex-1 overflow-hidden">
-              <SidePanel
-                connected={isConnected}
-                hasProjects={projects.length > 0}
-                currentView={currentView}
-                onViewChange={setCurrentView}
-                currentFile={currentFile}
-                files={fullCurrentProject?.files || []}
-                onFileSelect={handleFileSelect}
-                onUpdateTree={handleUpdateTreeAdapter}
-                onNewItem={handleNewItem}
-                onBuild={handleBuild}
-                onDeploy={handleDeploy}
-                isBuilding={isCompiling}
-                isDeploying={isDeploying}
-                programId={programId}
-                programBinary={programBinary}
-                onProgramBinaryChange={setProgramBinary}
-                programIdl={programIdl}
-                config={config}
-                onConfigChange={setConfig}
-                onConnectionStatusChange={setIsConnected}
-                onProgramIdChange={handleProgramIdChange}
-                currentAccount={currentAccount}
-                onAccountChange={setCurrentAccount}
-                project={fullCurrentProject!}
-                onProjectAccountChange={handleProjectAccountChange}
-                onNewProject={handleNewProject}
-                binaryFileName={binaryFileName}
-                setBinaryFileName={setBinaryFileName}
-                addOutputMessage={addOutputMessage}
-              />
+      <div className="flex flex-1 overflow-hidden">
+        <SidePanel
+          connected={isConnected}
+          hasProjects={projects.length > 0}
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          currentFile={currentFile}
+          files={fullCurrentProject?.files || []}
+          onFileSelect={handleFileSelect}
+          onUpdateTree={handleUpdateTreeAdapter}
+          onNewItem={handleNewItem}
+          onBuild={handleBuild}
+          onDeploy={handleDeploy}
+          isBuilding={isCompiling}
+          isDeploying={isDeploying}
+          programId={programId}
+          programBinary={programBinary}
+          onProgramBinaryChange={setProgramBinary}
+          programIdl={programIdl}
+          config={config}
+          onConfigChange={setConfig}
+          onConnectionStatusChange={setIsConnected}
+          onProgramIdChange={handleProgramIdChange}
+          currentAccount={currentAccount}
+          onAccountChange={setCurrentAccount}
+          project={fullCurrentProject!}
+          onProjectAccountChange={handleProjectAccountChange}
+          onNewProject={handleNewProject}
+          binaryFileName={binaryFileName}
+          setBinaryFileName={setBinaryFileName}
+          addOutputMessage={addOutputMessage}
+          expandedFolders={expandedFolders}
+          onExpandedFoldersChange={setExpandedFolders}
+        />
 
-              <div className="flex flex-col flex-1 overflow-hidden">
-                <TabBar
-                  openFiles={openFiles}
-                  currentFile={currentFile}
-                  onSelectFile={handleFileSelect}
-                  onCloseFile={handleCloseFile}
-                  currentProject={fullCurrentProject}
-                  onRunClientCode={runClientCode}
-                />
-                <div className="flex-1 overflow-hidden">
-                <Editor
-                  code={currentFile?.content ?? '// Select a file to edit'}
-                  onChange={handleFileChange}
-                  onSave={handleSaveFile}
-                  currentFile={currentFile}
-                  onSelectFile={handleFileSelect}
-                  key={currentFile?.path || 'welcome'}
-                />
-                </div>
-
-                <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-                  <ResizeHandle onMouseDown={handleResizeStart} />
-                  <div className="flex-1 min-h-0">
-                    <Output messages={outputMessages} onClear={clearOutputMessages} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <StatusBar
-              config={config}
-              isConnected={isConnected}
-              onConnectionStatusChange={setIsConnected}
-              pendingChanges={pendingChanges}
-              isSaving={isSaving}
-            >
-              <div className="flex items-center gap-1">
-                {isConnected ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-green-500">✓</span> Connected to {config.network} ({actualConnectedUrl || config.rpcUrl})
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-red-500">✗</span> Not connected to network
-                  </div>
-                )}
-              </div>
-            </StatusBar>
-
-            <NewProjectDialog
-              isOpen={isNewProjectOpen}
-              onClose={() => setIsNewProjectOpen(false)}
-              onCreateProject={handleCreateProject}
-            />
-            <NewItemDialog
-              isOpen={isNewFileDialogOpen}
-              onClose={() => setIsNewFileDialogOpen(false)}
-              onSubmit={handleCreateNewItem}
-              type={newItemType || 'file'}
-            />
-            <ConfigPanel
-              isOpen={isConfigOpen}
-              onClose={() => setIsConfigOpen(false)}
-              config={config}
-              onConfigChange={setConfig}
-            />
-            <DeploymentModal
-              isOpen={isDeploymentModalOpen}
-              onClose={() => setIsDeploymentModalOpen(false)}
-              onDeploy={handleDeployConfirm}
-              isConnected={isConnected}
-              isDeploying={isDeploying}
-              network={config.network === 'mainnet-beta' ? 'mainnet' :
-                      config.network === 'testnet' ? 'testnet' : 'devnet'}
-              programId={programId}
-              rpcUrl={config.rpcUrl}
-            />
-            <BrowserCompatibilityAlert />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <TabBar
+            openFiles={openFiles}
+            currentFile={currentFile}
+            onSelectFile={handleFileSelect}
+            onCloseFile={handleCloseFile}
+            currentProject={fullCurrentProject}
+            onRunClientCode={runClientCode}
+          />
+          <div className="flex-1 overflow-hidden">
+          <Editor
+            code={currentFile?.content ?? '// Select a file to edit'}
+            onChange={handleFileChange}
+            onSave={handleSaveFile}
+            currentFile={currentFile}
+            onSelectFile={handleFileSelect}
+            key={currentFile?.path || 'welcome'}
+          />
           </div>
-        </QueryClientProvider>
-      </TutorialProvider>
-    </ThemeProvider>
+
+          <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+            <ResizeHandle onMouseDown={handleResizeStart} />
+            <div className="flex-1 min-h-0">
+              <Output messages={outputMessages} onClear={clearOutputMessages} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <StatusBar
+        config={config}
+        isConnected={isConnected}
+        onConnectionStatusChange={setIsConnected}
+        pendingChanges={pendingChanges}
+        isSaving={isSaving}
+      >
+        <div className="flex items-center gap-1">
+          {isConnected ? (
+            <div className="flex items-center gap-1">
+              <span className="text-green-500">✓</span> Connected to {config.network} ({actualConnectedUrl || config.rpcUrl})
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="text-red-500">✗</span> Not connected to network
+            </div>
+          )}
+        </div>
+      </StatusBar>
+
+      <NewProjectDialog
+        isOpen={isNewProjectOpen}
+        onClose={() => setIsNewProjectOpen(false)}
+        onCreateProject={handleCreateProject}
+      />
+      <NewItemDialog
+        isOpen={isNewFileDialogOpen}
+        onClose={() => setIsNewFileDialogOpen(false)}
+        onSubmit={handleCreateNewItem}
+        type={newItemType || 'file'}
+      />
+      <ConfigPanel
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+        config={config}
+        onConfigChange={setConfig}
+      />
+      <DeploymentModal
+        isOpen={isDeploymentModalOpen}
+        onClose={() => setIsDeploymentModalOpen(false)}
+        onDeploy={handleDeployConfirm}
+        isConnected={isConnected}
+        isDeploying={isDeploying}
+        network={config.network === 'mainnet-beta' ? 'mainnet' :
+                config.network === 'testnet' ? 'testnet' : 'devnet'}
+        programId={programId}
+        rpcUrl={config.rpcUrl}
+      />
+      <BrowserCompatibilityAlert />
+      <WelcomeModal
+        isOpen={showWelcome}
+        onStart={() => {
+          setShowWelcome(false);
+          startTutorial();
+        }}
+        onSkip={() => {
+          setShowWelcome(false);
+          skipTutorial();
+        }}
+      />
+    </div>
   );
 };
 
@@ -1602,6 +1760,19 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     binary += String.fromCharCode.apply(null, Array.from(uint8Array.slice(i, i + chunkSize)));
   }
   return btoa(binary);
+};
+
+const App = () => {
+  return (
+    <ThemeProvider>
+      <TutorialProvider>
+        <TutorialOverlay />
+        <QueryClientProvider client={queryClient}>
+          <AppContent />
+        </QueryClientProvider>
+      </TutorialProvider>
+    </ThemeProvider>
+  );
 };
 
 export default App;

@@ -7,7 +7,17 @@ export type TutorialStep = {
   content: string;
   placement?: 'top' | 'bottom' | 'left' | 'right';
   action?: () => void | Promise<void>;
-  waitForAction?: boolean;
+  validation: {
+    event: string;
+    selector: string;
+    checkModal?: boolean;  // Check if a modal appears/disappears
+    additionalChecks?: {
+      selector: string;
+      condition: 'exists' | 'notExists' | 'hasClass' | 'notHasClass';
+      className?: string;
+    }[];
+  };
+  waitForAction: boolean;  // Now required and defaulted to true
 };
 
 interface TutorialContextType {
@@ -29,44 +39,76 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const steps: TutorialStep[] = [
     {
-      target: '[data-tutorial="new-project"]',
+      target: '[data-tutorial="create-project-button"]',
       title: 'Create New Project',
-      content: 'Let\'s start by creating a new project. Click the "+" button to begin.',
+      content: 'Click the "+" button to start building your first Arch Network program.',
       placement: 'bottom',
+      validation: {
+        event: 'click',
+        selector: '[data-tutorial="create-project-button"]',
+        checkModal: true,
+        additionalChecks: [
+          {
+            selector: '.project-created-success',
+            condition: 'exists'
+          }
+        ]
+      },
+      waitForAction: true
     },
     {
       target: '[data-tutorial="build-tab"]',
       title: 'Build Your Project',
-      content: 'Now let\'s build your project. Click the Build tab in the sidebar.',
+      content: 'Once your project is created, click the Build tab to compile your program.',
       placement: 'right',
+      validation: {
+        event: 'click',
+        selector: '[data-tutorial="build-tab"]',
+        additionalChecks: [
+          {
+            selector: '.build-section',
+            condition: 'hasClass',
+            className: 'active'
+          }
+        ]
+      },
+      waitForAction: true
     },
     {
       target: '[data-tutorial="generate-key"]',
       title: 'Generate Program Key',
-      content: 'Generate a new program key for deployment.',
+      content: 'Generate a new program key that will be used for deployment.',
       placement: 'right',
+      validation: {
+        event: 'click',
+        selector: '[data-tutorial="generate-key"]',
+        additionalChecks: [
+          {
+            selector: '[data-tutorial="keypair-generated"]',
+            condition: 'exists'
+          }
+        ]
+      },
+      waitForAction: true
     },
     {
       target: '[data-tutorial="deploy"]',
       title: 'Deploy Your Program',
-      content: 'Finally, deploy your program to the network.',
+      content: 'Finally, deploy your program to the Arch Network.',
       placement: 'right',
+      validation: {
+        event: 'click',
+        selector: '[data-tutorial="deploy"]',
+        additionalChecks: [
+          {
+            selector: '[data-tutorial="deploy-success"]',
+            condition: 'exists'
+          }
+        ]
+      },
+      waitForAction: true
     }
   ];
-
-  useEffect(() => {
-    const hasCompletedTutorial = storage.getHasCompletedTutorial();
-    if (!hasCompletedTutorial && !isActive) {
-      const shouldStartTutorial = window.confirm(
-        'Welcome to Arch Network! Would you like to walk through a quick tutorial?'
-      );
-      if (shouldStartTutorial) {
-        startTutorial();
-      } else {
-        skipTutorial();
-      }
-    }
-  }, []);
 
   const startTutorial = () => {
     setIsActive(true);

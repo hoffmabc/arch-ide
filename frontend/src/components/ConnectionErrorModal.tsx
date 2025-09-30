@@ -21,6 +21,10 @@ import {
     rpcUrl: string;
   }
 
+  const CopiedNotification = () => (
+    <p className="text-sm text-green-400 mt-2">Copied to clipboard!</p>
+  );
+
   export const ConnectionErrorModal = ({
     isOpen,
     onClose,
@@ -32,7 +36,8 @@ import {
   }: ConnectionErrorModalProps) => {
     const isLocalnet = network === 'devnet';
     const [os, setOs] = useState<'mac' | 'linux' | 'windows' | 'unknown'>('unknown');
-    const [copied, setCopied] = useState(false);
+    const [copiedInstall, setCopiedInstall] = useState(false);
+    const [copiedValidator, setCopiedValidator] = useState(false);
 
     useEffect(() => {
       // Detect operating system
@@ -68,10 +73,16 @@ import {
 
     const instructions = getInstallInstructions();
 
-    const handleCopy = async () => {
+    const handleInstallCopy = async () => {
       await navigator.clipboard.writeText(`sh -c "${instructions.command}"`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedInstall(true);
+      setTimeout(() => setCopiedInstall(false), 2000);
+    };
+
+    const handleValidatorCopy = async () => {
+      await navigator.clipboard.writeText('arch-local-validator --bitcoin-rpc-endpoint [bitcoin-rpc-endpoint] --bitcoin-rpc-port [bitcoin-rpc-port] --bitcoin-rpc-username [bitcoin-rpc-username] --bitcoin-rpc-password [bitcoin-rpc-password]');
+      setCopiedValidator(true);
+      setTimeout(() => setCopiedValidator(false), 2000);
     };
 
     const handleClose = () => {
@@ -158,27 +169,20 @@ import {
                           variant="ghost"
                           size="icon"
                           className="absolute right-2 top-2 bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white"
-                          onClick={handleCopy}
+                          onClick={handleInstallCopy}
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
-                    {copied && (
-                      <p className="text-sm text-green-400 mt-1">Copied to clipboard!</p>
-                    )}
-                    {/* {os !== 'unknown' && (
-                      <button className="text-purple-400 text-sm mt-2">
-                        Other installation methods
-                      </button>
-                    )} */}
+                    {copiedInstall && <CopiedNotification />}
                   </div>
 
                   <div>
                     <h3 className="text-white font-mono mb-2">
                       2. Start the local validator
                     </h3>
-                    <div className="bg-[#15171E] p-4 rounded-md font-mono text-sm">
+                    <div className="bg-[#15171E] p-4 rounded-md font-mono text-sm relative group">
                       <code>
                         <span className="text-green-400">arch-local-validator</span>
                         <span className="text-white"> --bitcoin-rpc-endpoint </span>
@@ -190,7 +194,16 @@ import {
                         <span className="text-white"> --bitcoin-rpc-password </span>
                         <span className="text-green-400">[bitcoin-rpc-password]</span>
                       </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-2 bg-gray-700/50 hover:bg-gray-600 text-gray-300 hover:text-white"
+                        onClick={handleValidatorCopy}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </div>
+                    {copiedValidator && <CopiedNotification />}
                   </div>
                 </>
               ) : (
@@ -205,7 +218,7 @@ import {
 
             <div className="mt-6 text-gray-400 text-sm">
               {isLocalnet ? (
-                <a href="https://docs.arch.network" target="_blank" rel="noopener noreferrer" className="text-white font-mono flex items-center gap-2">
+                <a href="https://docs.arch.network/book/" target="_blank" rel="noopener noreferrer" className="text-white font-mono flex items-center gap-2">
                   <span>❯</span> Having issues?
                 </a>
               ) : (

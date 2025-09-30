@@ -56,7 +56,7 @@ const DEFAULT_WELCOME_MESSAGE = `
  */
 `;
 
-// Helper function to decode base64 content
+// Helper function to decode base64 content (with UTF-8 support)
 const decodeBase64Content = (content: string): string => {
   // Check if the content starts with 'data:text/plain;base64,'
   const base64Prefix = 'data:text/plain;base64,';
@@ -64,7 +64,16 @@ const decodeBase64Content = (content: string): string => {
     try {
       // Remove the prefix and decode
       const base64Content = content.slice(base64Prefix.length);
-      return atob(base64Content);
+      const decoded = atob(base64Content);
+
+      // Convert from Latin1 bytes to UTF-8 string
+      try {
+        const utf8Bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+        return new TextDecoder().decode(utf8Bytes);
+      } catch (e) {
+        // Fallback: try legacy decoding
+        return decodeURIComponent(escape(decoded));
+      }
     } catch (e) {
       console.error('Failed to decode base64 content:', e);
       return content;
@@ -309,54 +318,7 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
               const tsDisposable = await initTsDeclarations(editor);
               console.log('TypeScript Disposable:', tsDisposable);
               setDisposables(prev => [...prev, tsDisposable]);
-
-              // Set TypeScript compiler options
-              monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                target: monaco.languages.typescript.ScriptTarget.ES2020,
-                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                module: monaco.languages.typescript.ModuleKind.CommonJS,
-                allowNonTsExtensions: true,
-                typeRoots: ["node_modules/@types"],
-                allowJs: true,
-                strict: true,
-                noImplicitAny: false
-              });
-
-              // Add global type declarations with improved error handling
-              monaco.languages.typescript.typescriptDefaults.addExtraLib(`
-                // Import actual types from the module
-                import type { RpcConnection as RpcConnectionType } from "@saturnbtcio/arch-sdk";
-
-                // Declare the types globally
-                declare global {
-                  type RpcConnection = RpcConnectionType;  // Make the type available globally
-                  const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
-                  const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
-                  const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
-
-                  // Add safe wrapper for getSmartRpcUrl function
-                  function getSmartRpcUrl(network?: string): string;
-
-                  // Add console object for better error handling
-                  interface Console {
-                    log(...data: any[]): void;
-                    error(...data: any[]): void;
-                    warn(...data: any[]): void;
-                    info(...data: any[]): void;
-                  }
-                  const console: Console;
-                }
-
-                // Add utility functions for error handling
-                function safeExecute<T>(fn: () => T, fallback: T): T {
-                  try {
-                    return fn();
-                  } catch (error) {
-                    console.error('Error executing function:', error);
-                    return fallback;
-                  }
-                }
-              `, 'globals.d.ts');
+              // All compiler options, SDK globals, and playground utilities are set in initDeclarations
               break;
             case 'javascript':
               // const { initDeclarations: initJsDeclarations } = await import('./Editor/languages/javascript/declarations');

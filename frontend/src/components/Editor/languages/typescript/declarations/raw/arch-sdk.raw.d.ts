@@ -26,6 +26,7 @@ declare module "@saturnbtcio/arch-sdk" {
     }
 
     export interface AccountInfoResult {
+        lamports: number;
         owner: Pubkey;
         data: Uint8Array;
         utxo: string;
@@ -41,11 +42,11 @@ declare module "@saturnbtcio/arch-sdk" {
     export interface Block {
         transactions: Array<string>;
         previous_block_hash: string;
-        bitcoin_block_hash: string;
-        hash: string;
-        merkle_root: string;
         timestamp: number;
+        block_height: number;
+        bitcoin_block_height: string;
         transactions_count: number;
+        merkle_root: string;
     }
 
     export interface Instruction {
@@ -68,14 +69,21 @@ declare module "@saturnbtcio/arch-sdk" {
         message: Message;
     }
 
-    export type ProcessedTransactionStatus = 'Processing' | 'Processed' | { Failed: string };
-    export type RollbackStatus = { Rolledback: string } | 'NotRolledback';
+    export type ProcessedTransactionStatus =
+        | { type: 'processing' }
+        | { type: 'processed' }
+        | { type: 'failed'; message: string };
+
+    export type RollbackStatus =
+        | { type: 'notRolledback' }
+        | { type: 'rolledback'; message: string };
+
     export interface ProcessedTransaction {
         runtime_transaction: RuntimeTransaction;
         status: ProcessedTransactionStatus;
-        rollback_status: RollbackStatus;
-        bitcoin_txid: string | null;
+        bitcoin_txid: Uint8Array | null;
         logs: Array<string>;
+        rollback_status: RollbackStatus;
     }
 
     export interface AccountFilter {
@@ -91,6 +99,28 @@ declare module "@saturnbtcio/arch-sdk" {
         account: AccountInfoResult;
     }
 
+    export enum BlockTransactionFilter {
+        FULL = "full",
+        SIGNATURES = "signatures"
+    }
+
+    export interface BlockTransactionsParams {
+        block_hash: string;
+        limit?: number;
+        offset?: number;
+        account?: Pubkey;
+    }
+
+    export interface TransactionsByIdsParams {
+        txids: string[];
+    }
+
+    export interface TransactionListParams {
+        limit?: number;
+        offset?: number;
+        account?: Pubkey;
+    }
+
     export interface Provider {
         sendTransaction(transaction: RuntimeTransaction): Promise<string>;
         sendTransactions(transactions: RuntimeTransaction[]): Promise<string[]>;
@@ -102,6 +132,13 @@ declare module "@saturnbtcio/arch-sdk" {
         getBlockHash(blockHeight: number): Promise<string>;
         getProgramAccounts(programId: Pubkey, filters?: AccountFilter[]): Promise<ProgramAccount[]>;
         getProcessedTransaction(txid: string): Promise<ProcessedTransaction | undefined>;
+        requestAirdrop(pubkey: Pubkey): Promise<void>;
+        createAccountWithFaucet(pubkey: Pubkey): Promise<RuntimeTransaction>;
+        getBlockByHeight(blockHeight: number, filter?: BlockTransactionFilter): Promise<Block | undefined>;
+        getTransactionsByBlock(params: BlockTransactionsParams): Promise<ProcessedTransaction[]>;
+        getTransactionsByIds(params: TransactionsByIdsParams): Promise<(ProcessedTransaction | null)[]>;
+        recentTransactions(params: TransactionListParams): Promise<ProcessedTransaction[]>;
+        getMultipleAccounts(pubkeys: Pubkey[]): Promise<(AccountInfoResult | null)[]>;
     }
 
     export class RpcConnection implements Provider {
@@ -116,6 +153,13 @@ declare module "@saturnbtcio/arch-sdk" {
         getBlockHash(blockHeight: number): Promise<string>;
         getProcessedTransaction(txid: string): Promise<ProcessedTransaction | undefined>;
         getProgramAccounts(programId: Pubkey, filters?: AccountFilter[]): Promise<ProgramAccount[]>;
+        requestAirdrop(pubkey: Pubkey): Promise<void>;
+        createAccountWithFaucet(pubkey: Pubkey): Promise<RuntimeTransaction>;
+        getBlockByHeight(blockHeight: number, filter?: BlockTransactionFilter): Promise<Block | undefined>;
+        getTransactionsByBlock(params: BlockTransactionsParams): Promise<ProcessedTransaction[]>;
+        getTransactionsByIds(params: TransactionsByIdsParams): Promise<(ProcessedTransaction | null)[]>;
+        recentTransactions(params: TransactionListParams): Promise<ProcessedTransaction[]>;
+        getMultipleAccounts(pubkeys: Pubkey[]): Promise<(AccountInfoResult | null)[]>;
     }
 
     export class PubkeyUtil {
@@ -173,11 +217,25 @@ declare module "@saturnbtcio/arch-sdk" {
 
 declare global {
     const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
+    const ArchConnection: typeof import("@saturnbtcio/arch-sdk").ArchConnection;
     const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
     const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
     const UtxoMetaUtil: typeof import("@saturnbtcio/arch-sdk").UtxoMetaUtil;
     const SignatureUtil: typeof import("@saturnbtcio/arch-sdk").SignatureUtil;
-    const ArchConnection: typeof import("@saturnbtcio/arch-sdk").ArchConnection;
+
+    /**
+     * Decode a base58 string to a Uint8Array (Pubkey)
+     * @param str - Base58 encoded string
+     * @returns Uint8Array representing the decoded bytes
+     */
+    function fromBase58(str: string): Uint8Array;
+
+    /**
+     * Encode a Uint8Array (Pubkey) to a base58 string
+     * @param bytes - Uint8Array to encode
+     * @returns Base58 encoded string
+     */
+    function toBase58(bytes: Uint8Array): string;
 }
 
 export {};

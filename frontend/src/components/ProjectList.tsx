@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Trash2, Download, Upload } from 'lucide-react';
+import { PlusCircle, Trash2, Download, Upload, HelpCircle } from 'lucide-react';
 
 import type { Project } from '../types';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { projectService } from '../services/projectService';
 import DeleteProjectDialog from './DeleteProjectDialog';
+import { useTutorial } from '../context/TutorialContext';
 
 interface ProjectListProps {
   projects: Project[];
@@ -40,6 +41,7 @@ const ProjectList = ({
 }: ProjectListProps) => {
   const [selectedId, setSelectedId] = useState(currentProject?.id || '');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const { startTutorial } = useTutorial();
 
   useEffect(() => {
     setSelectedId(currentProject?.id || '');
@@ -132,6 +134,10 @@ const ProjectList = ({
     setIsDeleteDialogOpen(false);
   };
 
+  const handleShowTutorial = () => {
+    startTutorial();
+  };
+
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800">
       <Select
@@ -173,7 +179,7 @@ const ProjectList = ({
         <Download className="h-5 w-5" />
       </Button>
 
-      <Button variant="ghost" size="icon" onClick={onNewProject}>
+      <Button variant="ghost" data-tutorial="create-project-button" size="icon" onClick={onNewProject}>
         <PlusCircle className="h-5 w-5" />
       </Button>
 
@@ -190,6 +196,15 @@ const ProjectList = ({
           />
         </>
       )}
+
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleShowTutorial}
+        title="Show Tutorial"
+      >
+        <HelpCircle className="h-5 w-5" />
+      </Button>
     </div>
   );
 };

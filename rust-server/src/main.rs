@@ -15,6 +15,7 @@ use axum::{
 };
 use tokio::net::TcpListener;
 use tracing::{info, error};
+use socket2::{Socket, Domain, Type};
 
 use self::{config::Config, log::init_logging, middlewares::*, routes::*};
 
@@ -43,10 +44,16 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port));
     info!("Attempting to bind to {addr}");
 
-    let listener = TcpListener::bind(addr).await.map_err(|e| {
-        error!("Failed to bind to {}: {}", addr, e);
-        e
-    })?;
+    // Create socket with SO_REUSEADDR and SO_REUSEPORT to allow quick rebinding
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None)?;
+    socket.set_reuse_address(true)?;
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(128)?;
+    socket.set_nonblocking(true)?;
+
+    let listener = TcpListener::from_std(socket.into())?;
     info!("Successfully bound to {addr}");
 
     info!("Starting server...");

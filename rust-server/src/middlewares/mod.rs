@@ -12,8 +12,8 @@ pub fn compression() -> CompressionLayer {
 
 pub fn cors(_client_url: String) -> CorsLayer {
     CorsLayer::new()
-        .allow_origin(Any)  // Allow any origin since we're using Vercel deployments
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers([
             header::CONTENT_TYPE,
             header::ACCEPT,

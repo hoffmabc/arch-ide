@@ -1,5 +1,6 @@
 import { transpile, ScriptTarget, ModuleKind } from "typescript";
-import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil } from "@saturnbtcio/arch-sdk";
+import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil, UtxoMetaUtil, SignatureUtil } from "@saturnbtcio/arch-sdk";
+import { base58 } from '@scure/base';
 
 declare global {
   interface Window {
@@ -68,8 +69,20 @@ export class ArchPgClient {
       // Set up SDK in iframe
       if (iframeWindow) {
         (iframeWindow as any).RpcConnection = RpcConnection;
-        (iframeWindow as any).MessageUtil = MessageUtil;
+        (iframeWindow as any).ArchConnection = ArchConnection;
         (iframeWindow as any).PubkeyUtil = PubkeyUtil;
+        (iframeWindow as any).MessageUtil = MessageUtil;
+        (iframeWindow as any).UtxoMetaUtil = UtxoMetaUtil;
+        (iframeWindow as any).SignatureUtil = SignatureUtil;
+
+        // Add base58 encoding/decoding utilities
+        (iframeWindow as any).fromBase58 = function(str: string): Uint8Array {
+          return base58.decode(str);
+        };
+
+        (iframeWindow as any).toBase58 = function(bytes: Uint8Array): string {
+          return base58.encode(bytes);
+        };
 
         // Add the createConnection helper function
         (iframeWindow as any).createConnection = function(url: string) {
@@ -181,10 +194,12 @@ export class ArchPgClient {
           }
         })()`;
 
-      // Transpile with simpler settings
+      // Transpile with modern settings that support async/await
       const transpiled = transpile(wrappedCode, {
-        target: ScriptTarget.ES5,
+        target: ScriptTarget.ES2017, // ES2017 has native async/await support
+        module: ModuleKind.None,
         removeComments: true,
+        lib: ['lib.es2017.d.ts', 'lib.dom.d.ts'],
       });
 
       console.log('Transpiled code:', transpiled);

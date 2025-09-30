@@ -4,6 +4,7 @@ import type { FileNode, Project } from '../types';
 
 const DB_NAME = 'arch-ide';
 const DB_VERSION = 1;
+const BACKUP_KEY_PREFIX = 'pg_backup_';
 
 interface ArchIDEDB {
   projects: {
@@ -17,7 +18,7 @@ export interface IStorageService {
   init: () => Promise<void>;
   isTextFile: (fileName: string) => boolean;
   saveProject: (project: Project) => Promise<void>;
-  getProject: (id: string) => Promise<Project | undefined>;
+  getProject: (id: string) => Promise<Project | null>;
   getAllProjects: () => Promise<Project[]>;
   deleteProject: (id: string) => Promise<void>;
   clearProgramBinary: () => void;
@@ -72,7 +73,36 @@ export class StorageService implements IStorageService {
     return content;
   }
 
+  private isValidContent = (content: string | undefined): boolean => {
+    if (!content) return false;
+    if (content.startsWith('data:text/plain;base64,')) {
+      try {
+        const base64Content = content.replace(/^data:text\/plain;base64,/, '');
+        const decoded = atob(base64Content);
+        return decoded.length > 0;
+      } catch {
+        return false;
+      }
+    }
+    return content.length > 0;
+  };
+
   async saveProject(project: Project): Promise<void> {
+    if (!this.db) await this.init();
+
+    // Validate files before saving
+    const hasInvalidFiles = project.files.some(file => {
+      if (file.type === 'file' && !this.isValidContent(file.content)) {
+        console.error(`Invalid or empty content detected for file: ${file.name}`);
+        return true;
+      }
+      return false;
+    });
+
+    if (hasInvalidFiles) {
+      throw new Error('Cannot save project with empty files. Some files have invalid or empty content.');
+    }
+
     // Add detailed logging for the initial project state
     console.group('StorageService.saveProject - Initial State');
     console.log('Project ID:', project.id);
@@ -85,8 +115,6 @@ export class StorageService implements IStorageService {
       contentLength: f.content?.length
     })));
     console.groupEnd();
-
-    if (!this.db) await this.init();
 
     // Don't encode already encoded content
     const shouldEncodeContent = (content: string) => {
@@ -104,7 +132,19 @@ export class StorageService implements IStorageService {
         if (node.type === 'file' && node.content && shouldEncodeContent(node.content)) {
           console.log(`Encoding file: ${node.name}`);
           console.log('Original content length:', node.content.length);
-          const base64Content = btoa(node.content);
+
+          // Use TextEncoder to handle UTF-8 characters properly
+          let base64Content: string;
+          try {
+            // Convert string to UTF-8 bytes, then to base64
+            const utf8Bytes = new TextEncoder().encode(node.content);
+            base64Content = btoa(String.fromCharCode(...utf8Bytes));
+          } catch (e) {
+            // Fallback for very large content: use btoa directly (may fail on Unicode)
+            console.warn(`UTF-8 encoding failed for ${node.name}, falling back to btoa:`, e);
+            base64Content = btoa(unescape(encodeURIComponent(node.content)));
+          }
+
           console.log('Encoded content length:', base64Content.length);
 
           const encoded = {
@@ -114,7 +154,9 @@ export class StorageService implements IStorageService {
 
           // Verify encoding
           try {
-            const decodedContent = atob(base64Content);
+            const decoded = atob(base64Content);
+            const utf8Bytes = new Uint8Array(decoded.split('').map(c => c.charCodeAt(0)));
+            const decodedContent = new TextDecoder().decode(utf8Bytes);
             const encodingValid = decodedContent === node.content;
             console.log(`Encoding verification for ${node.name}: ${encodingValid ? 'PASSED' : 'FAILED'}`);
             if (!encodingValid) {
@@ -206,58 +248,27 @@ export class StorageService implements IStorageService {
     }
   }
 
-  async getProject(id: string): Promise<Project | undefined> {
-    console.group('StorageService.getProject');
-    console.log('Fetching project:', id);
+  async getProject(id: string): Promise<Project | null> {
+    if (!this.db) {
+      await this.init();
+    }
 
-    if (!this.db) await this.init();
     const project = await this.db!.get('projects', id);
+    // Validate project files
+    if (project && project.files.some((file: FileNode) => file.type === 'file' && !this.isValidContent(file.content))) {
+      console.error('Invalid project state detected - attempting to restore from backup');
 
-    console.log('Project retrieved:', !!project);
-    if (project) {
-      console.log('Retrieved file count:', project.files.length);
+      // Try to restore from backup
+      const backup = localStorage.getItem(`${BACKUP_KEY_PREFIX}${id}`);
+      if (backup) {
+        const backupProject = JSON.parse(backup);
+        await this.saveProject(backupProject);
+        return backupProject;
+      }
+
+      throw new Error('Project files are corrupted and no backup is available');
     }
 
-    // Decode file contents when retrieving project
-    const decodeFileNodes = (nodes: FileNode[]): FileNode[] => {
-      console.group('Decoding file nodes');
-      console.log('Processing nodes:', nodes.length);
-
-      const decodedNodes = nodes.map(node => {
-        const decoded = {
-          ...node,
-          content: node.type === 'file' ? this.decodeFileContent(node.content || '', node.name) : undefined,
-          children: node.children ? decodeFileNodes(node.children) : undefined
-        };
-
-        if (node.type === 'file') {
-          console.log(`Decoded file ${node.name}:`, {
-            hadContent: !!node.content,
-            hasDecodedContent: !!decoded.content,
-            originalLength: node.content?.length,
-            decodedLength: decoded.content?.length
-          });
-        }
-
-        return decoded;
-      });
-
-      console.groupEnd();
-      return decodedNodes;
-    };
-
-    if (project) {
-      const decodedProject = {
-        ...project,
-        files: decodeFileNodes(project.files)
-      };
-
-      console.log('Decoded file count:', decodedProject.files.length);
-      console.groupEnd();
-      return decodedProject;
-    }
-
-    console.groupEnd();
     return project;
   }
 

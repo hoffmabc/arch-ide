@@ -27,6 +27,26 @@ fn get_gcs_bucket() -> String {
     env::var("GCS_BUCKET").unwrap_or_else(|_| "arch-ide-build-artifacts".to_string())
 }
 
+fn find_solana_rustc_path() -> Option<String> {
+    // Probe common Solana cache locations for the bundled rustc used by cargo-build-sbf
+    let cache_root = Path::new("/root/.cache/solana");
+    if let Ok(entries) = fs::read_dir(cache_root) {
+        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+        for entry in entries.flatten() {
+            let p = entry.path().join("platform-tools/rust/bin/rustc");
+            if p.exists() {
+                candidates.push(p);
+            }
+        }
+        // Prefer lexicographically last (usually highest vXX directory)
+        candidates.sort();
+        if let Some(p) = candidates.last() {
+            return Some(p.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
 const CARGO_TOML_TEMPLATE: &str = r#"[package]
 name = "{}"
 version = "0.1.0"
@@ -36,19 +56,26 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-arch_program = "0.3.2"
+arch_program = "0.5.12"
+arch_sdk = "0.5.12"
+apl-associated-token-account = "0.5.12"
+apl-token = "0.5.12"
+apl-token-metadata = "0.5.12"
 
 # Core serialization/encoding
-borsh = "=1.5.1"
+borsh = "^1.5.3"
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 hex = { version = "=0.4.3", default-features = false }
 sha256 = { version = "=1.5.0", default-features = false }
 
 # Error handling
-thiserror = "=1.0.50"
+thiserror = "^1.0.57"
 
 # Serialization
-serde = { version = "=1.0.198", features = ["derive"], default-features = false }
+serde = { version = "^1.0.216", features = ["derive"], default-features = false }
+
+# Memory casting utilities
+bytemuck = { version = "^1.20.0", features = ["derive"] }
 
 [profile.release]
 overflow-checks = true
@@ -85,7 +112,11 @@ overflow-checks = true
 incremental = true
 
 [dependencies]
-arch_program = "0.3.2"
+arch_program = "0.5.12"
+arch_sdk = "0.5.12"
+apl-associated-token-account = "0.5.12"
+apl-token = "0.5.12"
+apl-token-metadata = "0.5.12"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
@@ -103,6 +134,9 @@ log = "0.4.17"
 
 # Serialization
 serde = { version = "1.0.136", features = ["derive"], default-features = false }
+
+# Memory casting utilities
+bytemuck = { version = "^1.20.0", features = ["derive"] }
 
 # Testing
 [dev-dependencies]
@@ -208,8 +242,23 @@ pub async fn build(
     // Clean up any existing Cargo.lock
     let lock_file = program_path.join("Cargo.lock");
     if lock_file.exists() {
-        println!("Removing existing Cargo.lock file...");
-        fs::remove_file(&lock_file)?;
+        println!("Found existing Cargo.lock file.");
+        // Instead of removing it, try to modify it to fix the bytemuck_derive version
+        let lock_content = fs::read_to_string(&lock_file)?;
+
+        // If the lock file contains bytemuck_derive with version 1.9.2, replace it with 1.5.0
+        let modified_content = lock_content.replace(
+            "name = \"bytemuck_derive\"\nversion = \"1.9.2\"",
+            "name = \"bytemuck_derive\"\nversion = \"1.5.0\""
+        );
+
+        if modified_content != lock_content {
+            println!("Updating bytemuck_derive version in Cargo.lock...");
+            fs::write(&lock_file, modified_content)?;
+        } else {
+            println!("No bytemuck_derive 1.9.2 found in Cargo.lock, removing the file...");
+            fs::remove_file(&lock_file)?;
+        }
     } else {
         println!("No existing Cargo.lock file found.");
     }
@@ -300,6 +349,75 @@ pub async fn build(
     println!("Deploy dir exists: {}", Path::new(&deploy_dir_str).exists());
     println!("Shared target exists: {}", Path::new(&shared_target_str).exists());
 
+    // Pre-build diagnostic: find who depends on getrandom
+    println!("Running 'cargo tree -i getrandom' to diagnose dependency source...");
+    let tree_diag_output = Command::new("cargo")
+        .args(["tree", "-i", "getrandom"]) // show inverse deps of getrandom
+        .current_dir(&program_path)
+        .output();
+
+    let mut getrandom_diag = String::new();
+    match tree_diag_output {
+        Ok(output) => {
+            let out = String::from_utf8_lossy(&output.stdout);
+            let err = String::from_utf8_lossy(&output.stderr);
+            println!("cargo tree (stdout):\n{}", out);
+            if !err.is_empty() { println!("cargo tree (stderr):\n{}", err); }
+            getrandom_diag.push_str("\n--- cargo tree -i getrandom ---\n");
+            getrandom_diag.push_str(&out);
+            if !err.is_empty() {
+                getrandom_diag.push_str("\n[stderr from cargo tree]\n");
+                getrandom_diag.push_str(&err);
+            }
+        },
+        Err(e) => {
+            let msg = format!("Failed to run cargo tree: {}", e);
+            println!("{}", msg);
+            getrandom_diag.push_str("\n--- cargo tree -i getrandom failed ---\n");
+            getrandom_diag.push_str(&msg);
+        }
+    }
+
+    // Update bytemuck to latest compatible (align with apl-associated-token-account)
+    println!("Running cargo update for bytemuck to >=1.20.0...");
+    let update_status = Command::new("cargo")
+        .args(["update", "-p", "bytemuck"]) // allow resolver to pick >=1.20
+        .current_dir(&program_path)
+        .output();
+
+    match update_status {
+        Ok(output) => {
+            println!("Cargo update output: {}", String::from_utf8_lossy(&output.stdout));
+            if !output.status.success() {
+                println!("Cargo update stderr: {}", String::from_utf8_lossy(&output.stderr));
+                println!("Warning: cargo update failed, but continuing with build anyway");
+            }
+        },
+        Err(e) => println!("Failed to run cargo update: {}", e),
+    }
+
+    // Check the Solana rust version
+    println!("Checking Solana rust version...");
+    let rustc_path = find_solana_rustc_path().unwrap_or_else(|| "rustc".to_string());
+    let solana_rust_version = Command::new(&rustc_path)
+        .arg("--version")
+        .output();
+
+    match solana_rust_version {
+        Ok(output) => {
+            if output.status.success() {
+                println!("Solana rust version: {}", String::from_utf8_lossy(&output.stdout));
+            } else {
+                println!(
+                    "Failed to get Solana rust version using '{}': {}",
+                    rustc_path,
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        },
+        Err(e) => println!("Error checking Solana rust version: {}", e),
+    }
+
     // Print absolute paths for debugging
     println!("Using absolute paths:");
     println!("Manifest path: {}", manifest_path_str);
@@ -344,6 +462,8 @@ pub async fn build(
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "1")
+        .env("CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG", "false")
+        .env("CARGO_DEP_BYTEMUCK_DERIVE_VERSION", "1.5.0")
         .current_dir(&program_path)  // Keep this to maintain relative path resolution
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -378,6 +498,11 @@ pub async fn build(
 
     // Instead of returning error, we return the stderr output along with the status
     if !status.success() && !build_succeeded {
+        // Include pre-build diagnostics to help identify the source of getrandom
+        if !getrandom_diag.is_empty() {
+            stderr_lines.push_str(&getrandom_diag);
+            stderr_lines.push('\n');
+        }
         // Return the stderr output even on failure
         return Ok((stderr_lines, safe_program_name));
     }

@@ -9,10 +9,19 @@ backend/temp
 .vscode
 .vercel
 
-# progrsm folder in rust-server
+# programs folder in rust-server
 rust-server/programs/*
 
 # target folder in rust-server
 rust-server/target/*
 
 **/target/*
+
+# Terraform
+**/.terraform/*
+**/*.tfstate
+**/*.tfstate.backup
+**/.terraform.lock.hcl
+
+# Third-party repositories
+solana-playground/

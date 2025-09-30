@@ -18,42 +18,48 @@ export const initDeclarations = async (editor: monaco.editor.IStandaloneCodeEdit
   monaco.languages.register({ id: 'typescript' });
   monaco.languages.register({ id: 'javascript' });
 
+  // Set diagnostics options to be more permissive
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: false,
+    noSyntaxValidation: false,
+    onlyVisible: false,
+  });
+
   // Set compiler options before loading declarations
   monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
     target: monaco.languages.typescript.ScriptTarget.ES2020,
     moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-    module: monaco.languages.typescript.ModuleKind.CommonJS,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    lib: ["ES2020", "DOM"],
     allowNonTsExtensions: true,
     typeRoots: ["node_modules/@types"],
     allowJs: true,
-    strict: true,
+    strict: false,
     noImplicitAny: false,
     allowSyntheticDefaultImports: true,
     jsx: monaco.languages.typescript.JsxEmit.React
   });
 
-  // Add the arch-sdk module declaration
+  // Add the arch-sdk module declaration (includes global declarations)
   const moduleDisposable = monaco.languages.typescript.typescriptDefaults.addExtraLib(
     (await import('./raw/arch-sdk.raw.d.ts?raw')).default,
     "file:///node_modules/@types/arch-sdk/index.d.ts"
   );
 
-  // Add global declarations
-  const globalDisposable = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+  // Add playground-specific global utilities
+  const playgroundGlobalsDisposable = monaco.languages.typescript.typescriptDefaults.addExtraLib(
     `declare global {
-      const RpcConnection: typeof import("@saturnbtcio/arch-sdk").RpcConnection;
-      const PubkeyUtil: typeof import("@saturnbtcio/arch-sdk").PubkeyUtil;
-      const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
-      const UtxoMetaUtil: typeof import("@saturnbtcio/arch-sdk").UtxoMetaUtil;
-      const SignatureUtil: typeof import("@saturnbtcio/arch-sdk").SignatureUtil;
-    }`,
-    "file:///globals.d.ts"
+      function getSmartRpcUrl(network?: string): string;
+    }
+
+    export {};`,
+    "file:///playground-globals.d.ts"
   );
 
   return {
     dispose: () => {
       moduleDisposable.dispose();
-      globalDisposable.dispose();
+      playgroundGlobalsDisposable.dispose();
     }
   };
 };
