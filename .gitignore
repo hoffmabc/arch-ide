@@ -19,3 +19,8 @@ rust-server/target/*
 
 # Remove .terraform
 **/.terraform/*
+**/.tfstate
+**/.tfstate.backup
+**/.terraform.lock.hcl
+
+**/solana-playground/*
