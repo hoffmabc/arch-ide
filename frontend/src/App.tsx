@@ -295,7 +295,7 @@ const AppContent = () => {
       const loadedProjects = await projectService.getAllProjects();
       console.log('📦 Loaded projects:', loadedProjects.map(p => ({ id: p.id, name: p.name })));
 
-      // Only strip in production
+      // Only strip in production for the project list
       if (import.meta.env.PROD) {
         setProjects(loadedProjects.map(stripProjectContent));
       } else {
@@ -308,13 +308,13 @@ const AppContent = () => {
         console.log('💾 Last active project ID from localStorage:', lastActiveProjectId);
         console.log('📋 Available project IDs:', loadedProjects.map(p => p.id));
 
-        let projectToLoad = loadedProjects[0];
+        let projectIdToLoad = loadedProjects[0].id;
 
         if (lastActiveProjectId) {
           const savedProject = loadedProjects.find(p => p.id === lastActiveProjectId);
           if (savedProject) {
-            projectToLoad = savedProject;
-            console.log('✅ Restoring last active project:', projectToLoad.name);
+            projectIdToLoad = savedProject.id;
+            console.log('✅ Restoring last active project:', savedProject.name);
           } else {
             console.log('❌ Last active project not found, using first project');
           }
@@ -322,8 +322,59 @@ const AppContent = () => {
           console.log('⚠️ No last active project ID found, using first project');
         }
 
-        console.log('🎯 Setting initial project:', { id: projectToLoad.id, name: projectToLoad.name });
-        setFullCurrentProject(projectToLoad);
+        // Load the full project with content directly from storage
+        console.log('🎯 Loading full project with ID:', projectIdToLoad);
+        try {
+          const fullProject = await projectService.getProject(projectIdToLoad);
+          if (fullProject) {
+            // Recursively check if any file has content
+            const hasAnyContent = (nodes: FileNode[]): boolean => {
+              for (const node of nodes) {
+                if (node.type === 'file' && node.content && node.content.length > 0) {
+                  return true;
+                }
+                if (node.type === 'directory' && node.children && hasAnyContent(node.children)) {
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            console.log('✅ Full project loaded with content:', {
+              id: fullProject.id,
+              name: fullProject.name,
+              fileCount: fullProject.files.length,
+              hasContent: hasAnyContent(fullProject.files)
+            });
+            setFullCurrentProject(fullProject);
+          } else {
+            console.error('❌ Project returned null - ID may not exist:', projectIdToLoad);
+          }
+        } catch (error) {
+          console.error('❌ Failed to load project:', error);
+          // If project is corrupted, try to delete it and clear state
+          try {
+            await projectService.deleteProject(projectIdToLoad);
+            console.log('🗑️ Deleted corrupted project');
+          } catch (deleteError) {
+            console.error('Failed to delete corrupted project:', deleteError);
+          }
+
+          // Clear the corrupted project from localStorage
+          localStorage.removeItem('currentProjectId');
+          localStorage.removeItem(`expandedFolders_${projectIdToLoad}`);
+
+          // Show message to user
+          alert('The project was corrupted and has been removed. Please create a new project.');
+
+          // Reload projects list
+          const remainingProjects = await projectService.getAllProjects();
+          if (import.meta.env.PROD) {
+            setProjects(remainingProjects.map(stripProjectContent));
+          } else {
+            setProjects(remainingProjects);
+          }
+        }
       } else {
         console.log('❌ No projects found');
       }
@@ -475,12 +526,22 @@ const AppContent = () => {
       const savedTabs = localStorage.getItem('editorTabs');
       const savedCurrentFile = localStorage.getItem('currentEditorFile');
 
+      console.log('📑 Restoring editor tabs:', {
+        savedTabs,
+        savedCurrentFile,
+        projectId: fullCurrentProject.id
+      });
+
       if (savedTabs) {
         try {
           const tabPaths = JSON.parse(savedTabs);
+          console.log('📋 Tab paths to restore:', tabPaths);
+
           const validTabs = tabPaths
             .map((path: string) => findFileInProject(fullCurrentProject.files, path))
-            .filter((file: FileNode | null) => file !== null);
+            .filter((file: FileNode | null): file is FileNode => file !== null);
+
+          console.log('✅ Valid tabs found:', validTabs.length, validTabs.map((t: FileNode) => t.name));
 
           if (validTabs.length > 0) {
             // Open all tabs at once
@@ -489,14 +550,23 @@ const AppContent = () => {
             // Set current file to either the previously selected file or the first tab
             if (savedCurrentFile) {
               const currentFile = findFileInProject(fullCurrentProject.files, savedCurrentFile);
-              setCurrentFile(currentFile || validTabs[0]);
+              if (currentFile) {
+                console.log('📌 Restoring current file:', currentFile.name);
+                setCurrentFile(currentFile);
+              } else {
+                console.log('⚠️ Saved current file not found, using first tab');
+                setCurrentFile(validTabs[0]);
+              }
             } else {
+              console.log('📌 No saved current file, using first tab:', validTabs[0].name);
               setCurrentFile(validTabs[0]);
             }
           }
         } catch (e) {
           console.error('Error restoring editor tabs:', e);
         }
+      } else {
+        console.log('⚠️ No saved tabs found in localStorage');
       }
     }
   }, [fullCurrentProject]);
@@ -772,8 +842,9 @@ const AppContent = () => {
         setOpenFiles(prev => [...prev, fileToUse]);
       }
 
-      // Call saveTabState directly after updating state
-      saveTabState();
+      // Save to localStorage immediately with the new file
+      // (can't use saveTabState because state hasn't updated yet)
+      localStorage.setItem('currentEditorFile', fileToUse.path || fileToUse.name);
     }
   };
 
@@ -1100,8 +1171,18 @@ const AppContent = () => {
       setProjects(remainingProjects.map(stripProjectContent));
 
       if (isCurrentProject) {
-        // Set new current project if available
-        setFullCurrentProject(remainingProjects.length > 0 ? remainingProjects[0] : null);
+        // Set new current project if available - load full project with content
+        if (remainingProjects.length > 0) {
+          try {
+            const nextFullProject = await projectService.getProject(remainingProjects[0].id);
+            setFullCurrentProject(nextFullProject);
+          } catch (error) {
+            console.error('Failed to load next project:', error);
+            setFullCurrentProject(null);
+          }
+        } else {
+          setFullCurrentProject(null);
+        }
       }
 
     } catch (error) {
@@ -1221,24 +1302,48 @@ const AppContent = () => {
     console.log('📌 Selected project:', project);
     console.log('📌 Previous project:', fullCurrentProject?.name);
 
-    const fullProject = await projectService.getProject(project.id);
-    if (!fullProject) {
-      console.warn('❌ Project not found');
+    try {
+      const fullProject = await projectService.getProject(project.id);
+      if (!fullProject) {
+        console.warn('❌ Project not found');
+        console.groupEnd();
+        return;
+      }
+
+      console.log('✅ Loading full project:', { id: fullProject.id, name: fullProject.name });
+      console.log('📂 About to call setFullCurrentProject - this should trigger expandedFolders restore');
+      setFullCurrentProject(fullProject);
+      setCurrentAccount(fullProject.account || null);
+      setProgramId(fullProject.account?.pubkey);
+      setProgramBinary(null);
+      // Don't clear openFiles and currentFile here - let the useEffect restore them from localStorage
+
+      console.log('✅ Project switch complete - useEffect should now run to restore tabs and expanded folders');
       console.groupEnd();
-      return;
+    } catch (error) {
+      console.error('❌ Failed to load project:', error);
+      console.groupEnd();
+
+      // Show error to user and suggest deleting the corrupted project
+      if (confirm(`Failed to load project "${project.name}". It may be corrupted. Would you like to delete it?`)) {
+        try {
+          await projectService.deleteProject(project.id);
+          const remainingProjects = await projectService.getAllProjects();
+          setProjects(remainingProjects.map(stripProjectContent));
+
+          // Load first remaining project if available
+          if (remainingProjects.length > 0) {
+            const nextProject = await projectService.getProject(remainingProjects[0].id);
+            setFullCurrentProject(nextProject);
+          } else {
+            setFullCurrentProject(null);
+          }
+        } catch (deleteError) {
+          console.error('Failed to delete corrupted project:', deleteError);
+          alert('Failed to delete the corrupted project. Please try again or clear your browser data.');
+        }
+      }
     }
-
-    console.log('✅ Loading full project:', { id: fullProject.id, name: fullProject.name });
-    console.log('📂 About to call setFullCurrentProject - this should trigger expandedFolders restore');
-    setFullCurrentProject(fullProject);
-    setCurrentAccount(fullProject.account || null);
-    setProgramId(fullProject.account?.pubkey);
-    setProgramBinary(null);
-    setOpenFiles([]);
-    setCurrentFile(null);
-
-    console.log('✅ Project switch complete - useEffect should now run to restore expanded folders');
-    console.groupEnd();
   };
 
   // Add this effect to handle batched saves
@@ -1328,6 +1433,10 @@ const AppContent = () => {
     });
 
     setCurrentFile(fileWithPath);
+
+    // Save current file selection to localStorage
+    localStorage.setItem('currentEditorFile', fileWithPath.path || fileWithPath.name);
+
     console.groupEnd();
   }, [fullCurrentProject]);
 
@@ -1352,6 +1461,9 @@ const AppContent = () => {
         contentPreview: projectFile.content?.substring(0, 100)
       });
       setCurrentFile(projectFile);
+
+      // Save current file selection to localStorage
+      localStorage.setItem('currentEditorFile', projectFile.path || projectFile.name);
     } else {
       console.warn('File not found in project:', file.path || file.name);
     }

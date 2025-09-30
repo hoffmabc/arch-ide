@@ -90,17 +90,26 @@ export class StorageService implements IStorageService {
   async saveProject(project: Project): Promise<void> {
     if (!this.db) await this.init();
 
-    // Validate files before saving
-    const hasInvalidFiles = project.files.some(file => {
-      if (file.type === 'file' && !this.isValidContent(file.content)) {
-        console.error(`Invalid or empty content detected for file: ${file.name}`);
-        return true;
+    // Validate files before saving - recursively check all files including nested ones
+    const validateFileNodes = (nodes: FileNode[], path: string = ''): string[] => {
+      const invalidFiles: string[] = [];
+      for (const node of nodes) {
+        const fullPath = path ? `${path}/${node.name}` : node.name;
+        if (node.type === 'file' && !this.isValidContent(node.content)) {
+          console.error(`Invalid or empty content detected for file: ${fullPath}`);
+          invalidFiles.push(fullPath);
+        }
+        if (node.type === 'directory' && node.children) {
+          invalidFiles.push(...validateFileNodes(node.children, fullPath));
+        }
       }
-      return false;
-    });
+      return invalidFiles;
+    };
 
-    if (hasInvalidFiles) {
-      throw new Error('Cannot save project with empty files. Some files have invalid or empty content.');
+    const invalidFiles = validateFileNodes(project.files);
+    if (invalidFiles.length > 0) {
+      console.error('Cannot save project with empty files:', invalidFiles);
+      throw new Error(`Cannot save project with empty files: ${invalidFiles.join(', ')}`);
     }
 
     // Add detailed logging for the initial project state
@@ -254,8 +263,21 @@ export class StorageService implements IStorageService {
     }
 
     const project = await this.db!.get('projects', id);
-    // Validate project files
-    if (project && project.files.some((file: FileNode) => file.type === 'file' && !this.isValidContent(file.content))) {
+
+    // Validate project files recursively
+    const hasInvalidFiles = (nodes: FileNode[]): boolean => {
+      for (const node of nodes) {
+        if (node.type === 'file' && !this.isValidContent(node.content)) {
+          return true;
+        }
+        if (node.type === 'directory' && node.children && hasInvalidFiles(node.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (project && hasInvalidFiles(project.files)) {
       console.error('Invalid project state detected - attempting to restore from backup');
 
       // Try to restore from backup

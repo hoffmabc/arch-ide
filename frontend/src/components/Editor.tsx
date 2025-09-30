@@ -143,41 +143,8 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
     };
   }, [disposables]);
 
-  useEffect(() => {
-    // Check for saved tabs in localStorage
-    const savedTabs = localStorage.getItem('editorTabs');
-    const savedCurrentFile = localStorage.getItem('currentEditorFile');
-
-    if (savedTabs) {
-      try {
-        const tabs = JSON.parse(savedTabs);
-        // Verify each tab still exists before restoring
-        const validTabs = tabs.filter((tab: string) => {
-          const file = findFileInProject(currentProject?.files || [], tab);
-          return file != null;
-        });
-
-        if (validTabs.length > 0) {
-          validTabs.forEach((tab: string) => {
-            const file = findFileInProject(currentProject?.files || [], tab);
-            if (file) {
-              onSelectFile(file);
-            }
-          });
-
-          // Restore the previously active tab if it exists
-          if (savedCurrentFile) {
-            const currentFile = findFileInProject(currentProject?.files || [], savedCurrentFile);
-            if (currentFile) {
-              onSelectFile(currentFile);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error restoring editor tabs:', e);
-      }
-    }
-  }, [currentProject]); // Only run when project loads
+  // Note: Tab restoration is now handled in App.tsx to avoid conflicts
+  // and ensure proper state management with the parent component
 
   // Initialize Monaco file system
   useEffect(() => {

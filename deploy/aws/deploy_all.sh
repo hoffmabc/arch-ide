@@ -7,8 +7,6 @@ REGION=${REGION:-us-east-1}
 REPO_NAME=${REPO_NAME:-arch-ide/rust-server}
 ECS_CLUSTER="arch-ide-cluster"
 ECS_SERVICE="arch-ide-server"
-FRONTEND_BUCKET="arch-ide-frontend"
-CLOUDFRONT_DIST_ID=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -158,16 +156,28 @@ if [ "$SKIP_FRONTEND" = false ]; then
 
     log_info "ALB DNS: $ALB_DNS"
 
-    # Get CloudFront distribution ID
+    # Get CloudFront distribution ID and S3 bucket name
     log_info "Fetching CloudFront distribution ID..."
-    CLOUDFRONT_DIST_ID=$(terraform -chdir=deploy/aws/terraform-frontend output -raw cloudfront_distribution_id 2>/dev/null || echo "")
+    CLOUDFRONT_DIST_ID=$(terraform -chdir=deploy/aws/terraform-frontend output -raw distribution_id 2>/dev/null || echo "")
 
     if [ -z "$CLOUDFRONT_DIST_ID" ]; then
         log_error "Could not retrieve CloudFront distribution ID from Terraform"
+        log_error "Make sure terraform-frontend has been applied"
         exit 1
     fi
 
     log_info "CloudFront Distribution: $CLOUDFRONT_DIST_ID"
+
+    # Get S3 bucket name from Terraform
+    log_info "Fetching S3 bucket name..."
+    FRONTEND_BUCKET=$(terraform -chdir=deploy/aws/terraform-frontend output -raw bucket_name 2>/dev/null || echo "")
+
+    if [ -z "$FRONTEND_BUCKET" ]; then
+        log_error "Could not retrieve S3 bucket name from Terraform"
+        exit 1
+    fi
+
+    log_info "S3 Bucket: $FRONTEND_BUCKET"
 
     # Build frontend with API URL pointing to CloudFront (which proxies /api/* to ALB)
     log_info "Building frontend with VITE_API_URL=https://ide.test.arch.network..."

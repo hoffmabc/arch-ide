@@ -125,24 +125,25 @@ const getFileIcon = (fileName: string) => {
 };
 
 interface ProjectInfoProps {
-  project: Project;
+  project: Project | null;
   onProjectUpdate: (project: Project) => void;
 }
 
 const ProjectInfo = ({ project, onProjectUpdate }: ProjectInfoProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedName, setEditedName] = useState(project.name);
-  const [editedDescription, setEditedDescription] = useState(project.description || '');
+  const [editedName, setEditedName] = useState(project?.name || '');
+  const [editedDescription, setEditedDescription] = useState(project?.description || '');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Update local state when project changes
   useEffect(() => {
-    setEditedName(project.name);
-    setEditedDescription(project.description || '');
+    setEditedName(project?.name || '');
+    setEditedDescription(project?.description || '');
   }, [project]);
 
   const handleSave = async () => {
+    if (!project) return;
     const updatedProject = {
       ...project,
       name: editedName,
@@ -155,8 +156,8 @@ const ProjectInfo = ({ project, onProjectUpdate }: ProjectInfoProps) => {
   };
 
   const handleCancel = () => {
-    setEditedName(project.name);
-    setEditedDescription(project.description || '');
+    setEditedName(project?.name || '');
+    setEditedDescription(project?.description || '');
     setIsEditing(false);
   };
 
@@ -196,9 +197,9 @@ const ProjectInfo = ({ project, onProjectUpdate }: ProjectInfoProps) => {
       <div className="px-4 py-2 text-sm text-gray-400">
         <div className="mb-1">
           <span className="font-medium text-gray-300">Name: </span>
-          <span className="text-gray-400">{project.name}</span>
+          <span className="text-gray-400">{project?.name || 'Loading...'}</span>
         </div>
-        {project.description && (
+        {project?.description && (
           <div>
             <span className="font-medium text-gray-300">Description: </span>
             <span className="text-gray-400 whitespace-pre-wrap">
@@ -260,7 +261,7 @@ interface FileExplorerProps {
   currentFile: FileNode | null;
   onNewProject?: () => void;
   addOutputMessage: (type: string, message: string) => void;
-  project: Project;
+  project: Project | null;
   onProjectAccountChange?: (account: ProjectAccount | null) => void;
 }
 
@@ -667,7 +668,7 @@ const FileExplorer = ({
           </div>
         ) : (
           <>
-            <ProjectInfo project={project} onProjectUpdate={handleProjectUpdate} />
+            {project && <ProjectInfo project={project} onProjectUpdate={handleProjectUpdate} />}
             {files.map((node, index) => (
               <FileExplorerItem
                 key={index}
