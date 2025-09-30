@@ -263,6 +263,7 @@ interface FileExplorerProps {
   addOutputMessage: (type: string, message: string) => void;
   project: Project | null;
   onProjectAccountChange?: (account: ProjectAccount | null) => void;
+  onProjectUpdate?: (project: Project) => void;
 }
 
 interface FileContextMenuProps {
@@ -510,7 +511,8 @@ const FileExplorer = ({
   onNewProject,
   addOutputMessage,
   project,
-  onProjectAccountChange
+  onProjectAccountChange,
+  onProjectUpdate
 }: FileExplorerProps) => {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -620,8 +622,10 @@ const FileExplorer = ({
 };
 
   const handleProjectUpdate = (updatedProject: Project) => {
-    // Update the project in the parent component
+    // Update the full project in the parent component
     // This will trigger a re-render with the new project info
+    onProjectUpdate && onProjectUpdate(updatedProject);
+    // Also update the account if the callback is provided
     onProjectAccountChange && onProjectAccountChange(updatedProject.account || null);
   };
 

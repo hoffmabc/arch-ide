@@ -47,6 +47,7 @@ interface SidePanelProps {
   currentFile: FileNode | null;
   project: Project;
   onProjectAccountChange: (account: ProjectAccount | null) => void;
+  onProjectUpdate?: (project: Project) => void;
   onNewProject: () => void;
   binaryFileName: string | null;
   setBinaryFileName: (name: string | null) => void;
@@ -58,7 +59,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onProjectUpdate, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
 
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
@@ -135,6 +136,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               addOutputMessage={addOutputMessage}
               project={project}
               onProjectAccountChange={onProjectAccountChange}
+              onProjectUpdate={onProjectUpdate}
             />
           ) : (
           <BuildPanel

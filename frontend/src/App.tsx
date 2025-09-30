@@ -1297,6 +1297,16 @@ const AppContent = () => {
     setCurrentAccount(account);
   };
 
+  const handleProjectUpdate = async (updatedProject: Project) => {
+    // Update the project state with the new metadata (name, description, etc.)
+    setFullCurrentProject(updatedProject);
+
+    // Also update the projects list to reflect the changes
+    setProjects(prev => prev.map(p =>
+      p.id === updatedProject.id ? stripProjectContent(updatedProject) : p
+    ));
+  };
+
   const handleProjectSelect = async (project: Project) => {
     console.group('🔄 Project Selection - DEBUGGING');
     console.log('📌 Selected project:', project);
@@ -1652,6 +1662,7 @@ const AppContent = () => {
           onAccountChange={setCurrentAccount}
           project={fullCurrentProject!}
           onProjectAccountChange={handleProjectAccountChange}
+          onProjectUpdate={handleProjectUpdate}
           onNewProject={handleNewProject}
           binaryFileName={binaryFileName}
           setBinaryFileName={setBinaryFileName}
