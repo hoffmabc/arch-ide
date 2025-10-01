@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use axum::{extract::Path, response::IntoResponse};
 use tokio::io;
 use serde::Deserialize;
-use axum::http::{header, HeaderValue, StatusCode};
 
 use crate::{error::Result, program::{self, BinaryData}};
 

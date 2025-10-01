@@ -85,6 +85,7 @@ resource "aws_lb" "this" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
+  idle_timeout       = 300  # 5 minutes for long-running builds
 }
 
 resource "aws_lb_target_group" "http" {
@@ -93,6 +94,7 @@ resource "aws_lb_target_group" "http" {
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = aws_vpc.this.id
+  deregistration_delay = 300
   health_check {
     path    = "/health"
     matcher = "200-499"

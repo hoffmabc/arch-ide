@@ -29,7 +29,6 @@ const DEFAULT_PROGRAM = `use arch_program::{
         get_bitcoin_block_height, next_account_info, set_transaction_to_sign,
     },
     program_error::ProgramError, pubkey::Pubkey,
-    transaction_to_sign::TransactionToSign,
     bitcoin::{self, Transaction, transaction::Version, absolute::LockTime}
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -79,16 +78,13 @@ pub fn process_instruction(
     add_state_transition(&mut tx, account);
     tx.input.push(fees_tx.input[0].clone());
 
-    let tx_to_sign = TransactionToSign {
-        tx_bytes: &bitcoin::consensus::serialize(&tx),
-        inputs_to_sign: &[InputToSign {
-            index: 0,
-            signer: account.key.clone(),
-        }],
+    let input_to_sign = InputToSign {
+        index: 0,
+        signer: account.key.clone(),
     };
 
-    msg!("tx_to_sign{:?}", tx_to_sign);
-    set_transaction_to_sign(accounts, tx_to_sign)
+    msg!("tx: {:?}", tx);
+    set_transaction_to_sign(accounts, &tx, &[input_to_sign])
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]

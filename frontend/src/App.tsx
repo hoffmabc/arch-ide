@@ -1026,6 +1026,7 @@ const AppContent = () => {
 
       console.log('Sending Rust files to compile server:', rsFiles.map(([path]) => path));
 
+      // Start the build (returns immediately)
       const buildResponse = await fetch(`${API_URL}/build`, {
         method: 'POST',
         headers: {
@@ -1034,7 +1035,8 @@ const AppContent = () => {
         },
         body: JSON.stringify({
           program_name: fullCurrentProject.name,
-          files: rsFiles
+          files: rsFiles,
+          uuid: fullCurrentProject.id // Send existing UUID for consistent builds
         })
       });
 
@@ -1054,54 +1056,93 @@ const AppContent = () => {
         throw error;
       }
 
-      const result = await buildResponse.json();
+      const buildStartResult = await buildResponse.json();
+      const { uuid, status: buildStatus } = buildStartResult;
 
-      if (result.stderr) {
-        const formattedError = formatBuildError(result.stderr);
-        const buildSucceeded = result.stderr.includes("Finished release");
+      console.log('Build started with UUID:', uuid, 'Status:', buildStatus);
+      addOutputMessage('info', `Build started (UUID: ${uuid})...`);
 
-        if (buildSucceeded) {
-          // Show any warnings but mark as success
-          addOutputMessage('info', formattedError);
+      // Poll for build status
+      let pollCount = 0;
+      const maxPolls = 180; // 6 minutes max (180 * 2 seconds)
+      const pollInterval = 2000; // 2 seconds
+
+      const pollBuildStatus = async (): Promise<void> => {
+        if (pollCount >= maxPolls) {
+          throw new Error('Build timeout: exceeded maximum wait time (6 minutes)');
+        }
+
+        pollCount++;
+
+        const statusResponse = await fetch(`${API_URL}/build/status/${uuid}`);
+
+        if (!statusResponse.ok) {
+          if (statusResponse.status === 404) {
+            throw new Error('Build not found. It may have been cleaned up.');
+          }
+          throw new Error(`Failed to fetch build status: ${statusResponse.statusText}`);
+        }
+
+        const statusResult = await statusResponse.json();
+        console.log(`Build status poll #${pollCount}:`, statusResult.status);
+
+        if (statusResult.status === 'building') {
+          // Show progress update every 10 polls (20 seconds)
+          if (pollCount % 10 === 0) {
+            const elapsed = Math.floor((pollCount * pollInterval) / 1000);
+            addOutputMessage('info', `Still building... (${elapsed}s elapsed)`);
+          }
+
+          // Continue polling
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          return pollBuildStatus();
+        } else if (statusResult.status === 'success') {
+          // Build completed successfully
+          if (statusResult.stderr) {
+            const formattedError = formatBuildError(statusResult.stderr);
+            addOutputMessage('info', formattedError);
+          }
+
           addOutputMessage('success', 'Build successful');
-        } else if (
-          result.stderr.includes("error:") ||
-          result.stderr.includes("error[") ||
-          result.stderr.includes("Stack offset") ||
-          result.stderr.includes("Error deploying") ||
-          result.stderr.includes("Failed to parse IDL")
-        ) {
-          // Show as error
-          addOutputMessage('error', formattedError);
-          throw new Error(formattedError); // This will trigger the catch block
+
+          // After successful build, fetch the binary
+          try {
+            const program_name = statusResult.program_name || fullCurrentProject.name;
+
+            const binaryResponse = await fetch(
+              `${API_URL}/deploy/${uuid}/${program_name}`,
+              { headers: { Accept: 'application/octet-stream' } }
+            );
+
+            if (!binaryResponse.ok) {
+              throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
+            }
+
+            const arrayBuffer = await binaryResponse.arrayBuffer();
+            const base64Binary = Buffer.from(arrayBuffer).toString('base64');
+            setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
+            setBinaryFileName(`${fullCurrentProject.name}.so`);
+            addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
+          } catch (error: any) {
+            addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
+          }
+        } else if (statusResult.status === 'failed') {
+          // Build failed
+          if (statusResult.stderr) {
+            const formattedError = formatBuildError(statusResult.stderr);
+            addOutputMessage('error', formattedError);
+            throw new Error('Build failed');
+          } else {
+            throw new Error('Build failed with no error details');
+          }
         } else {
-          // Show other output
-          addOutputMessage('info', formattedError);
+          // Unknown status
+          throw new Error(`Unknown build status: ${statusResult.status}`);
         }
-      }
+      };
 
-      // After successful build, fetch the binary
-      try {
-        const uuid = fullCurrentProject.id;
-        const program_name = fullCurrentProject.name;
-
-        const binaryResponse = await fetch(
-          `${API_URL}/deploy/${uuid}/${program_name}`,
-          { headers: { Accept: 'application/octet-stream' } }
-        );
-
-        if (!binaryResponse.ok) {
-          throw new Error(`Failed to fetch binary: ${binaryResponse.statusText}`);
-        }
-
-        const arrayBuffer = await binaryResponse.arrayBuffer();
-        const base64Binary = Buffer.from(arrayBuffer).toString('base64');
-        setProgramBinary(`data:application/octet-stream;base64,${base64Binary}`);
-        setBinaryFileName(`${fullCurrentProject.name}.so`);
-        addOutputMessage('info', `Program binary retrieved successfully (${arrayBuffer.byteLength} bytes)`);
-      } catch (error: any) {
-        addOutputMessage('error', `Failed to retrieve program binary: ${error.message}`);
-      }
+      // Start polling
+      await pollBuildStatus();
 
     } catch (error: any) {
       addOutputMessage('error', `Build error: ${error.message}`);

@@ -3,14 +3,12 @@ use anyhow::anyhow;
 use regex::Regex;
 use tokio::sync::OnceCell;
 use cloud_storage::Client;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use tracing::info;
 use tokio::process::Command as TokioCommand;
 use tokio::io::{BufReader, AsyncBufReadExt};
 use std::process::Stdio;
 use axum::http::{header, HeaderValue};
 use axum::response::IntoResponse;
-use axum::body::Body;
 
 const PROGRAMS_DIR: &str = "programs";
 const MAX_FILE_AMOUNT: usize = 64;

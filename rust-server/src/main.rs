@@ -1,3 +1,4 @@
+mod build_tracker;
 mod config;
 mod error;
 mod log;
@@ -17,7 +18,7 @@ use tokio::net::TcpListener;
 use tracing::{info, error};
 use socket2::{Socket, Domain, Type};
 
-use self::{config::Config, log::init_logging, middlewares::*, routes::*};
+use self::{build_tracker::BuildTracker, config::Config, log::init_logging, middlewares::*, routes::*};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,15 +32,19 @@ async fn main() -> Result<()> {
     })?;
     info!("Program directory initialized");
 
+    let build_tracker = BuildTracker::new();
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/build", post(build))
+        .route("/build/status/:uuid", get(build_status))
         .route("/deploy/:uuid/:program_name", get(deploy))
         // Comment out this line
         // .layer(compression())
         .layer(payload_limit(config.payload_limit))
         .layer(cors(config.client_url))
-        .layer(middleware::from_fn(log));
+        .layer(middleware::from_fn(log))
+        .with_state(build_tracker);
 
     let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.port));
     info!("Attempting to bind to {addr}");

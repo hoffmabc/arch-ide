@@ -43,10 +43,12 @@ resource "aws_cloudfront_distribution" "cdn" {
       domain_name = var.api_origin_domain_name
       origin_id   = "api-origin"
       custom_origin_config {
-        http_port              = 80
-        https_port             = 443
-        origin_protocol_policy = "http-only"
-        origin_ssl_protocols   = ["TLSv1.2"]
+        http_port                = 80
+        https_port               = 443
+        origin_protocol_policy   = "http-only"
+        origin_ssl_protocols     = ["TLSv1.2"]
+        origin_read_timeout      = 60    # Maximum CloudFront allows
+        origin_keepalive_timeout = 60
       }
     }
   }
@@ -70,6 +72,25 @@ resource "aws_cloudfront_distribution" "cdn" {
       target_origin_id       = "api-origin"
       viewer_protocol_policy = "https-only"
       allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      cached_methods         = ["GET", "HEAD", "OPTIONS"]
+      forwarded_values {
+        query_string = true
+        headers      = ["Accept", "Content-Type", "Origin", "Authorization"]
+        cookies { forward = "none" }
+      }
+      min_ttl     = 0
+      default_ttl = 0
+      max_ttl     = 0
+    }
+  }
+
+  dynamic "ordered_cache_behavior" {
+    for_each = var.api_origin_domain_name != "" ? [1] : []
+    content {
+      path_pattern           = "/build/status/*"
+      target_origin_id       = "api-origin"
+      viewer_protocol_policy = "https-only"
+      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
       cached_methods         = ["GET", "HEAD", "OPTIONS"]
       forwarded_values {
         query_string = true

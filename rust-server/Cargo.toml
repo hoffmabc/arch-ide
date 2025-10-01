@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 axum = "0.7.2"
+chrono = { version = "0.4", features = ["serde"] }
 dotenv = "0.15.0"
 http = "1.0.0"
 regex = "1.10.2"
