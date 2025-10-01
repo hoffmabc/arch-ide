@@ -56,11 +56,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-arch_program = "0.5.12"
-arch_sdk = "0.5.12"
-apl-associated-token-account = "0.5.12"
-apl-token = "0.5.12"
-apl-token-metadata = "0.5.12"
+arch_program = "0.5.13"
+apl-associated-token-account = "0.5.13"
+apl-token = "0.5.13"
+apl-token-metadata = "0.5.13"
 
 # Core serialization/encoding
 borsh = "^1.5.3"
@@ -112,11 +111,10 @@ overflow-checks = true
 incremental = true
 
 [dependencies]
-arch_program = "0.5.12"
-arch_sdk = "0.5.12"
-apl-associated-token-account = "0.5.12"
-apl-token = "0.5.12"
-apl-token-metadata = "0.5.12"
+arch_program = "0.5.13"
+apl-associated-token-account = "0.5.13"
+apl-token = "0.5.13"
+apl-token-metadata = "0.5.13"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
