@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
         .route("/build", post(build))
         .route("/build/status/:uuid", get(build_status))
         .route("/deploy/:uuid/:program_name", get(deploy))
+        .route("/rpc", post(rpc_proxy))
+        .route("/rpc", axum::routing::options(rpc_proxy_options))
         // Comment out this line
         // .layer(compression())
         .layer(payload_limit(config.payload_limit))

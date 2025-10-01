@@ -17,6 +17,7 @@ import {
   import { ConnectionStatus } from './ConnectionStatus';
   import { Project, ProjectAccount } from '../types';
   import { useToast } from "@/components/ui/use-toast";
+  import { getSmartRpcUrl } from '../utils/smartRpcConnection';
 
   interface BuildPanelProps {
     hasProjects: boolean;
@@ -203,13 +204,13 @@ import {
       }
 
       try {
-        // If the frontend is localhost, we need to generate a keypair on the backend we use /rpc proxy
-        if (window.location.hostname === 'localhost') {
-          config.rpcUrl = '/rpc';
-        }
+        // Use the smart RPC URL utility to handle proxying for CORS
+        const smartRpcUrl = getSmartRpcUrl(config.rpcUrl);
+
+        console.log('Creating new keypair with RPC URL:', smartRpcUrl);
 
         // Create the RPC provider first
-        const provider = new RpcConnection(config.rpcUrl);
+        const provider = new RpcConnection(smartRpcUrl);
         // Enhance the provider with Arch-specific functionality
         const connection = ArchConnection(provider);
 
@@ -220,10 +221,11 @@ import {
         onProjectAccountChange(account);
         setIsNewKeypairDialogOpen(false);
       } catch (error) {
+        console.error('Failed to generate keypair:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to generate new keypair. Please try again."
+          description: `Failed to generate new keypair: ${error instanceof Error ? error.message : 'Unknown error'}`
         });
       }
     };

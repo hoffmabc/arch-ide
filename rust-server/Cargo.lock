@@ -75,6 +75,7 @@ dependencies = [
  "http 1.2.0",
  "native-tls",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "socket2",
