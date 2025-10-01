@@ -17,7 +17,7 @@ import { Settings } from 'lucide-react';
 import SidePanel from './components/SidePanel';
 import { StatusBar } from './components/StatusBar';
 import type { ArchIdl } from './types';
-import { ArchProgramLoader } from './utils/arch-program-loader';
+import { ArchProgramLoader, deployProgram } from './utils/arch-sdk-deployer';
 import { storage } from './utils/storage';
 import { FileChange } from './types/types';
 import { Plus, FolderPlus, Download } from 'lucide-react';
