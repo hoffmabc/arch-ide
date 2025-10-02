@@ -657,34 +657,115 @@ class ArchDeployer {
     }
   }
 
-  /** Send multiple transactions in batch */
+  /** Send multiple transactions in batch (matches Rust SDK's send_transactions) */
   async sendBatchTransactions(txs: RuntimeTransaction[]): Promise<string[]> {
-    const txids: string[] = [];
+    const MAX_BATCH_SIZE = 100; // Matches Rust SDK's MAX_TX_BATCH_SIZE
+    const allTxids: string[] = [];
 
-    // Send one at a time for now (can optimize later)
-    for (let i = 0; i < txs.length; i++) {
+    // Send in batches of 100 (same as arch-cli)
+    for (let i = 0; i < txs.length; i += MAX_BATCH_SIZE) {
+      const batch = txs.slice(i, Math.min(i + MAX_BATCH_SIZE, txs.length));
+      const batchNum = Math.floor(i / MAX_BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(txs.length / MAX_BATCH_SIZE);
+
+      console.log(`[Batch] Sending batch ${batchNum}/${totalBatches} (${batch.length} transactions)`);
+      this.onMessage('info', `Sending batch ${batchNum}/${totalBatches} (${batch.length} chunks)`);
+
       try {
-        console.log(`[Batch] Sending transaction ${i + 1}/${txs.length}`);
+        // Convert all transactions to plain arrays (removes Buffer objects)
+        const batchPlain = batch.map(tx => this.bufferToArray(tx));
 
-        const txid = await this.sendAndConfirmTransaction(txs[i]);
-        txids.push(txid);
+        // send_transactions expects params to be the array of transactions directly
+        const payload = {
+          jsonrpc: '2.0',
+          id: 'curlycurl',
+          method: 'send_transactions',
+          params: batchPlain,  // Array of transactions
+        };
 
-        // Progress update every 10 transactions
-        if ((i + 1) % 10 === 0 || i === txs.length - 1) {
-          this.onMessage('info', `Uploaded ${i + 1}/${txs.length} chunks`);
+        const response = await fetch(this.smartRpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // Small delay between transactions
-        if (i < txs.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+        const result = await response.json();
+
+        if (result.error) {
+          console.error('[Batch] Error sending batch:', result.error);
+          throw new Error(`Batch failed: ${JSON.stringify(result.error)}`);
         }
+
+        const batchTxids = result.result as string[];
+        allTxids.push(...batchTxids);
+
+        console.log(`[Batch] Batch ${batchNum} sent successfully, waiting for confirmations...`);
+
+        // Wait for all transactions in this batch to confirm
+        for (const txid of batchTxids) {
+          await this.waitForConfirmation(txid);
+        }
+
+        console.log(`[Batch] Batch ${batchNum} confirmed`);
+        this.onMessage('success', `Batch ${batchNum}/${totalBatches} confirmed (${allTxids.length}/${txs.length} chunks)`);
+
       } catch (error) {
-        console.error(`[Batch] Error sending transaction ${i + 1}:`, error);
+        console.error(`[Batch] Error in batch ${batchNum}:`, error);
         throw error;
       }
     }
 
-    return txids;
+    return allTxids;
+  }
+
+  /** Wait for a transaction to be confirmed (polling) */
+  private async waitForConfirmation(txid: string, maxAttempts: number = 30): Promise<void> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        const payload = {
+          jsonrpc: '2.0',
+          id: 'curlycurl',
+          method: 'get_processed_transaction',
+          params: txid,
+        };
+
+        const response = await fetch(this.smartRpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+
+          // Debug: Log the actual response structure
+          if (attempt === 0) {
+            console.log(`[Confirmation] Response structure for ${txid.slice(0, 8)}:`, JSON.stringify(result, null, 2));
+          }
+
+          // Transaction found - it's been processed
+          if (result.result) {
+            console.log(`[Confirmation] Transaction ${txid.slice(0, 8)} confirmed`);
+            return;
+          }
+
+          // Check for error (transaction not found yet is okay, keep polling)
+          if (result.error && result.error.code !== -32000) {
+            console.warn(`[Confirmation] Error for ${txid.slice(0, 8)}:`, result.error);
+          }
+        }
+      } catch (error) {
+        // Continue polling on errors
+      }
+    }
+
+    console.warn(`[Confirmation] Transaction ${txid} not confirmed after ${maxAttempts} seconds`);
   }
 
   /** Serialize ArchMessage (matches Rust's ArchMessage::serialize) */
