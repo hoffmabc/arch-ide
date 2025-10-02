@@ -19,13 +19,20 @@ import { signMessage } from './bitcoin-signer';
 import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
 import { getSmartRpcUrl } from './smartRpcConnection';
 import { sha256 } from 'js-sha256';
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
+import { ECPairFactory } from 'ecpair';
+
+// Initialize bitcoinjs-lib with ECC
+bitcoin.initEccLib(ecc);
+const ECPair = ECPairFactory(ecc);
 
 // ============================================================================
 // CONSTANTS (matching arch-network/program/src)
 // ============================================================================
 
 /** System Program ID - handles account creation and transfers */
-const SYSTEM_PROGRAM_ID = Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex');
+const SYSTEM_PROGRAM_ID = Buffer.from('0000000000000000000000000000000000000000000000000000000000000001', 'hex');
 
 /** BPF Loader ID - owns and manages program accounts */
 // "BpfLoader11111111111111111111111" as ASCII bytes (matches Rust: Pubkey(*b"BpfLoader11111111111111111111111"))
@@ -35,11 +42,34 @@ const BPF_LOADER_ID = Buffer.from('BpfLoader11111111111111111111111', 'ascii');
 console.log('[Constants] BPF_LOADER_ID:', BPF_LOADER_ID.toString('hex'), `(${BPF_LOADER_ID.length} bytes)`);
 console.log('[Constants] BPF_LOADER_ID as ASCII:', BPF_LOADER_ID.toString('ascii'));
 
-/** Size of LoaderState header (authority_address + status) */
-const LOADER_STATE_SIZE = 33;
+/**
+ * Size of LoaderState header
+ * Matches program/src/bpf_loader.rs::LoaderState
+ *
+ * struct LoaderState {
+ *   authority_address_or_next_version: Pubkey,  // 32 bytes
+ *   status: LoaderStatus,                       // 8 bytes (#[repr(u64)])
+ * }
+ *
+ * Total: 40 bytes
+ */
+const LOADER_STATE_SIZE = 40;
 
-/** Maximum transaction size */
-const RUNTIME_TX_SIZE_LIMIT = 240000;
+/** Maximum JSON RPC payload size (RPC enforces 10KB limit on HTTP POST body) */
+const RPC_JSON_PAYLOAD_LIMIT = 10240; // 10KB HTTP body limit from RPC
+
+/**
+ * JSON serialization overhead multiplier
+ * When a RuntimeTransaction is serialized to JSON:
+ * - Each byte becomes "123," (avg 3-4 chars per byte)
+ * - Arrays need brackets: [...]
+ * - Objects need braces: {...}
+ * - Field names: "version":, "signatures":, etc.
+ * - JSON-RPC wrapper: {"jsonrpc":"2.0","id":"...","method":"send_transaction","params":{...}}
+ * - Nested array structure adds significant overhead
+ * Extremely conservative estimate: 8x overhead (ensures <10KB)
+ */
+const JSON_SERIALIZATION_OVERHEAD = 8.0;
 
 // ============================================================================
 // LOADER INSTRUCTION VARIANTS (bincode serialization)
@@ -61,15 +91,13 @@ enum SystemInstruction {
   CreateAccount = 0,
   CreateAccountWithAnchor = 1,
   Assign = 2,
-  Transfer = 3,
-  CreateAccountWithSeed = 4,
-  AdvanceNonceAccount = 5,
-  WithdrawNonceAccount = 6,
-  InitializeNonceAccount = 7,
-  AuthorizeNonceAccount = 8,
-  Allocate = 9,
-  AllocateWithSeed = 10,
-  AssignWithSeed = 11,
+  Anchor = 3,              // Was missing!
+  SignInput = 4,           // Was missing!
+  Transfer = 5,            // Fixed - was 3, should be 5!
+  Allocate = 6,
+  CreateAccountWithSeed = 7,
+  AllocateWithSeed = 8,
+  AssignWithSeed = 9,
   TransferWithSeed = 12,
 }
 
@@ -117,20 +145,25 @@ interface AccountInfo {
 
 /** Serialize LoaderInstruction::Write { offset: u32, bytes: Vec<u8> } */
 function serializeWriteInstruction(offset: number, bytes: Buffer): Buffer {
-  const data = Buffer.alloc(1 + 4 + 4 + bytes.length);
+  // Bincode 1.x serializes enum variants as u32 regardless of #[repr(u8)]
+  const data = Buffer.alloc(4 + 4 + 8 + bytes.length); // variant(u32) + offset(u32) + length(u64) + data
   let pos = 0;
 
-  // Write variant tag
-  data.writeUInt8(LoaderInstruction.Write, pos);
-  pos += 1;
+  // Write variant tag (u32 - bincode ignores #[repr(u8)])
+  data.writeUInt32LE(LoaderInstruction.Write, pos);
+  pos += 4;
 
   // Write offset (u32 little-endian)
   data.writeUInt32LE(offset, pos);
   pos += 4;
 
-  // Write bytes length (u32 little-endian for Vec length)
-  data.writeUInt32LE(bytes.length, pos);
-  pos += 4;
+  // Write bytes length (u64 little-endian for Vec length - bincode 1.x default)
+  // Split u64 into two u32 writes to avoid BigInt issues
+  const lengthLow = bytes.length & 0xFFFFFFFF;
+  const lengthHigh = Math.floor(bytes.length / 0x100000000);
+  data.writeUInt32LE(lengthLow, pos);
+  data.writeUInt32LE(lengthHigh, pos + 4);
+  pos += 8;
 
   // Write bytes
   bytes.copy(data, pos);
@@ -140,20 +173,27 @@ function serializeWriteInstruction(offset: number, bytes: Buffer): Buffer {
 
 /** Serialize LoaderInstruction::Truncate { new_size: u32 } */
 function serializeTruncateInstruction(newSize: number): Buffer {
-  const data = Buffer.alloc(1 + 4);
-  data.writeUInt8(LoaderInstruction.Truncate, 0);
-  data.writeUInt32LE(newSize, 1);
+  // Bincode 1.x serializes enum variants as u32 regardless of #[repr(u8)]
+  const data = Buffer.alloc(4 + 4); // variant(u32) + new_size(u32)
+  data.writeUInt32LE(LoaderInstruction.Truncate, 0);
+  data.writeUInt32LE(newSize, 4);
   return data;
 }
 
 /** Serialize LoaderInstruction::Deploy */
 function serializeDeployInstruction(): Buffer {
-  return Buffer.from([LoaderInstruction.Deploy]);
+  // Bincode 1.x serializes enum variants as u32 regardless of #[repr(u8)]
+  const data = Buffer.alloc(4); // variant(u32)
+  data.writeUInt32LE(LoaderInstruction.Deploy, 0);
+  return data;
 }
 
 /** Serialize LoaderInstruction::Retract */
 function serializeRetractInstruction(): Buffer {
-  return Buffer.from([LoaderInstruction.Retract]);
+  // Bincode 1.x serializes enum variants as u32 regardless of #[repr(u8)]
+  const data = Buffer.alloc(4); // variant(u32)
+  data.writeUInt32LE(LoaderInstruction.Retract, 0);
+  return data;
 }
 
 /** Serialize SystemInstruction::CreateAccount */
@@ -162,12 +202,13 @@ function serializeCreateAccountInstruction(
   space: number,
   owner: Buffer
 ): Buffer {
-  const data = Buffer.alloc(1 + 8 + 8 + 32);
+  // Bincode 1.x serializes enum variants as u32 (no #[repr(u8)] on SystemInstruction)
+  const data = Buffer.alloc(4 + 8 + 8 + 32); // variant(u32) + lamports(u64) + space(u64) + owner(32)
   let pos = 0;
 
-  // Variant tag
-  data.writeUInt8(SystemInstruction.CreateAccount, pos);
-  pos += 1;
+  // Variant tag (u32 - bincode 1.x default)
+  data.writeUInt32LE(SystemInstruction.CreateAccount, pos);
+  pos += 4;
 
   // Lamports (u64 little-endian) - split into two u32s
   data.writeUInt32LE(lamports & 0xFFFFFFFF, pos);
@@ -187,11 +228,21 @@ function serializeCreateAccountInstruction(
 
 /** Serialize SystemInstruction::Transfer */
 function serializeTransferInstruction(lamports: number): Buffer {
-  const data = Buffer.alloc(1 + 8);
-  data.writeUInt8(SystemInstruction.Transfer, 0);
+  // Bincode 1.x serializes enum variants as u32 (no #[repr(u8)] on SystemInstruction)
+  const data = Buffer.alloc(4 + 8); // variant(u32) + lamports(u64)
+  data.writeUInt32LE(SystemInstruction.Transfer, 0);
   // Lamports (u64 little-endian) - split into two u32s
-  data.writeUInt32LE(lamports & 0xFFFFFFFF, 1);
-  data.writeUInt32LE(Math.floor(lamports / 0x100000000), 5);
+  data.writeUInt32LE(lamports & 0xFFFFFFFF, 4);
+  data.writeUInt32LE(Math.floor(lamports / 0x100000000), 8);
+  return data;
+}
+
+/** Serialize SystemInstruction::Assign */
+function serializeAssignInstruction(owner: Buffer): Buffer {
+  // Bincode 1.x serializes enum variants as u32 (no #[repr(u8)] on SystemInstruction)
+  const data = Buffer.alloc(4 + 32); // variant(u32) + owner(32 bytes)
+  data.writeUInt32LE(SystemInstruction.Assign, 0);
+  owner.copy(data, 4);
   return data;
 }
 
@@ -227,16 +278,42 @@ function calculateMaxChunkSize(): number {
     message: dummyMessage,
   };
 
-  // Estimate serialized size (rough estimate based on transaction structure)
-  const signaturesSize = 64; // One 64-byte signature
-  const signersSize = 32 * dummyMessage.signers.length;
-  const instructionSize = 200; // Approximate size per instruction
-  const txOverhead = 1 + signaturesSize + signersSize + instructionSize;
+  // Calculate RuntimeTransaction overhead more accurately:
+  // - Version: 1 byte
+  // - Signatures count: 4 bytes (u32)
+  // - Signatures: 64 bytes per signature
+  // - ArchMessage header: 3 bytes (num_required_signatures, num_readonly_signed, num_readonly_unsigned)
+  // - Account keys count: 4 bytes (u32)
+  // - Account keys: 32 bytes × 2 (program + loader)
+  // - Recent blockhash: 32 bytes
+  // - Instructions count: 4 bytes (u32)
+  // - Instruction: program_id_index (1) + accounts_count (4) + accounts (2) + data_length (4)
+  // - Write instruction data overhead: variant(4) + offset(4) + vec_length(8) = 16 bytes
 
-  // Calculate available space for data
-  const availableSpace = RUNTIME_TX_SIZE_LIMIT - txOverhead;
+  const versionSize = 1;
+  const sigCountSize = 4;
+  const signatureSize = 64; // One signature
+  const headerSize = 3;
+  const accountKeysCountSize = 4;
+  const accountKeysSize = 32 * 2; // program + loader
+  const blockhashSize = 32;
+  const instructionsCountSize = 4;
+  const instructionMetadataSize = 1 + 4 + 2 + 4; // program_id_index + accounts_count + accounts + data_length
+  const writeInstructionOverhead = 4 + 4 + 8; // variant (u32 - bincode ignores #[repr(u8)]) + offset (u32) + length (u64)
+
+  const txOverhead = versionSize + sigCountSize + signatureSize + headerSize +
+                     accountKeysCountSize + accountKeysSize + blockhashSize +
+                     instructionsCountSize + instructionMetadataSize + writeInstructionOverhead;
+
+  // Calculate max chunk size accounting for JSON serialization overhead
+  // The RPC limit is on the JSON payload size, not binary transaction size
+  const binaryTxLimit = RPC_JSON_PAYLOAD_LIMIT / JSON_SERIALIZATION_OVERHEAD;
+  const safetyMargin = 500; // Additional safety margin
+  const availableSpace = Math.floor(binaryTxLimit - txOverhead - safetyMargin);
 
   console.log('[Chunk Size] Calculated max chunk size:', availableSpace);
+  console.log('[Chunk Size] TX overhead:', txOverhead, 'Safety margin:', safetyMargin);
+  console.log('[Chunk Size] Binary limit:', Math.floor(binaryTxLimit), 'JSON payload limit:', RPC_JSON_PAYLOAD_LIMIT);
   return Math.max(availableSpace, 1000); // Minimum 1KB chunks
 }
 
@@ -245,15 +322,20 @@ function calculateMaxChunkSize(): number {
 // ============================================================================
 
 /**
- * Calculate minimum rent for account
- * Simplified version - in production, this should match the on-chain rent calculation
+ * Calculate minimum rent for account - matches program/src/rent.rs
+ *
+ * Rust formula:
+ * pub const DEFAULT_LAMPORTS_PER_BYTE_YEAR: u64 = 2;
+ * pub const ACCOUNT_STORAGE_OVERHEAD: u64 = 128;
+ * pub fn minimum_rent(data_len: usize) -> u64 {
+ *   (ACCOUNT_STORAGE_OVERHEAD + bytes) * DEFAULT_LAMPORTS_PER_BYTE_YEAR
+ * }
  */
 function calculateMinimumRent(dataSize: number): number {
-  // Basic rent formula: base rent + per-byte rent
-  const BASE_RENT = 890880; // Base lamports
-  const RENT_PER_BYTE = 6960; // Lamports per byte
+  const ACCOUNT_STORAGE_OVERHEAD = 128;
+  const DEFAULT_LAMPORTS_PER_BYTE_YEAR = 2;
 
-  return BASE_RENT + (dataSize * RENT_PER_BYTE);
+  return (ACCOUNT_STORAGE_OVERHEAD + dataSize) * DEFAULT_LAMPORTS_PER_BYTE_YEAR;
 }
 
 // ============================================================================
@@ -298,6 +380,174 @@ class ArchDeployer {
   /** Get account address (Bitcoin address for UTXO) */
   async getAccountAddress(pubkey: Buffer): Promise<string> {
     return await this.connection.getAccountAddress(pubkey);
+  }
+
+  /** Create and fund authority account via faucet - matches arch-cli --fund-authority */
+  async createAndFundAuthorityAccount(
+    authorityKeypair: { privkey: string; pubkey: string }
+  ): Promise<void> {
+    const authorityPubkey = Buffer.from(authorityKeypair.pubkey, 'hex');
+
+    // Check if account already exists
+    try {
+      const accountInfo = await this.readAccountInfo(authorityPubkey);
+      if (accountInfo) {
+        console.log('[Authority] Account already exists, lamports:', accountInfo.lamports);
+        console.log('[Authority] Owner:', accountInfo.owner.toString('hex'));
+        console.log('[Authority] Is executable:', accountInfo.is_executable);
+        console.log('[Authority] Data length:', accountInfo.data.length);
+
+        // CRITICAL: Check if account is owned by System Program
+        // Fee payers MUST be system-owned accounts
+        const isSystemOwned = accountInfo.owner.toString('hex') === SYSTEM_PROGRAM_ID.toString('hex');
+
+        if (!isSystemOwned) {
+          const ownerHex = accountInfo.owner.toString('hex');
+          const ownerName = ownerHex === BPF_LOADER_ID.toString('hex') ? 'BPF Loader' : 'Unknown Program';
+
+          throw new Error(
+            `❌ CANNOT USE THIS KEYPAIR AS FEE PAYER!\n\n` +
+            `The account already exists but is owned by ${ownerName}.\n` +
+            `Fee payers MUST be owned by the System Program.\n\n` +
+            `Expected owner: ${SYSTEM_PROGRAM_ID.toString('hex')}\n` +
+            `Actual owner:   ${ownerHex}\n\n` +
+            `SOLUTION: Please generate a NEW keypair for deployment.`
+          );
+        }
+
+        return;
+      }
+    } catch (error: any) {
+      // Re-throw owner validation errors
+      if (error.message && error.message.includes('CANNOT USE THIS KEYPAIR')) {
+        throw error;
+      }
+      // Account doesn't exist, continue to create it
+      console.log('[Authority] Account does not exist, creating via faucet...');
+    }
+
+    // Use faucet to create and fund authority account
+    // The faucet creates a transaction that we sign
+    const payload = {
+      jsonrpc: '2.0',
+      id: 'curlycurl',
+      method: 'create_account_with_faucet',
+      params: Array.from(authorityPubkey),
+    };
+
+    const response = await fetch(this.smartRpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Faucet HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (result.error) {
+      throw new Error(`Faucet RPC error: ${JSON.stringify(result.error)}`);
+    }
+
+    // Faucet returns a partially signed RuntimeTransaction - we need to sign it
+    const runtimeTx = result.result;
+
+    // Serialize and hash the message (matches buildAndSignTransaction logic)
+    const serializedMessage = this.serializeArchMessage(runtimeTx.message);
+    const firstHashHex = sha256(Buffer.from(serializedMessage));
+    const firstHashBytes = Buffer.from(firstHashHex, 'utf8');
+    const secondHashHex = sha256(firstHashBytes);
+    const messageHashBytes = Buffer.from(secondHashHex, 'utf8');
+
+    const signature = this.signMessage(authorityKeypair, messageHashBytes);
+
+    // Add our signature to the transaction
+    runtimeTx.signatures.push(Array.from(signature));
+
+    // Send the signed transaction
+    const sendPayload = {
+      jsonrpc: '2.0',
+      id: 'curlycurl',
+      method: 'send_transaction',
+      params: runtimeTx,
+    };
+
+    const sendResponse = await fetch(this.smartRpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sendPayload),
+    });
+
+    if (!sendResponse.ok) {
+      throw new Error(`Send transaction HTTP error! status: ${sendResponse.status}`);
+    }
+
+    const sendResult = await sendResponse.json();
+
+    if (sendResult.error) {
+      throw new Error(`Send transaction failed: ${JSON.stringify(sendResult.error)}`);
+    }
+
+    const txid = sendResult.result;
+    console.log('[Authority] Account created via faucet:', txid);
+
+    // Wait for transaction confirmation (poll until processed)
+    console.log('[Authority] Waiting for transaction confirmation...');
+    const maxAttempts = 20;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between polls
+
+      const checkPayload = {
+        jsonrpc: '2.0',
+        id: 'curlycurl',
+        method: 'get_processed_transaction',
+        params: [txid],
+      };
+
+      const checkResponse = await fetch(this.smartRpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkPayload),
+      });
+
+      if (checkResponse.ok) {
+        const checkResult = await checkResponse.json();
+        if (checkResult.result?.status === 'Processed') {
+          console.log('[Authority] Transaction confirmed!');
+          return;
+        }
+        if (checkResult.result?.status?.Failed) {
+          throw new Error(`Faucet transaction failed: ${JSON.stringify(checkResult.result.status.Failed)}`);
+        }
+      }
+    }
+
+    console.warn('[Authority] Transaction not confirmed after 20 seconds, proceeding anyway...');
+  }
+
+  /** Check if an account has sufficient balance */
+  async checkAccountBalance(pubkey: Buffer, purpose: string): Promise<void> {
+    try {
+      const accountInfo = await this.readAccountInfo(pubkey);
+      if (!accountInfo) {
+        throw new Error(`${purpose} account does not exist: ${pubkey.toString('hex')}`);
+      }
+
+      console.log(`[Balance Check] ${purpose} balance:`, accountInfo.lamports, 'lamports');
+
+      if (accountInfo.lamports === 0) {
+        throw new Error(`${purpose} account has zero balance`);
+      }
+
+      // Warn if balance is low (less than 100k lamports)
+      if (accountInfo.lamports < 100_000) {
+        console.warn(`[Balance Check] WARNING: ${purpose} has low balance:`, accountInfo.lamports);
+      }
+    } catch (error: any) {
+      throw new Error(`Failed to check ${purpose} balance: ${error.message}`);
+    }
   }
 
   /** Get best finalized block hash for recent blockhash */
@@ -387,6 +637,10 @@ class ArchDeployer {
       console.log('[Transaction] RPC response:', result);
 
       if (result.error) {
+        console.error('[Transaction] Full error details:', JSON.stringify(result.error, null, 2));
+        console.error('[Transaction] Transaction header:', JSON.stringify(tx.message.header, null, 2));
+        console.error('[Transaction] Account keys count:', tx.message.account_keys.length);
+        console.error('[Transaction] Signatures count:', tx.signatures.length);
         throw new Error(`Transaction failed: ${JSON.stringify(result.error)}`);
       }
 
@@ -452,6 +706,7 @@ class ArchDeployer {
     // Serialize account_keys (each 32 bytes)
     message.account_keys.forEach((key: Buffer) => {
       const keyBytes = Buffer.isBuffer(key) ? Array.from(key) : key;
+      // Use concat for small arrays (32 bytes is fine)
       parts.push(...keyBytes);
     });
 
@@ -459,6 +714,7 @@ class ArchDeployer {
     const blockhashBytes = Buffer.isBuffer(message.recent_blockhash)
       ? Array.from(message.recent_blockhash)
       : message.recent_blockhash;
+    // Use concat for small arrays (32 bytes is fine)
     parts.push(...blockhashBytes);
 
     // Serialize instructions length (4 bytes, little-endian u32)
@@ -473,20 +729,36 @@ class ArchDeployer {
       // program_id_index (1 byte)
       parts.push(ix.program_id_index);
 
-      // accounts length (1 byte)
-      parts.push(ix.accounts.length);
+      // accounts length (4 bytes, little-endian u32)
+      const numAccounts = ix.accounts.length;
+      parts.push(numAccounts & 0xFF);
+      parts.push((numAccounts >> 8) & 0xFF);
+      parts.push((numAccounts >> 16) & 0xFF);
+      parts.push((numAccounts >> 24) & 0xFF);
 
       // account indices (each 1 byte)
       parts.push(...ix.accounts);
 
-      // data length (2 bytes, little-endian u16)
+      // data length (4 bytes, little-endian u32)
       const dataLen = ix.data.length;
       parts.push(dataLen & 0xFF);
       parts.push((dataLen >> 8) & 0xFF);
+      parts.push((dataLen >> 16) & 0xFF);
+      parts.push((dataLen >> 24) & 0xFF);
 
       // data bytes
       const dataBytes = Buffer.isBuffer(ix.data) ? Array.from(ix.data) : ix.data;
-      parts.push(...dataBytes);
+      // For large arrays, avoid spread operator to prevent stack overflow
+      // Use Array.prototype.push.apply with chunking for safety
+      if (dataBytes.length > 10000) {
+        // Push in chunks to avoid stack overflow
+        for (let i = 0; i < dataBytes.length; i += 10000) {
+          const chunk = dataBytes.slice(i, i + 10000);
+          Array.prototype.push.apply(parts, chunk);
+        }
+      } else {
+        parts.push(...dataBytes);
+      }
     });
 
     return new Uint8Array(parts);
@@ -502,23 +774,33 @@ class ArchDeployer {
   buildAndSignTransaction(
     instructions: Instruction[],
     signers: { privkey: string; pubkey: string }[],
-    recentBlockhash: Buffer
+    recentBlockhash: Buffer,
+    feePayer?: string  // Optional fee payer pubkey (hex string) - if provided, it will be placed first in account_keys
   ): RuntimeTransaction {
     console.log('[Build Transaction] Building ArchMessage with:', {
       numInstructions: instructions.length,
       numSigners: signers.length,
       signerPubkeys: signers.map(s => s.pubkey),
+      feePayer: feePayer || 'none',
     });
 
     // Step 1: Collect all unique account keys in correct order
-    // Order: signers first, then other accounts, then program IDs
+    // Per CompiledKeys::compile - payer comes FIRST, then other writable signers, readonly signers, etc.
     const accountKeysMap = new Map<string, Buffer>();
 
-    // Add signers first (they must be at the beginning)
+    // Add fee payer FIRST if provided (CompiledKeys places payer first)
+    if (feePayer) {
+      console.log('[Build Transaction] Adding fee payer first:', feePayer);
+      accountKeysMap.set(feePayer, Buffer.from(feePayer, 'hex'));
+    }
+
+    // Add remaining signers (excluding fee payer if already added)
     console.log('[Build Transaction] Adding signers to account_keys:');
     signers.forEach((signer, idx) => {
-      console.log(`  [Signer ${idx}]:`, signer.pubkey);
-      accountKeysMap.set(signer.pubkey, Buffer.from(signer.pubkey, 'hex'));
+      if (signer.pubkey !== feePayer) {  // Skip if already added as fee payer
+        console.log(`  [Signer ${idx}]:`, signer.pubkey);
+        accountKeysMap.set(signer.pubkey, Buffer.from(signer.pubkey, 'hex'));
+      }
     });
     console.log('[Build Transaction] After adding signers, map size:', accountKeysMap.size);
 
@@ -561,11 +843,56 @@ class ArchDeployer {
     console.log('  Map values (hex):', mapValues);
     console.log('  Final account_keys array:', accountKeysHex);
 
+    // Step 2: Determine which signers are writable vs readonly
+    // A signer is writable if it appears as writable in ANY instruction
+    const uniqueSigners = signers.filter((signer, idx, arr) =>
+      arr.findIndex(s => s.pubkey === signer.pubkey) === idx
+    );
+
+    const signerWritableStatus = new Map<string, boolean>();
+    uniqueSigners.forEach(signer => signerWritableStatus.set(signer.pubkey, false));
+
+    // Check each instruction to see if signers are marked writable
+    instructions.forEach(ix => {
+      ix.accounts.forEach(acc => {
+        const pubkeyHex = (acc.pubkey as Buffer).toString('hex');
+        if (signerWritableStatus.has(pubkeyHex) && acc.is_writable) {
+          signerWritableStatus.set(pubkeyHex, true);
+        }
+      });
+    });
+
+    // CRITICAL: The fee payer (account_keys[0]) is ALWAYS writable, regardless of instruction flags
+    // This is enforced by Arch Network's sanitization: num_readonly_signed_accounts < num_required_signatures
+    if (feePayer) {
+      signerWritableStatus.set(feePayer, true);
+    }
+
+    // Count readonly signers (those that are signers but never writable)
+    const readonlySigners = Array.from(signerWritableStatus.entries())
+      .filter(([_, isWritable]) => !isWritable);
+
+    const numReadonlySignedAccounts = readonlySigners.length;
+
+    console.log('[Build Transaction] Original signers:', signers.length);
+    console.log('[Build Transaction] Unique signers:', uniqueSigners.length);
+    console.log('[Build Transaction] Readonly signers:', numReadonlySignedAccounts);
+
+    // Step 2: Count program IDs (they are readonly unsigned accounts)
+    const programIds = new Set<string>();
+    instructions.forEach(ix => {
+      programIds.add((ix.program_id as Buffer).toString('hex'));
+    });
+    const numReadonlyUnsignedAccounts = programIds.size;
+
+    console.log('[Build Transaction] Program IDs (readonly):', Array.from(programIds));
+    console.log('[Build Transaction] Readonly unsigned accounts:', numReadonlyUnsignedAccounts);
+
     // Step 2: Build header (ArchMessage format)
     const header = {
-      num_required_signatures: signers.length,
-      num_readonly_signed_accounts: 0, // All signers are writable (fee payers)
-      num_readonly_unsigned_accounts: 0, // Simplification: all accounts writable
+      num_required_signatures: uniqueSigners.length,
+      num_readonly_signed_accounts: numReadonlySignedAccounts,
+      num_readonly_unsigned_accounts: numReadonlyUnsignedAccounts,
     };
 
     // Step 3: Compile instructions to use indices (SanitizedInstruction format)
@@ -707,17 +1034,53 @@ class ArchDeployer {
     console.log('[Build Transaction] Serialized message (hex):', Buffer.from(serializedMessage).toString('hex').substring(0, 100) + '...');
 
     // Double-hash (matches Rust's ArchMessage::hash)
-    // sha256() returns hex string, so we hash the hex string then hash again
-    const firstHashHex = sha256(Buffer.from(serializedMessage));
-    const messageHashHex = sha256(firstHashHex);
+    // Rust does: digest(serialized) → hex string, then digest(hex_string.as_bytes()) → hex string
+    // The final hash is the HEX STRING itself converted to UTF-8 bytes (NOT hex-decoded)
+    const firstHashHex = sha256(Buffer.from(serializedMessage));  // SHA256 → hex string
+    console.log('[Build Transaction] First hash (hex):', firstHashHex);
 
-    console.log('[Build Transaction] Message hash (hex):', messageHashHex);
+    // Convert hex string to UTF-8 bytes (treat the hex string as a UTF-8 string, NOT hex-decode it)
+    const firstHashBytes = Buffer.from(firstHashHex, 'utf8');  // Treat hex string as UTF-8 bytes
+    const secondHashHex = sha256(firstHashBytes);  // SHA256 of the hex string bytes
 
-    const signatures = signers.map((signer, idx) => {
-      const sig = this.signMessage(signer, Buffer.from(messageHashHex, 'hex'));
-      console.log(`[Build Transaction] Signature ${idx}:`, sig.toString('hex').substring(0, 20) + '...');
-      return sig;
-    });
+    console.log('[Build Transaction] Second hash (hex):', secondHashHex);
+
+    // CRITICAL: The message hash for BIP-322 signing is the second hex string as UTF-8 bytes
+    // NOT the hex-decoded bytes! This is 64 bytes (hex string of 32-byte hash)
+    const messageHashBytes = Buffer.from(secondHashHex, 'utf8');  // 64-byte UTF-8 representation
+    console.log('[Build Transaction] Message hash for signing (64 bytes):', messageHashBytes.toString('hex').substring(0, 40) + '...');
+    console.log('[Build Transaction] Message hash length:', messageHashBytes.length);
+
+    // CRITICAL: Deduplicate signers based on pubkey to match account_keys deduplication
+    // If program and authority use the same keypair, we should only generate ONE signature
+    const signerMap = new Map(signers.map(s => [s.pubkey, s]));
+
+    console.log('[Build Transaction] Unique signers:', signerMap.size);
+    console.log('[Build Transaction] Account keys count:', account_keys.length);
+
+    // Verify signature count matches the first N account_keys (which are the signers)
+    const numRequiredSignatures = message.header.num_required_signatures;
+    if (signerMap.size !== numRequiredSignatures) {
+      throw new Error(`Mismatch: ${signerMap.size} unique signers but header requires ${numRequiredSignatures} signatures`);
+    }
+
+    // CRITICAL: Generate signatures in the SAME ORDER as account_keys!
+    // The first N account_keys are the signers (where N = num_required_signatures)
+    // Signatures must be in the same order as these signing accounts
+    const signatures: Buffer[] = [];
+    for (let i = 0; i < numRequiredSignatures; i++) {
+      const accountPubkeyHex = account_keys[i].toString('hex');
+      const signer = signerMap.get(accountPubkeyHex);
+
+      if (!signer) {
+        throw new Error(`No signer found for account at index ${i}: ${accountPubkeyHex}`);
+      }
+
+      console.log(`[Build Transaction] Generating signature ${i} for account[${i}]:`, accountPubkeyHex);
+      const sig = this.signMessage(signer, messageHashBytes);
+      console.log(`[Build Transaction] Signature ${i}:`, sig.toString('hex').substring(0, 20) + '...');
+      signatures.push(sig);
+    }
 
     // Convert message to plain arrays for the transaction
     const messagePlain = this.bufferToArray(message);
@@ -771,18 +1134,22 @@ export async function deployProgram(options: DeployOptions): Promise<{
   const authorityPubkey = Buffer.from(authorityKeypair.pubkey, 'hex');
   const allTxids: string[] = [];
 
-  // ========== STEP 0: Ensure authority has funds (testnet/devnet only) ==========
+  // ========== STEP 0: Create and fund authority account (matches arch-cli --fund-authority) ==========
 
   if (network === 'testnet' || network === 'devnet') {
-    onMessage('info', 'Requesting airdrop for fee payer (testnet/devnet)');
+    onMessage('info', 'Creating and funding authority account...');
 
     try {
-      await deployer.requestAirdrop(authorityKeypair.pubkey);
-      onMessage('success', `Airdrop successful for ${authorityKeypair.pubkey}`);
+      await deployer.createAndFundAuthorityAccount(authorityKeypair);
+      onMessage('success', `Authority account funded: ${authorityKeypair.pubkey}`);
 
-      // Wait a bit for the airdrop to be processed
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Verify authority has funds before proceeding
+      await deployer.checkAccountBalance(authorityPubkey, 'Authority');
     } catch (error: any) {
+      // Re-throw critical validation errors that the user must fix
+      if (error.message && error.message.includes('CANNOT USE THIS KEYPAIR')) {
+        throw error;
+      }
       // Don't fail if airdrop fails - the account might already have funds
       console.warn('[Airdrop] Failed (account may already have funds):', error.message);
       onMessage('info', 'Airdrop failed - continuing with existing funds');
@@ -815,14 +1182,60 @@ export async function deployProgram(options: DeployOptions): Promise<{
     }
 
     onMessage('info', 'ELF mismatch detected, redeploying');
-  } else {
+
+    // Check if the account has the correct owner
+    const bpfLoaderIdHex = BPF_LOADER_ID.toString('hex');
+    const accountOwnerHex = accountInfo.owner.toString('hex');
+
+    if (accountOwnerHex !== bpfLoaderIdHex) {
+      onMessage('info', `Account has wrong owner (${accountOwnerHex}), assigning to BPF Loader`);
+
+      // Use SystemInstruction::Assign to change the owner
+      const recentBlockhash = await deployer.getBestBlockHash();
+      const assignIx: Instruction = {
+        program_id: SYSTEM_PROGRAM_ID,
+        accounts: [
+          { pubkey: programPubkey, is_signer: true, is_writable: true },
+        ],
+        data: serializeAssignInstruction(BPF_LOADER_ID),
+      };
+
+      const assignTx = deployer.buildAndSignTransaction(
+        [assignIx],
+        [programKeypair],
+        recentBlockhash,
+        programPubkey.toString('hex')  // Program is the fee payer
+      );
+
+      const assignTxid = await deployer.sendAndConfirmTransaction(assignTx);
+      allTxids.push(assignTxid);
+      onMessage('success', `Account owner changed to BPF Loader: ${assignTxid}`);
+
+      // Refresh account info
+      accountInfo = await deployer.readAccountInfo(programPubkey);
+      if (!accountInfo) {
+        throw new Error('Failed to read account after assigning owner');
+      }
+    }
+  }
+
+  if (!accountInfo) {
     // ========== STEP 2: Create program account ==========
 
     onMessage('info', 'Creating program account');
 
+    // Verify authority has funds before creating account
+    await deployer.checkAccountBalance(authorityPubkey, 'Authority (fee payer)');
+
     const accountSize = LOADER_STATE_SIZE + programBinary.length;
     const minimumRent = calculateMinimumRent(accountSize);
     const recentBlockhash = await deployer.getBestBlockHash();
+
+    // NOTE: Rust SDK passes space=0 here! The actual space allocation happens in Truncate
+    const createAccountData = serializeCreateAccountInstruction(minimumRent, 0, BPF_LOADER_ID);
+    console.log('[CreateAccount] Instruction data:', createAccountData.toString('hex'));
+    console.log('[CreateAccount] Data length:', createAccountData.length, 'bytes');
+    console.log('[CreateAccount] BPF_LOADER_ID in instruction:', BPF_LOADER_ID.toString('hex'));
 
     const createAccountIx: Instruction = {
       program_id: SYSTEM_PROGRAM_ID,
@@ -830,13 +1243,14 @@ export async function deployProgram(options: DeployOptions): Promise<{
         { pubkey: authorityPubkey, is_signer: true, is_writable: true },
         { pubkey: programPubkey, is_signer: true, is_writable: true },
       ],
-      data: serializeCreateAccountInstruction(minimumRent, accountSize, BPF_LOADER_ID),
+      data: createAccountData,
     };
 
     const createTx = deployer.buildAndSignTransaction(
       [createAccountIx],
       [authorityKeypair, programKeypair],
-      recentBlockhash
+      recentBlockhash,
+      authorityPubkey.toString('hex')  // Authority is the fee payer
     );
 
     const createTxid = await deployer.sendAndConfirmTransaction(createTx);
@@ -847,6 +1261,16 @@ export async function deployProgram(options: DeployOptions): Promise<{
     accountInfo = await deployer.readAccountInfo(programPubkey);
     if (!accountInfo) {
       throw new Error('Failed to create program account');
+    }
+
+    // Verify the account has the correct owner
+    const accountOwnerHex = accountInfo.owner.toString('hex');
+    const expectedOwnerHex = BPF_LOADER_ID.toString('hex');
+    onMessage('info', `Account owner: ${accountOwnerHex}`);
+    onMessage('info', `Expected owner: ${expectedOwnerHex}`);
+
+    if (accountOwnerHex !== expectedOwnerHex) {
+      throw new Error(`Account created with wrong owner! Got ${accountOwnerHex}, expected ${expectedOwnerHex}`);
     }
   }
 
@@ -936,7 +1360,8 @@ async function deployProgramElf(
     const retractTx = deployer.buildAndSignTransaction(
       [retractIx],
       [authorityKeypair],
-      recentBlockhash
+      recentBlockhash,
+      authorityPubkey.toString('hex')  // Authority is the fee payer
     );
 
     const retractTxid = await deployer.sendAndConfirmTransaction(retractTx);
@@ -950,9 +1375,9 @@ async function deployProgramElf(
   if (accountInfo.data.length !== requiredSize) {
     onMessage('info', `Resizing account to ${requiredSize} bytes`);
 
-    // Check if we need to add lamports
+    // Check if we need to add lamports (use saturating_sub to avoid negative numbers)
     const minimumRent = calculateMinimumRent(requiredSize);
-    const missingLamports = minimumRent - accountInfo.lamports;
+    const missingLamports = Math.max(0, minimumRent - accountInfo.lamports); // saturating_sub
 
     if (missingLamports > 0) {
       onMessage('info', `Transferring ${missingLamports} lamports for rent`);
@@ -969,27 +1394,49 @@ async function deployProgramElf(
       const transferTx = deployer.buildAndSignTransaction(
         [transferIx],
         [authorityKeypair],
-        recentBlockhash
+        recentBlockhash,
+        authorityPubkey.toString('hex')  // Authority is the fee payer
       );
 
       const transferTxid = await deployer.sendAndConfirmTransaction(transferTx);
       txids.push(transferTxid);
     }
 
-    // Truncate account
+    // Truncate account - get fresh blockhash
+    const truncateBlockhash = await deployer.getBestBlockHash();
+
+    // Verify authority has funds before truncating
+    await deployer.checkAccountBalance(authorityPubkey, 'Authority (truncate fee payer)');
+
+    console.log('[Truncate] Account info before truncate:');
+    console.log('  - Owner:', accountInfo.owner.toString('hex'));
+    console.log('  - Data length:', accountInfo.data.length);
+    console.log('  - Lamports:', accountInfo.lamports);
+    console.log('  - Is executable:', accountInfo.is_executable);
+    console.log('[Truncate] Program pubkey:', programPubkey.toString('hex'));
+    console.log('[Truncate] Authority pubkey:', authorityPubkey.toString('hex'));
+
+    const truncateData = serializeTruncateInstruction(elf.length);
+    console.log('[Truncate] Instruction data:', truncateData.toString('hex'));
+    console.log('[Truncate] Program ID (BPF_LOADER_ID):', BPF_LOADER_ID.toString('hex'));
+
     const truncateIx: Instruction = {
       program_id: BPF_LOADER_ID,
       accounts: [
         { pubkey: programPubkey, is_signer: true, is_writable: true },
         { pubkey: authorityPubkey, is_signer: true, is_writable: false },
       ],
-      data: serializeTruncateInstruction(elf.length),
+      data: truncateData,
     };
+
+    console.log('[Truncate] Building transaction with signers:', [programKeypair.pubkey, authorityKeypair.pubkey]);
+    console.log('[Truncate] Fee payer:', authorityPubkey.toString('hex'));
 
     const truncateTx = deployer.buildAndSignTransaction(
       [truncateIx],
       [programKeypair, authorityKeypair],
-      recentBlockhash
+      truncateBlockhash,
+      authorityPubkey.toString('hex')  // Authority is the fee payer
     );
 
     const truncateTxid = await deployer.sendAndConfirmTransaction(truncateTx);
@@ -1011,26 +1458,46 @@ async function deployProgramElf(
 
   onMessage('info', `Splitting into ${chunks.length} chunks`);
 
-  // Create write transactions
-  const writeTxs: RuntimeTransaction[] = chunks.map(({ offset, chunk }) => {
-    const writeIx: Instruction = {
-      program_id: BPF_LOADER_ID,
-      accounts: [
-        { pubkey: programPubkey, is_signer: false, is_writable: true },
-        { pubkey: authorityPubkey, is_signer: true, is_writable: false },
-      ],
-      data: serializeWriteInstruction(offset, chunk),
-    };
+  // Send chunks in smaller batches with fresh blockhash every N transactions
+  // to avoid blockhash expiration
+  const BLOCKHASH_REFRESH_INTERVAL = 5; // Refresh every 5 transactions
+  const writeTxids: string[] = [];
 
-    return deployer.buildAndSignTransaction(
-      [writeIx],
-      [authorityKeypair],
-      recentBlockhash
-    );
-  });
+  for (let i = 0; i < chunks.length; i += BLOCKHASH_REFRESH_INTERVAL) {
+    // Get fresh blockhash for this batch
+    const freshBlockhash = await deployer.getBestBlockHash();
 
-  // Send in batches
-  const writeTxids = await deployer.sendBatchTransactions(writeTxs);
+    // Build transactions for this batch
+    const batchEnd = Math.min(i + BLOCKHASH_REFRESH_INTERVAL, chunks.length);
+    const batchTxs: RuntimeTransaction[] = [];
+
+    for (let j = i; j < batchEnd; j++) {
+      const { offset, chunk } = chunks[j];
+      const writeIx: Instruction = {
+        program_id: BPF_LOADER_ID,
+        accounts: [
+          { pubkey: programPubkey, is_signer: false, is_writable: true },
+          { pubkey: authorityPubkey, is_signer: true, is_writable: false },
+        ],
+        data: serializeWriteInstruction(offset, chunk),
+      };
+
+      batchTxs.push(deployer.buildAndSignTransaction(
+        [writeIx],
+        [authorityKeypair],
+        freshBlockhash,
+        authorityPubkey.toString('hex')  // Authority is the fee payer
+      ));
+    }
+
+    // Send this batch
+    const batchTxids = await deployer.sendBatchTransactions(batchTxs);
+    writeTxids.push(...batchTxids);
+
+    // Progress update
+    onMessage('info', `Uploaded ${Math.min(batchEnd, chunks.length)}/${chunks.length} chunks`);
+  }
+
   txids.push(...writeTxids);
   onMessage('success', `Uploaded ${chunks.length} chunks`);
 
@@ -1061,7 +1528,8 @@ async function makeExecutable(
   const deployTx = deployer.buildAndSignTransaction(
     [deployIx],
     [authorityKeypair],
-    recentBlockhash
+    recentBlockhash,
+    authorityPubkey.toString('hex')  // Authority is the fee payer
   );
 
   return await deployer.sendAndConfirmTransaction(deployTx);
@@ -1084,14 +1552,41 @@ export class ArchProgramLoader {
     utxoInfo?: { txid: string; vout: number };
   }, onMessage?: (type: 'info' | 'success' | 'error', message: string) => void) {
 
-    // For now, use the same keypair as both program and authority
-    // In production, these should be separate
+    // Generate separate keypairs for program and authority (matches arch-cli --generate-if-missing behavior)
+    // Generate a NEW random keypair for the program
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const programPrivkeyBytes = Buffer.from(randomBytes);
+    const programKeypairBtc = ECPair.fromPrivateKey(programPrivkeyBytes as any, { network: bitcoin.networks.testnet });
+    const internalPubkey = programKeypairBtc.publicKey.subarray(1, 33) as any;
+
+    // Generate P2TR address for the program
+    const { address: programAddress } = bitcoin.payments.p2tr({
+      internalPubkey,
+      network: bitcoin.networks.testnet,
+    });
+
+    const programKeypair = {
+      privkey: programPrivkeyBytes.toString('hex'),
+      pubkey: internalPubkey.toString('hex'),
+      address: programAddress!,
+    };
+
+    console.log('[Deploy] Generated NEW program keypair:', programKeypair.pubkey);
+    console.log('[Deploy] Using authority keypair:', options.keypair.pubkey);
+
+    // The user's keypair becomes the authority (funder)
+    const authorityKeypair = {
+      privkey: options.keypair.privkey,
+      pubkey: options.keypair.pubkey,
+      address: options.keypair.address,
+    };
+
     const result = await deployProgram({
       rpcUrl: options.rpcUrl,
       network: options.network as any,
       programBinary: Buffer.from(options.programBinary),
-      programKeypair: options.keypair,
-      authorityKeypair: options.keypair,
+      programKeypair,
+      authorityKeypair,
       regtestConfig: options.regtestConfig,
       utxoInfo: options.utxoInfo,
       onMessage,

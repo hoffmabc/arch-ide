@@ -5,6 +5,7 @@ mod log;
 mod middlewares;
 mod program;
 mod routes;
+mod test_bip322;
 
 use std::net::{Ipv4Addr, SocketAddr};
 
