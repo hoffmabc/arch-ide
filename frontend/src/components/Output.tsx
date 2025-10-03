@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Button } from './ui/button';
-import { Trash2, X, Check, Info, Terminal, Loader2 } from 'lucide-react';
+import { Trash2, X, Check, Info, Terminal, Loader2, ExternalLink } from 'lucide-react';
 
 export interface OutputMessage {
   type: 'command' | 'success' | 'error' | 'info';
@@ -8,6 +8,7 @@ export interface OutputMessage {
   timestamp: Date;
   isLoading?: boolean;
   commandId?: string;
+  link?: string; // Optional explorer link
 }
 
 interface OutputProps {
@@ -68,12 +69,34 @@ export const Output = ({ messages, onClear }: OutputProps) => {
                   <div className="flex items-center gap-2">
                     <MessageIcon type={msg.type} isLoading={msg.isLoading} />
                     <span className="text-blue-400 break-words">{`$ ${msg.content}`}</span>
+                    {msg.link && (
+                      <a
+                        href={msg.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 ml-2 whitespace-nowrap"
+                        title="View in Explorer"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
                   </div>
                 )}
                 {msg.type === 'success' && (
                   <div className="flex items-center gap-2">
                     <MessageIcon type={msg.type} isLoading={msg.isLoading} />
                     <span className="text-green-400 break-words">{msg.content}</span>
+                    {msg.link && (
+                      <a
+                        href={msg.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 ml-2 whitespace-nowrap"
+                        title="View in Explorer"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
                   </div>
                 )}
                 {msg.type === 'error' && (
@@ -106,7 +129,20 @@ export const Output = ({ messages, onClear }: OutputProps) => {
                   </div>
                 )}
                 {msg.type === 'info' && (
-                  <div className="text-blue-400 break-words">{msg.content}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-400 break-words">{msg.content}</span>
+                    {msg.link && (
+                      <a
+                        href={msg.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 ml-2 whitespace-nowrap"
+                        title="View in Explorer"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

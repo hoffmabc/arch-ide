@@ -45,8 +45,9 @@ interface SidePanelProps {
   } | null;
   onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
   currentFile: FileNode | null;
-  project: Project;
+  project: Project | null;
   onProjectAccountChange: (account: ProjectAccount | null) => void;
+  onAuthorityAccountChange: (account: ProjectAccount | null) => void;
   onProjectUpdate?: (project: Project) => void;
   onNewProject: () => void;
   binaryFileName: string | null;
@@ -59,7 +60,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onProjectUpdate, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onAuthorityAccountChange, onProjectUpdate, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
     const [width, setWidth] = useState(256);
 
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
@@ -161,6 +162,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
             onAccountChange={onAccountChange}
             project={project}
             onProjectAccountChange={onProjectAccountChange}
+            onAuthorityAccountChange={onAuthorityAccountChange}
             binaryFileName={binaryFileName}
             setBinaryFileName={setBinaryFileName}
             connected={connected}

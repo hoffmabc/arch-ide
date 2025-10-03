@@ -23,7 +23,8 @@ export interface Project {
   created: Date;
   lastModified: Date;
   lastAccessed?: Date;
-  account?: ProjectAccount;
+  account?: ProjectAccount; // Program keypair (the deployed program's identity)
+  authorityAccount?: ProjectAccount; // Authority keypair (used to deploy and manage programs)
 }
 
 export interface ArchInstruction {

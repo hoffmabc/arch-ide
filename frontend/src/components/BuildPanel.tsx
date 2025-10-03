@@ -18,6 +18,7 @@ import {
   import { Project, ProjectAccount } from '../types';
   import { useToast } from "@/components/ui/use-toast";
   import { getSmartRpcUrl } from '../utils/smartRpcConnection';
+  import { AuthorityAccountPanel } from './AuthorityAccountPanel';
 
   interface BuildPanelProps {
     hasProjects: boolean;
@@ -38,8 +39,9 @@ import {
       address: string;
     } | null;
     onAccountChange: (account: { privkey: string; pubkey: string; address: string; } | null) => void;
-    project: Project;
+    project: Project | null;
     onProjectAccountChange: (account: ProjectAccount) => void;
+    onAuthorityAccountChange: (account: ProjectAccount | null) => void;
     binaryFileName: string | null;
     setBinaryFileName: (name: string | null) => void;
     connected: boolean;
@@ -62,6 +64,7 @@ import {
     onAccountChange,
     project,
     onProjectAccountChange,
+    onAuthorityAccountChange,
     binaryFileName,
     setBinaryFileName,
     connected
@@ -168,7 +171,7 @@ import {
             }
 
             // Create and download the blob
-            const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+            const blob = new Blob([new Uint8Array(binaryData)], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -383,6 +386,16 @@ import {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
+              </div>
+
+              {/* Authority Account Section */}
+              <div className="mb-4">
+                <AuthorityAccountPanel
+                  project={project}
+                  onAuthorityAccountChange={onAuthorityAccountChange}
+                  config={config}
+                  isConnected={isRpcConnected}
+                />
               </div>
 
               {/* Program Binary Section */}

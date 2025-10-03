@@ -19,6 +19,8 @@ import { StatusBar } from './components/StatusBar';
 import type { ArchIdl } from './types';
 import { ArchProgramLoader, deployProgram } from './utils/arch-sdk-deployer';
 import { storage } from './utils/storage';
+import { hexToBase58 } from './utils/base58';
+import { getExplorerUrls } from './utils/explorerLinks';
 import { FileChange } from './types/types';
 import { Plus, FolderPlus, Download } from 'lucide-react';
 import { Buffer } from 'buffer/';
@@ -601,6 +603,7 @@ const AppContent = () => {
     if (!programId) missing.push('program ID');
     if (!isConnected) missing.push('connection');
     if (fullCurrentProject && !fullCurrentProject.account) missing.push('program keypair');
+    if (fullCurrentProject && !fullCurrentProject.authorityAccount) missing.push('authority account');
     if (!programBinary) missing.push('program binary');
 
     if (missing.length > 0) {
@@ -616,14 +619,18 @@ const AppContent = () => {
   const handleDeployConfirm = async (customUtxoInfo?: { txid: string; vout: number }) => {
     if (!fullCurrentProject || !programId || !isConnected || !programBinary) {
       addOutputMessage('error', 'Cannot deploy: Missing required information');
-      setIsDeploymentModalOpen(false);
       return;
     }
 
-    // We should be using fullCurrentProject.account instead of currentAccount
+    // Check for program keypair
     if (!fullCurrentProject.account) {
       addOutputMessage('error', 'Cannot deploy: Missing program keypair. Please generate a program ID in the Build & Deploy sidebar.');
-      setIsDeploymentModalOpen(false);
+      return;
+    }
+
+    // Check for authority account
+    if (!fullCurrentProject.authorityAccount) {
+      addOutputMessage('error', 'Cannot deploy: Missing authority account. Please generate an authority keypair in the Build & Deploy sidebar.');
       return;
     }
 
@@ -640,25 +647,26 @@ const AppContent = () => {
       // Convert using Buffer
       const binaryData = base64ToUint8Array(base64Content);
 
-      // Use fullCurrentProject.account (program keypair) instead of currentAccount (browser wallet)
-      console.log(`keypair:`, fullCurrentProject.account);
+      console.log('Program keypair:', fullCurrentProject.account.pubkey);
+      console.log('Authority keypair:', fullCurrentProject.authorityAccount.pubkey);
 
-      const deployOptions = {
+      // Call deployProgram directly with separate program and authority keypairs
+      const result = await deployProgram({
         rpcUrl: config.rpcUrl,
-        network: config.network,
+        network: config.network as 'testnet' | 'mainnet-beta' | 'devnet',
         programBinary: Buffer.from(binaryData),
-        keypair: fullCurrentProject.account, // Use program keypair from project
+        programKeypair: fullCurrentProject.account,
+        authorityKeypair: fullCurrentProject.authorityAccount,
         regtestConfig: config.network === 'devnet' ? config.regtestConfig : undefined,
-        utxoInfo: customUtxoInfo // Pass the optional UTXO info
-      };
-
-      console.log('deployOptions', deployOptions);
-
-      const result = await ArchProgramLoader.load(deployOptions, addOutputMessage);
+        utxoInfo: customUtxoInfo,
+        onMessage: addOutputMessage
+      });
 
       if (result.programId) {
         addOutputMessage('success', `Program deployed successfully`);
-        addOutputMessage('info', `Program ID: ${result.programId}`);
+        const programIdBase58 = hexToBase58(result.programId);
+        const explorerUrls = getExplorerUrls(config.network as 'testnet' | 'mainnet-beta' | 'devnet');
+        addOutputMessage('info', `Program ID: ${programIdBase58}`, explorerUrls?.program(programIdBase58));
         setProgramId(result.programId);
         setBinaryFileName(`${fullCurrentProject.name}.so`);
       }
@@ -666,7 +674,7 @@ const AppContent = () => {
       addOutputMessage('error', `Deploy error: ${error.message}`);
     } finally {
       setIsDeploying(false);
-      setIsDeploymentModalOpen(false); // Close the modal when done
+      // Modal is already closed before deployment starts, no need to close it here
     }
   };
 
@@ -977,7 +985,7 @@ const AppContent = () => {
     if (!fullCurrentProject) return;
 
     setIsCompiling(true);
-    addOutputMessage('command', 'cargo build-sbf', true);
+    addOutputMessage('command', 'cargo build-sbf', undefined, true);
 
     try {
       const srcDir = fullCurrentProject.files.find(node =>
@@ -1174,7 +1182,7 @@ const AppContent = () => {
     }
   };
 
-  const addOutputMessage = (type: OutputMessage['type'], content: string, isLoading: boolean = false) => {
+  const addOutputMessage = (type: OutputMessage['type'], content: string, link?: string, isLoading: boolean = false) => {
     setOutputMessages(prev => {
       const messages = [...prev];
 
@@ -1203,7 +1211,8 @@ const AppContent = () => {
         content,
         timestamp: new Date(),
         isLoading,
-        commandId // Add commandId to track related messages
+        commandId, // Add commandId to track related messages
+        link // Add optional explorer link
       }];
     });
   };
@@ -1367,6 +1376,18 @@ const AppContent = () => {
     await projectService.saveProject(updatedProject);
     setFullCurrentProject(updatedProject);
     setCurrentAccount(account);
+  };
+
+  const handleAuthorityAccountChange = async (account: ProjectAccount | null) => {
+    if (!fullCurrentProject) return;
+
+    const updatedProject = {
+      ...fullCurrentProject,
+      authorityAccount: account || undefined
+    };
+
+    await projectService.saveProject(updatedProject);
+    setFullCurrentProject(updatedProject);
   };
 
   const handleProjectUpdate = async (updatedProject: Project) => {
@@ -1748,8 +1769,9 @@ const AppContent = () => {
           onProgramIdChange={handleProgramIdChange}
           currentAccount={currentAccount}
           onAccountChange={setCurrentAccount}
-          project={fullCurrentProject!}
+          project={fullCurrentProject}
           onProjectAccountChange={handleProjectAccountChange}
+          onAuthorityAccountChange={handleAuthorityAccountChange}
           onProjectUpdate={handleProjectUpdate}
           onNewProject={handleNewProject}
           binaryFileName={binaryFileName}

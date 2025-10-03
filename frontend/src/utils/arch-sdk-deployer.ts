@@ -18,6 +18,8 @@ import { MessageUtil } from '@saturnbtcio/arch-sdk';
 import { signMessage } from './bitcoin-signer';
 import { bitcoinRpcRequest } from '../api/bitcoin/rpc';
 import { getSmartRpcUrl } from './smartRpcConnection';
+import { hexToBase58 } from './base58';
+import { getExplorerUrls } from './explorerLinks';
 import { sha256 } from 'js-sha256';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
@@ -123,7 +125,7 @@ interface DeployOptions {
     txid: string;
     vout: number;
   };
-  onMessage?: (type: 'info' | 'success' | 'error', message: string) => void;
+  onMessage?: (type: 'info' | 'success' | 'error', message: string, link?: string) => void;
 }
 
 interface AccountInfo {
@@ -343,12 +345,12 @@ class ArchDeployer {
   private connection: RpcConnection;
   private smartRpcUrl: string;
   private network: string;
-  private onMessage: (type: 'info' | 'success' | 'error', message: string) => void;
+  private onMessage: (type: 'info' | 'success' | 'error', message: string, link?: string) => void;
 
   constructor(
     rpcUrl: string,
     network: string,
-    onMessage?: (type: 'info' | 'success' | 'error', message: string) => void
+    onMessage?: (type: 'info' | 'success' | 'error', message: string, link?: string) => void
   ) {
     this.smartRpcUrl = getSmartRpcUrl(rpcUrl);
     this.connection = new RpcConnection(this.smartRpcUrl);
@@ -1203,7 +1205,10 @@ export async function deployProgram(options: DeployOptions): Promise<{
     onMessage = () => {},
   } = options;
 
-  onMessage('info', `Starting program deployment for ${programKeypair.pubkey}`);
+  const programIdBase58 = hexToBase58(programKeypair.pubkey);
+  const explorerUrls = getExplorerUrls(network);
+
+  onMessage('info', `Starting program deployment for ${programIdBase58}`, explorerUrls?.program(programIdBase58));
 
   const deployer = new ArchDeployer(rpcUrl, network, onMessage);
   const programPubkey = Buffer.from(programKeypair.pubkey, 'hex');
@@ -1217,7 +1222,8 @@ export async function deployProgram(options: DeployOptions): Promise<{
 
     try {
       await deployer.createAndFundAuthorityAccount(authorityKeypair);
-      onMessage('success', `Authority account funded: ${authorityKeypair.pubkey}`);
+      const authorityBase58 = hexToBase58(authorityKeypair.pubkey);
+      onMessage('success', `Authority account funded: ${authorityBase58}`, explorerUrls?.account(authorityBase58));
 
       // Verify authority has funds before proceeding
       await deployer.checkAccountBalance(authorityPubkey, 'Authority');
@@ -1264,7 +1270,7 @@ export async function deployProgram(options: DeployOptions): Promise<{
     const accountOwnerHex = accountInfo.owner.toString('hex');
 
     if (accountOwnerHex !== bpfLoaderIdHex) {
-      onMessage('info', `Account has wrong owner (${accountOwnerHex}), assigning to BPF Loader`);
+      onMessage('info', `Account has wrong owner (${hexToBase58(accountOwnerHex)}), assigning to BPF Loader`);
 
       // Use SystemInstruction::Assign to change the owner
       const recentBlockhash = await deployer.getBestBlockHash();
@@ -1285,7 +1291,8 @@ export async function deployProgram(options: DeployOptions): Promise<{
 
       const assignTxid = await deployer.sendAndConfirmTransaction(assignTx);
       allTxids.push(assignTxid);
-      onMessage('success', `Account owner changed to BPF Loader: ${assignTxid}`);
+      const assignTxidBase58 = hexToBase58(assignTxid);
+      onMessage('success', `Account owner changed to BPF Loader: ${assignTxidBase58}`, explorerUrls?.tx(assignTxidBase58));
 
       // Refresh account info
       accountInfo = await deployer.readAccountInfo(programPubkey);
@@ -1331,7 +1338,8 @@ export async function deployProgram(options: DeployOptions): Promise<{
 
     const createTxid = await deployer.sendAndConfirmTransaction(createTx);
     allTxids.push(createTxid);
-    onMessage('success', `Program account created: ${createTxid}`);
+    const createTxidBase58 = hexToBase58(createTxid);
+    onMessage('success', `Program account created: ${createTxidBase58}`, explorerUrls?.tx(createTxidBase58));
 
     // Refresh account info
     accountInfo = await deployer.readAccountInfo(programPubkey);
@@ -1342,11 +1350,11 @@ export async function deployProgram(options: DeployOptions): Promise<{
     // Verify the account has the correct owner
     const accountOwnerHex = accountInfo.owner.toString('hex');
     const expectedOwnerHex = BPF_LOADER_ID.toString('hex');
-    onMessage('info', `Account owner: ${accountOwnerHex}`);
-    onMessage('info', `Expected owner: ${expectedOwnerHex}`);
+    onMessage('info', `Account owner: ${hexToBase58(accountOwnerHex)}`);
+    onMessage('info', `Expected owner: ${hexToBase58(expectedOwnerHex)}`);
 
     if (accountOwnerHex !== expectedOwnerHex) {
-      throw new Error(`Account created with wrong owner! Got ${accountOwnerHex}, expected ${expectedOwnerHex}`);
+      throw new Error(`Account created with wrong owner! Got ${hexToBase58(accountOwnerHex)}, expected ${hexToBase58(expectedOwnerHex)}`);
     }
   }
 
@@ -1394,7 +1402,7 @@ export async function deployProgram(options: DeployOptions): Promise<{
 
   // ========== COMPLETE ==========
 
-  onMessage('success', `Program deployed successfully: ${programKeypair.pubkey}`);
+  onMessage('success', `Program deployed successfully: ${programIdBase58}`, explorerUrls?.program(programIdBase58));
 
   return {
     programId: programKeypair.pubkey,
