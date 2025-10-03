@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use axum::{extract::{Json, Path, State}, response::IntoResponse, http::StatusCode};
+use axum::{extract::{Json, Path, State}, response::IntoResponse, http::{StatusCode, HeaderMap, header}};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -52,21 +52,41 @@ pub async fn build(
 
     // Spawn the build task in the background
     tokio::spawn(async move {
+        println!("[BUILD] Starting background build task for UUID: {}", uuid_clone);
+
         let result = program::build(&uuid_clone, &program_name, &files).await;
+        println!("[BUILD] Build function returned for UUID: {}", uuid_clone);
 
         match result {
             Ok((stderr, final_program_name)) => {
+                println!("[BUILD] Build Ok for UUID: {}", uuid_clone);
+                println!("[BUILD] stderr length: {} bytes", stderr.len());
+                println!("[BUILD] stderr contains 'Finished': {}", stderr.contains("Finished"));
+                println!("[BUILD] stderr contains 'release': {}", stderr.contains("release"));
+                println!("[BUILD] stderr contains '`release`': {}", stderr.contains("`release`"));
+                println!("[BUILD] stderr contains 'error: could not compile': {}", stderr.contains("error: could not compile"));
+
                 // Check if build actually succeeded by looking for compilation success indicators
                 let build_succeeded = stderr.contains("Finished") &&
                                      (stderr.contains("release") || stderr.contains("`release`")) &&
                                      !stderr.contains("error: could not compile");
+
+                println!("[BUILD] build_succeeded: {}", build_succeeded);
+                println!("[BUILD] Calling complete_build for UUID: {} with status: {}", uuid_clone, if build_succeeded { "Success" } else { "Failed" });
+
                 tracker_clone.complete_build(&uuid_clone, stderr, final_program_name, build_succeeded).await;
+
+                println!("[BUILD] complete_build finished for UUID: {}", uuid_clone);
             },
             Err(e) => {
+                println!("[BUILD] Build Err for UUID: {}, error: {}", uuid_clone, e);
                 let error_msg = format!("Build failed: {}", e);
                 tracker_clone.complete_build(&uuid_clone, error_msg, program_name, false).await;
+                println!("[BUILD] complete_build (error) finished for UUID: {}", uuid_clone);
             }
         }
+
+        println!("[BUILD] Background task completed for UUID: {}", uuid_clone);
     });
 
     Ok(Json(BuildResponse {
@@ -80,9 +100,17 @@ pub async fn build_status(
     State(tracker): State<BuildTracker>,
     Path(uuid): Path<String>,
 ) -> Result<impl IntoResponse> {
+    // CRITICAL: Add no-cache headers to prevent CloudFront/browser caching
+    // Build status must ALWAYS be fresh since it changes from "building" -> "success"/"failed"
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate".parse().unwrap());
+    headers.insert(header::PRAGMA, "no-cache".parse().unwrap());
+    headers.insert(header::EXPIRES, "0".parse().unwrap());
+
     match tracker.get_build(&uuid).await {
         Some(info) => Ok((
             StatusCode::OK,
+            headers,
             Json(BuildStatusResponse {
                 uuid: info.uuid,
                 program_name: info.program_name,
@@ -94,6 +122,7 @@ pub async fn build_status(
         )),
         None => Ok((
             StatusCode::NOT_FOUND,
+            headers,
             Json(BuildStatusResponse {
                 uuid: uuid.clone(),
                 program_name: "unknown".to_string(),

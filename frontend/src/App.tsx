@@ -1074,7 +1074,14 @@ const AppContent = () => {
 
         pollCount++;
 
-        const statusResponse = await fetch(`${API_URL}/build/status/${uuid}`);
+        // CRITICAL: Add cache-busting headers to prevent CloudFront/browser caching
+        const statusResponse = await fetch(`${API_URL}/build/status/${uuid}`, {
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+          cache: 'no-store', // Prevent browser cache
+        });
 
         if (!statusResponse.ok) {
           if (statusResponse.status === 404) {
@@ -1759,7 +1766,6 @@ const AppContent = () => {
             onSelectFile={handleFileSelect}
             onCloseFile={handleCloseFile}
             currentProject={fullCurrentProject}
-            onRunClientCode={runClientCode}
           />
           <div className="flex-1 overflow-hidden">
           <Editor

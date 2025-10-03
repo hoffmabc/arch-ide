@@ -213,17 +213,28 @@ pub async fn build(
         return Err(anyhow!("Failed to create Cargo.toml file"));
     }
 
-    // Set up shared target directory
+    // Set up shared target directory for compiled artifacts
     println!("Setting up shared target directory...");
     let programs_dir = Path::new(PROGRAMS_DIR);
     let target_dir = programs_dir.join("target");
     fs::create_dir_all(&target_dir)?;
 
-    // Make sure target directory has proper permissions
+    // CRITICAL: Set up shared CARGO_HOME for caching downloaded crates and registry
+    // This prevents re-downloading dependencies for every build!
+    let cargo_home = programs_dir.join(".cargo");
+    fs::create_dir_all(&cargo_home)?;
+    println!("Using shared CARGO_HOME: {:?}", cargo_home);
+
+    // Make sure cache directories have proper permissions
     let _ = Command::new("chmod")
         .arg("-R")
         .arg("777")
         .arg(&target_dir)
+        .output();
+    let _ = Command::new("chmod")
+        .arg("-R")
+        .arg("777")
+        .arg(&cargo_home)
         .output();
 
     let shared_target = match target_dir.canonicalize() {
@@ -234,6 +245,17 @@ pub async fn build(
         }
     };
     println!("Using shared target directory: {:?}", shared_target);
+    
+    let shared_cargo_home = match cargo_home.canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            println!("Warning: Failed to canonicalize cargo home path: {}", e);
+            cargo_home.clone()
+        }
+    };
+    let shared_cargo_home_str = shared_cargo_home.to_str()
+        .ok_or_else(|| anyhow!("Failed to convert cargo home path to string"))?
+        .to_string();
 
     // Clean up any existing Cargo.lock
     let lock_file = program_path.join("Cargo.lock");
@@ -453,6 +475,7 @@ pub async fn build(
     let mut child = TokioCommand::new("cargo-build-sbf")
         .args(&build_args)
         .env("CARGO_TARGET_DIR", &shared_target_str)
+        .env("CARGO_HOME", &shared_cargo_home_str)  // Cache downloaded crates and registry!
         .env("CARGO_BUILD_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_INCREMENTAL", "true")
         .env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "256")
@@ -468,25 +491,41 @@ pub async fn build(
     let mut stdout_lines = String::new();
     let mut stderr_lines = String::new();
 
-    // Handle stdout
-    if let Some(stdout) = child.stdout.take() {
-        let mut reader = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            println!("stdout: {}", line);
-            stdout_lines.push_str(&line);
-            stdout_lines.push('\n');
-        }
-    }
+    // CRITICAL: Read stdout and stderr in PARALLEL to avoid deadlock
+    // If we read sequentially, the child process can hang if one buffer fills up
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
 
-    // Handle stderr
-    if let Some(stderr) = child.stderr.take() {
-        let mut reader = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            println!("stderr: {}", line);
-            stderr_lines.push_str(&line);
-            stderr_lines.push('\n');
+    let stdout_handle = tokio::spawn(async move {
+        let mut lines = String::new();
+        if let Some(stdout) = stdout {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                println!("stdout: {}", line);
+                lines.push_str(&line);
+                lines.push('\n');
+            }
         }
-    }
+        lines
+    });
+
+    let stderr_handle = tokio::spawn(async move {
+        let mut lines = String::new();
+        if let Some(stderr) = stderr {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                println!("stderr: {}", line);
+                lines.push_str(&line);
+                lines.push('\n');
+            }
+        }
+        lines
+    });
+
+    // Wait for both streams to complete in parallel
+    let (stdout_result, stderr_result) = tokio::join!(stdout_handle, stderr_handle);
+    stdout_lines = stdout_result.unwrap_or_default();
+    stderr_lines = stderr_result.unwrap_or_default();
 
     // Wait for the command to complete
     let status = child.wait().await?;

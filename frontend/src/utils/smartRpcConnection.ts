@@ -24,20 +24,32 @@ export function getSmartRpcUrl(rpcUrl: string): string {
     hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown'
   });
 
-  // If the RPC URL is localhost, use it directly (e.g., local devnet)
+  // If the RPC URL is localhost, use it directly (user's local devnet)
   if (isLocalhostUrl) {
+    // Warn about mixed content if on production HTTPS
+    if (!isRunningOnLocalhost && typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      console.warn(
+        '⚠️ Connecting to localhost RPC from HTTPS site.\n' +
+        'This may be blocked by your browser (mixed content policy).\n' +
+        'If connection fails, either:\n' +
+        '1. Run your local devnet with HTTPS, OR\n' +
+        '2. Use a public RPC URL (e.g., https://rpc-beta.test.arch.network), OR\n' +
+        '3. Run the IDE locally (http://localhost:5173)'
+      );
+    }
+    console.log('Using local devnet RPC directly:', rpcUrl);
     return rpcUrl;
   }
 
-  // For external RPC endpoints (https://):
+  // For external RPC endpoints (https://rpc-beta.test.arch.network, etc):
   // - On localhost dev: Use Vite's /rpc proxy (it handles CORS and forwards to RPC server)
-  // - On deployed: Use backend API /rpc proxy
+  // - On production: Use RPC directly (CORS is configured on the RPC server)
   if (isRunningOnLocalhost) {
     console.log('Using Vite dev proxy: /rpc');
     return '/rpc';
   } else {
-    console.log(`Using backend proxy: ${API_URL}/rpc`);
-    return `${API_URL}/rpc`;
+    console.log(`Using RPC directly in production: ${rpcUrl}`);
+    return rpcUrl;  // Hit RPC directly, no proxy needed!
   }
 }
 

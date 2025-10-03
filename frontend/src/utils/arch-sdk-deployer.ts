@@ -55,21 +55,16 @@ console.log('[Constants] BPF_LOADER_ID as ASCII:', BPF_LOADER_ID.toString('ascii
  */
 const LOADER_STATE_SIZE = 40;
 
-/** Maximum JSON RPC payload size (RPC enforces 10KB limit on HTTP POST body) */
-const RPC_JSON_PAYLOAD_LIMIT = 10240; // 10KB HTTP body limit from RPC
-
 /**
- * JSON serialization overhead multiplier
- * When a RuntimeTransaction is serialized to JSON:
- * - Each byte becomes "123," (avg 3-4 chars per byte)
- * - Arrays need brackets: [...]
- * - Objects need braces: {...}
- * - Field names: "version":, "signatures":, etc.
- * - JSON-RPC wrapper: {"jsonrpc":"2.0","id":"...","method":"send_transaction","params":{...}}
- * - Nested array structure adds significant overhead
- * Extremely conservative estimate: 8x overhead (ensures <10KB)
+ * Runtime Transaction Size Limit (matches Rust SDK)
+ *
+ * From sdk/src/types/runtime_transaction.rs:
+ * pub const RUNTIME_TX_SIZE_LIMIT: usize = 10240;
+ *
+ * This is the limit for a SINGLE RuntimeTransaction when serialized (binary).
+ * With batch sending (send_transactions), each transaction can be up to 10KB!
  */
-const JSON_SERIALIZATION_OVERHEAD = 8.0;
+const RUNTIME_TX_SIZE_LIMIT = 10240; // 10KB per transaction (binary)
 
 // ============================================================================
 // LOADER INSTRUCTION VARIANTS (bincode serialization)
@@ -253,6 +248,9 @@ function serializeAssignInstruction(owner: Buffer): Buffer {
 /**
  * Calculate maximum chunk size for ELF data
  * Matches the Rust SDK's extend_bytes_max_len() function
+ *
+ * Returns RUNTIME_TX_SIZE_LIMIT (10KB) minus transaction overhead.
+ * With batch sending, we can use much larger chunks (~9.7KB vs ~577 bytes)!
  */
 function calculateMaxChunkSize(): number {
   // Create a dummy write instruction with 256 bytes
@@ -305,16 +303,15 @@ function calculateMaxChunkSize(): number {
                      accountKeysCountSize + accountKeysSize + blockhashSize +
                      instructionsCountSize + instructionMetadataSize + writeInstructionOverhead;
 
-  // Calculate max chunk size accounting for JSON serialization overhead
-  // The RPC limit is on the JSON payload size, not binary transaction size
-  const binaryTxLimit = RPC_JSON_PAYLOAD_LIMIT / JSON_SERIALIZATION_OVERHEAD;
-  const safetyMargin = 500; // Additional safety margin
-  const availableSpace = Math.floor(binaryTxLimit - txOverhead - safetyMargin);
+  // Calculate max chunk size using RUNTIME_TX_SIZE_LIMIT (10KB per transaction)
+  // With batch sending, the 10KB limit is per individual transaction (binary), not per RPC call!
+  const safetyMargin = 100; // Small safety margin
+  const maxChunkSize = RUNTIME_TX_SIZE_LIMIT - txOverhead - safetyMargin;
 
-  console.log('[Chunk Size] Calculated max chunk size:', availableSpace);
+  console.log('[Chunk Size] Calculated max chunk size:', maxChunkSize);
   console.log('[Chunk Size] TX overhead:', txOverhead, 'Safety margin:', safetyMargin);
-  console.log('[Chunk Size] Binary limit:', Math.floor(binaryTxLimit), 'JSON payload limit:', RPC_JSON_PAYLOAD_LIMIT);
-  return Math.max(availableSpace, 1000); // Minimum 1KB chunks
+  console.log('[Chunk Size] RUNTIME_TX_SIZE_LIMIT:', RUNTIME_TX_SIZE_LIMIT);
+  return maxChunkSize; // Should be ~9937 bytes ≈ 9.7KB per chunk!
 }
 
 // ============================================================================
@@ -703,14 +700,12 @@ class ArchDeployer {
         const batchTxids = result.result as string[];
         allTxids.push(...batchTxids);
 
-        console.log(`[Batch] Batch ${batchNum} sent successfully, waiting for confirmations...`);
+        console.log(`[Batch] Batch ${batchNum} sent successfully (${batchTxids.length} txs), waiting for confirmations...`);
 
-        // Wait for all transactions in this batch to confirm
-        for (const txid of batchTxids) {
-          await this.waitForConfirmation(txid);
-        }
+        // Wait for all transactions in PARALLEL (not sequentially!)
+        await Promise.all(batchTxids.map(txid => this.waitForConfirmation(txid)));
 
-        console.log(`[Batch] Batch ${batchNum} confirmed`);
+        console.log(`[Batch] Batch ${batchNum} confirmed (${batchTxids.length} transactions)`);
         this.onMessage('success', `Batch ${batchNum}/${totalBatches} confirmed (${allTxids.length}/${txs.length} chunks)`);
 
       } catch (error) {
@@ -1537,48 +1532,37 @@ async function deployProgramElf(
     chunks.push({ offset, chunk });
   }
 
-  onMessage('info', `Splitting into ${chunks.length} chunks`);
+  console.log(`[Deploy] Total chunks: ${chunks.length}, max chunk size: ${maxChunkSize} bytes`);
+  onMessage('info', `Splitting into ${chunks.length} chunks (${maxChunkSize} bytes each)`);
 
-  // Send chunks in smaller batches with fresh blockhash every N transactions
-  // to avoid blockhash expiration
-  const BLOCKHASH_REFRESH_INTERVAL = 5; // Refresh every 5 transactions
-  const writeTxids: string[] = [];
+  // Build ALL write transactions at once (using the same blockhash for efficiency)
+  // With batch sending (100 at a time), we can handle many transactions before blockhash expires
+  const writeBlockhash = await deployer.getBestBlockHash();
+  const allWriteTxs: RuntimeTransaction[] = [];
 
-  for (let i = 0; i < chunks.length; i += BLOCKHASH_REFRESH_INTERVAL) {
-    // Get fresh blockhash for this batch
-    const freshBlockhash = await deployer.getBestBlockHash();
+  for (let i = 0; i < chunks.length; i++) {
+    const { offset, chunk } = chunks[i];
+    const writeIx: Instruction = {
+      program_id: BPF_LOADER_ID,
+      accounts: [
+        { pubkey: programPubkey, is_signer: false, is_writable: true },
+        { pubkey: authorityPubkey, is_signer: true, is_writable: false },
+      ],
+      data: serializeWriteInstruction(offset, chunk),
+    };
 
-    // Build transactions for this batch
-    const batchEnd = Math.min(i + BLOCKHASH_REFRESH_INTERVAL, chunks.length);
-    const batchTxs: RuntimeTransaction[] = [];
-
-    for (let j = i; j < batchEnd; j++) {
-      const { offset, chunk } = chunks[j];
-      const writeIx: Instruction = {
-        program_id: BPF_LOADER_ID,
-        accounts: [
-          { pubkey: programPubkey, is_signer: false, is_writable: true },
-          { pubkey: authorityPubkey, is_signer: true, is_writable: false },
-        ],
-        data: serializeWriteInstruction(offset, chunk),
-      };
-
-      batchTxs.push(deployer.buildAndSignTransaction(
-        [writeIx],
-        [authorityKeypair],
-        freshBlockhash,
-        authorityPubkey.toString('hex')  // Authority is the fee payer
-      ));
-    }
-
-    // Send this batch
-    const batchTxids = await deployer.sendBatchTransactions(batchTxs);
-    writeTxids.push(...batchTxids);
-
-    // Progress update
-    onMessage('info', `Uploaded ${Math.min(batchEnd, chunks.length)}/${chunks.length} chunks`);
+    allWriteTxs.push(deployer.buildAndSignTransaction(
+      [writeIx],
+      [authorityKeypair],
+      writeBlockhash,
+      authorityPubkey.toString('hex')  // Authority is the fee payer
+    ));
   }
 
+  console.log(`[Deploy] Built ${allWriteTxs.length} write transactions, sending in batches of 100...`);
+
+  // Send all transactions in batches of 100 (matching arch-cli behavior)
+  const writeTxids = await deployer.sendBatchTransactions(allWriteTxs);
   txids.push(...writeTxids);
   onMessage('success', `Uploaded ${chunks.length} chunks`);
 

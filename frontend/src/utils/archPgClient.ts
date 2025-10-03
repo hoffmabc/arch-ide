@@ -33,12 +33,29 @@ export class ArchPgClient {
 
   static async execute({ fileName, code, onMessage }: ClientParams) {
     console.log('ArchPgClient.execute called', this._isClientRunning);
+    console.log('Code type:', typeof code);
+    console.log('Code preview:', code.substring(0, 100) + '...');
+    console.log('Is data URI:', code.startsWith('data:'));
+
     if (this._isClientRunning) {
       throw new Error("Client is already running!");
     }
 
+    this._isClientRunning = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+    let messageHandler: ((event: MessageEvent) => void) | null = null;
+
+    const cleanup = () => {
+      if (messageHandler) {
+        window.removeEventListener('message', messageHandler);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      this._isClientRunning = false;
+    };
+
     try {
-      this._isClientRunning = true;
       const iframeWindow = this._getIframeWindow();
       const iframeDocument = iframeWindow.document;
 
@@ -49,7 +66,7 @@ export class ArchPgClient {
       }
 
       // IMPORTANT: Add message handler BEFORE injecting script
-      const messageHandler = (event: MessageEvent) => {
+      messageHandler = (event: MessageEvent) => {
         if (event.source === iframeWindow) {
           const data = event.data;
           if (data && typeof data === 'object') {
@@ -57,14 +74,26 @@ export class ArchPgClient {
               console.log('Received console message:', data);
               onMessage(data.level || 'info', data.message || '');
             } else if (data.type === 'completion') {
-              window.removeEventListener('message', messageHandler);
-              console.log('Execution completed');
+              console.log('Execution completed successfully');
+              onMessage('success', 'Code execution completed');
+              cleanup();
+            } else if (data.type === 'error') {
+              console.error('Execution error:', data.message);
+              onMessage('error', data.message || 'Unknown error');
+              cleanup();
             }
           }
         }
       };
 
       window.addEventListener('message', messageHandler);
+
+      // Safety timeout - if execution takes more than 30 seconds, assume it's hung
+      timeoutId = setTimeout(() => {
+        console.warn('Execution timeout - resetting client running flag');
+        cleanup();
+        onMessage('error', 'Execution timeout - code took too long to complete');
+      }, 30000);
 
       // Set up SDK in iframe
       if (iframeWindow) {
@@ -146,8 +175,23 @@ export class ArchPgClient {
         };
       `;
 
+      // Decode data URI if needed
+      let actualCode = code;
+      if (code.startsWith('data:')) {
+        // Extract base64 content from data URI
+        const base64Match = code.match(/^data:[^;]+;base64,(.+)$/);
+        if (base64Match) {
+          try {
+            actualCode = atob(base64Match[1]);
+            console.log('Decoded base64 content:', actualCode.substring(0, 100) + '...');
+          } catch (e) {
+            console.error('Failed to decode base64 content:', e);
+          }
+        }
+      }
+
       // Process the code (remove imports, etc.)
-      const processedCode = code.replace(/import\s+.*?from\s+['"].*?['"];?/g, '// Import removed');
+      const processedCode = actualCode.replace(/import\s+.*?from\s+['"].*?['"];?/g, '// Import removed');
 
       // Create a simpler wrapper
       const wrappedCode = `
@@ -222,8 +266,11 @@ export class ArchPgClient {
         bodyContent: iframeDocument.body.innerHTML,
         hasConsole: typeof (iframeWindow as any).console !== 'undefined'
       });
-    } finally {
-      this._isClientRunning = false;
+    } catch (error) {
+      cleanup();
+      console.error('Error during code execution setup:', error);
+      onMessage('error', error instanceof Error ? error.message : 'Unknown error during execution setup');
+      throw error;
     }
   }
 

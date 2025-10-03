@@ -50,12 +50,19 @@ impl BuildTracker {
     }
 
     pub async fn complete_build(&self, uuid: &str, stderr: String, program_name: String, success: bool) {
+        println!("[TRACKER] complete_build called for UUID: {}, success: {}", uuid, success);
         let mut builds = self.builds.write().await;
+        println!("[TRACKER] Got write lock for UUID: {}", uuid);
+
         if let Some(info) = builds.get_mut(uuid) {
+            println!("[TRACKER] Found build info for UUID: {}, updating status", uuid);
             info.status = if success { BuildStatus::Success } else { BuildStatus::Failed };
             info.stderr = Some(stderr);
             info.program_name = program_name;
             info.completed_at = Some(chrono::Utc::now());
+            println!("[TRACKER] Updated build info for UUID: {}, new status: {:?}", uuid, info.status);
+        } else {
+            println!("[TRACKER] WARNING: Build info NOT FOUND for UUID: {}", uuid);
         }
     }
 

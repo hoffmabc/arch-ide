@@ -5,7 +5,7 @@ mod log;
 mod middlewares;
 mod program;
 mod routes;
-mod test_bip322;
+// mod test_bip322;  // Commented out - missing dependencies (arch_sdk, bitcoin, etc.)
 
 use std::net::{Ipv4Addr, SocketAddr};
 

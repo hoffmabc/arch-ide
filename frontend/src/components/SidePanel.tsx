@@ -137,6 +137,10 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               project={project}
               onProjectAccountChange={onProjectAccountChange}
               onProjectUpdate={onProjectUpdate}
+              onBuild={onBuild}
+              onDeploy={onDeploy}
+              isBuilding={isBuilding}
+              isDeploying={isDeploying}
             />
           ) : (
           <BuildPanel

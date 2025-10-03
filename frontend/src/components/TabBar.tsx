@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Play } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileNode, Project } from '../types';
 import {
@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { findFileInProject } from '../App';
-import { Button } from '@/components/ui/button';
 
 interface TabBarProps {
   openFiles: FileNode[];
@@ -17,10 +16,9 @@ interface TabBarProps {
   onSelectFile: (file: FileNode) => void;
   onCloseFile: (file: FileNode) => void;
   currentProject: Project | null;
-  onRunClientCode?: () => void;
 }
 
-const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProject, onRunClientCode }: TabBarProps) => {
+const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProject }: TabBarProps) => {
   const handleTabSelect = (file: FileNode) => {
     console.group('TabBar handleTabSelect');
     console.log('Tab selected:', {
@@ -52,11 +50,8 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProj
     console.groupEnd();
   };
 
-  // Check if current file is a client file (under client directory and is a .ts file)
-  const isClientFile = currentFile?.path?.startsWith('client/') && currentFile?.name?.endsWith('.ts');
-
   return (
-    <div className="flex items-center justify-between bg-gray-800 border-b border-gray-700">
+    <div className="flex items-center bg-gray-800 border-b border-gray-700">
       <div className="flex overflow-x-auto">
         {openFiles.map((file) => (
           <div
@@ -91,28 +86,6 @@ const TabBar = ({ openFiles, currentFile, onSelectFile, onCloseFile, currentProj
           </div>
         ))}
       </div>
-      {isClientFile && onRunClientCode && (
-        <div className="flex-shrink-0 px-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-green-500 hover:text-green-400 hover:bg-gray-700"
-                  onClick={onRunClientCode}
-                >
-                  <Play className="h-4 w-4" />
-                  <span className="ml-1">Run</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Run client code</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      )}
     </div>
   );
 };

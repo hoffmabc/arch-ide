@@ -24,7 +24,12 @@ import {
   Package,
   Upload,
   Check,
-  X
+  X,
+  Hammer,
+  Rocket,
+  Play,
+  FlaskConical,
+  Loader2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -285,7 +290,50 @@ interface FileExplorerProps {
   project: Project | null;
   onProjectAccountChange?: (account: ProjectAccount | null) => void;
   onProjectUpdate?: (project: Project) => void;
+  onBuild?: () => void;
+  onDeploy?: () => void;
+  isBuilding?: boolean;
+  isDeploying?: boolean;
 }
+
+interface SectionHeaderProps {
+  title: string;
+  icon: React.ReactNode;
+  actions?: Array<{
+    icon: React.ReactNode;
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+  }>;
+}
+
+const SectionHeader = ({ title, icon, actions }: SectionHeaderProps) => {
+  return (
+    <div className="border-b border-gray-700">
+      <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-700 group">
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span className="text-sm font-medium">{title}</span>
+        </div>
+        {actions && actions.length > 0 && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+            {actions.map((action, idx) => (
+              <button
+                key={idx}
+                className="hover:bg-gray-600 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={action.onClick}
+                disabled={action.disabled}
+                title={action.label}
+              >
+                {action.icon}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface FileContextMenuProps {
   node: FileNode;
@@ -533,7 +581,11 @@ const FileExplorer = ({
   addOutputMessage,
   project,
   onProjectAccountChange,
-  onProjectUpdate
+  onProjectUpdate,
+  onBuild,
+  onDeploy,
+  isBuilding = false,
+  isDeploying = false
 }: FileExplorerProps) => {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -694,9 +746,84 @@ const FileExplorer = ({
         ) : (
           <>
             {project && <ProjectInfo project={project} onProjectUpdate={handleProjectUpdate} />}
-            {files.map((node, index) => (
+
+            {/* Program Section */}
+            {programFiles.length > 0 && (
+              <>
+                <SectionHeader
+                  title="Program"
+                  icon={<Hammer size={16} className="text-orange-400" />}
+                  actions={[
+                    {
+                      icon: isBuilding ? <Loader2 size={16} className="animate-spin" /> : <Hammer size={16} />,
+                      label: "Build",
+                      onClick: () => onBuild?.(),
+                      disabled: isBuilding || !hasProjects
+                    },
+                    {
+                      icon: isDeploying ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={16} />,
+                      label: "Deploy",
+                      onClick: () => onDeploy?.(),
+                      disabled: isDeploying || !hasProjects
+                    }
+                  ]}
+                />
+                {programFiles.map((node, index) => (
+                  <FileExplorerItem
+                    key={`program-${index}`}
+                    node={node}
+                    onSelect={onFileSelect}
+                    onUpdateTree={onUpdateTree}
+                    onNewItem={onNewItem}
+                    expandedFolders={expandedFolders}
+                    onExpandedFoldersChange={onExpandedFoldersChange}
+                    currentFile={currentFile}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* Client Section */}
+            {clientFiles.length > 0 && (
+              <>
+                <SectionHeader
+                  title="Client"
+                  icon={<Play size={16} className="text-green-400" />}
+                  actions={[
+                    {
+                      icon: <Play size={16} />,
+                      label: "Run",
+                      onClick: () => runClientCode()
+                    },
+                    {
+                      icon: <FlaskConical size={16} />,
+                      label: "Test",
+                      onClick: () => {
+                        // This will be handled by the parent component
+                        console.log('Test clicked from FileExplorer');
+                      }
+                    }
+                  ]}
+                />
+                {clientFiles.map((node, index) => (
+                  <FileExplorerItem
+                    key={`client-${index}`}
+                    node={node}
+                    onSelect={onFileSelect}
+                    onUpdateTree={onUpdateTree}
+                    onNewItem={onNewItem}
+                    expandedFolders={expandedFolders}
+                    onExpandedFoldersChange={onExpandedFoldersChange}
+                    currentFile={currentFile}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* Other Files Section (if any) */}
+            {otherFiles.length > 0 && otherFiles.map((node, index) => (
               <FileExplorerItem
-                key={index}
+                key={`other-${index}`}
                 node={node}
                 onSelect={onFileSelect}
                 onUpdateTree={onUpdateTree}
