@@ -10,9 +10,6 @@ import {
   } from "./ui/tooltip";
   import { NewKeypairDialog } from './NewKeypairDialog';
   import { useEffect } from 'react';
-  import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-  import { IdlPanel } from './IdlPanel';
-  import { ArchIdl } from '../types/idl';
   import { Config } from '../types/config';
   import { ConnectionStatus } from './ConnectionStatus';
   import { Project, ProjectAccount } from '../types';
@@ -58,7 +55,6 @@ import {
     onProgramBinaryChange,
     config,
     onConnectionStatusChange,
-    idl,
     onProgramIdChange,
     currentAccount,
     onAccountChange,
@@ -68,7 +64,7 @@ import {
     binaryFileName,
     setBinaryFileName,
     connected
-  }: BuildPanelProps & { idl: ArchIdl | null }) => {
+  }: BuildPanelProps) => {
       const [isNewKeypairDialogOpen, setIsNewKeypairDialogOpen] = useState(false);
       const [isUploading, setIsUploading] = useState(false);
       const { toast } = useToast();
@@ -300,168 +296,155 @@ import {
             )}
           </Button>
 
-          <Tabs defaultValue="binary" className="w-full space-y-4">
-            <TabsList className="w-full">
-              <TabsTrigger value="binary" className="flex-1">Binary</TabsTrigger>
-              <TabsTrigger value="idl" className="flex-1">IDL</TabsTrigger>
-            </TabsList>
+          {/* Program ID Section */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Program ID</h3>
+              <div className="flex gap-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" data-tutorial="generate-key" variant="ghost" onClick={handleNewKeypairClick}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Generate new program ID</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-            <TabsContent value="binary" className="space-y-6">
-              {/* Program ID Section */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium">Program ID</h3>
-                  <div className="flex gap-1">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button size="icon" data-tutorial="generate-key" variant="ghost" onClick={handleNewKeypairClick}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Generate new program ID</p>
-                        </TooltipContent>
-                      </Tooltip>
-
-                      <NewKeypairDialog
-                        isOpen={isNewKeypairDialogOpen}
-                        onClose={() => setIsNewKeypairDialogOpen(false)}
-                        onConfirm={handleNewKeypair}
-                        isConnected={isRpcConnected}
-                      />
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button size="icon" variant="ghost" onClick={() => document.getElementById('import-keypair')?.click()}>
-                            <Import className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Import program keypair</p>
-                        </TooltipContent>
-                      </Tooltip>
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button size="icon" variant="ghost" onClick={handleExportKeypair} disabled={!currentAccount}>
-                            <Save className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Save program keypair</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  id="import-keypair"
-                  className="hidden"
-                  accept="application/json"
-                  onChange={handleImportKeypair}
-                />
-                <div className="flex items-center space-x-2">
-                  <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
-                    {(currentAccount && currentAccount.pubkey && project?.account)
-                      ? currentAccount.pubkey
-                      : 'Not deployed'}
-                  </code>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => currentAccount && navigator.clipboard.writeText(currentAccount.pubkey)}
-                          disabled={!currentAccount}
-                        >
-                          <ClipboardIcon className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Copy program ID</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-
-              {/* Authority Account Section */}
-              <div className="mb-4">
-                <AuthorityAccountPanel
-                  project={project}
-                  onAuthorityAccountChange={onAuthorityAccountChange}
-                  config={config}
-                  isConnected={isRpcConnected}
-                />
-              </div>
-
-              {/* Program Binary Section */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium">Program binary</h3>
-                  <div className="flex gap-1">
-                    <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => document.getElementById('import-binary')?.click()}
-                          >
-                            <Import className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Import program binary (.so)</p>
-                        </TooltipContent>
-                      </Tooltip>
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={handleExportBinary}
-                            disabled={!programBinary}
-                          >
-                            <Save className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Save program binary</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    id="import-binary"
-                    accept=".so"
-                    className="hidden"
-                    onChange={handleImportBinary}
+                  <NewKeypairDialog
+                    isOpen={isNewKeypairDialogOpen}
+                    onClose={() => setIsNewKeypairDialogOpen(false)}
+                    onConfirm={handleNewKeypair}
+                    isConnected={isRpcConnected}
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-xs bg-gray-900 p-2 rounded flex-1">
-                    {(programBinary && binaryFileName)
-                      ? binaryFileName
-                      : 'Import your program binary (.so)'}
-                  </div>
-                  <div className={`w-2 h-2 rounded-full ${programBinary ? 'bg-green-500' : 'bg-red-500'}`}
-                       title={programBinary ? 'Binary loaded' : 'No binary loaded'} />
-                </div>
-              </div>
-            </TabsContent>
 
-            <TabsContent value="idl">
-              <IdlPanel idl={idl} />
-            </TabsContent>
-          </Tabs>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" variant="ghost" onClick={() => document.getElementById('import-keypair')?.click()}>
+                        <Import className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Import program keypair</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon" variant="ghost" onClick={handleExportKeypair} disabled={!currentAccount}>
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Save program keypair</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+            <input
+              type="file"
+              id="import-keypair"
+              className="hidden"
+              accept="application/json"
+              onChange={handleImportKeypair}
+            />
+            <div className="flex items-center space-x-2">
+              <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
+                {(currentAccount && currentAccount.pubkey && project?.account)
+                  ? currentAccount.pubkey
+                  : 'Not deployed'}
+              </code>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => currentAccount && navigator.clipboard.writeText(currentAccount.pubkey)}
+                      disabled={!currentAccount}
+                    >
+                      <ClipboardIcon className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Copy program ID</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          {/* Authority Account Section */}
+          <div className="mb-4">
+            <AuthorityAccountPanel
+              project={project}
+              onAuthorityAccountChange={onAuthorityAccountChange}
+              config={config}
+              isConnected={isRpcConnected}
+            />
+          </div>
+
+          {/* Program Binary Section */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Program binary</h3>
+              <div className="flex gap-1">
+                <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => document.getElementById('import-binary')?.click()}
+                      >
+                        <Import className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Import program binary (.so)</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={handleExportBinary}
+                        disabled={!programBinary}
+                      >
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Save program binary</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                id="import-binary"
+                accept=".so"
+                className="hidden"
+                onChange={handleImportBinary}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs bg-gray-900 p-2 rounded flex-1">
+                {(programBinary && binaryFileName)
+                  ? binaryFileName
+                  : 'Import your program binary (.so)'}
+              </div>
+              <div className={`w-2 h-2 rounded-full ${programBinary ? 'bg-green-500' : 'bg-red-500'}`}
+                   title={programBinary ? 'Binary loaded' : 'No binary loaded'} />
+            </div>
+          </div>
 
           <Button
             className="w-full mt-4"

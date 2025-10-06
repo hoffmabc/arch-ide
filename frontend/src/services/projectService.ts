@@ -94,57 +94,379 @@ pub struct HelloWorldParams {
 }
 `;
 
-const DEFAULT_CLIENT = String.raw`const conn = new RpcConnection("https://rpc-beta.test.arch.network");
+const DEFAULT_CLIENT = String.raw`// ============================================================================
+// Hello World Program Client Example
+// ============================================================================
+// This example demonstrates how to call the hello world program that:
+// 1. Takes a name as input
+// 2. Writes "Hello {name}" to an account
+// 3. Returns a signed transaction
+// ============================================================================
 
-// Get latest block count
-const blockCount = await conn.getBlockCount();
-console.log("Block Count:", blockCount);
+console.log("=== Arch Network Hello World Example ===\n");
 
-// Get best (latest) block hash
-const bestBlockHash = await conn.getBestBlockHash();
-console.log("Best Block Hash:", bestBlockHash.slice(0, 16) + "...");
+// Try to connect to Arch Network RPC
+let conn;
+let blockCount;
+let bestBlockHash;
 
-// Create a new account and request airdrop (new in 0.0.21)
-const archConn = ArchConnection(conn);
-const newAccount = await archConn.createNewAccount();
-console.log("\nNew Account Created:");
-console.log("  Address:", newAccount.address);
-console.log("  Pubkey (hex):", newAccount.pubkey.slice(0, 20) + "...");
-console.log("  Pubkey (base58):", toBase58(PubkeyUtil.fromHex(newAccount.pubkey)));
-
-// Request airdrop for the new account
 try {
-  // Note: createNewAccount() returns hex format, so use fromHex
-  const pubkey = PubkeyUtil.fromHex(newAccount.pubkey);
-  await conn.requestAirdrop(pubkey);
-  console.log("✓ Airdrop requested successfully!");
+  console.log("Connecting to Arch Network...");
+  conn = new RpcConnection("https://rpc-beta.test.arch.network");
 
-  // Read account info to verify
-  const accountInfo = await conn.readAccountInfo(pubkey);
-  console.log("\nAccount Info:");
-  console.log("  Lamports:", accountInfo.lamports);
-  console.log("  Owner (base58):", toBase58(accountInfo.owner));
-  console.log("  Data:", accountInfo.data.length, "bytes");
-  console.log("  UTXO:", accountInfo.utxo);
-} catch(e) {
-  console.log("✗ Airdrop error:", e.error ? e.error.message : e.message);
+  // Test connection with a simple call (with timeout protection)
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Connection timeout')), 5000)
+  );
+
+  blockCount = await Promise.race([
+    conn.getBlockCount(),
+    timeout
+  ]);
+
+  console.log("✓ Connected to Arch Network");
+  console.log("Block Count:", blockCount);
+
+  // Get best (latest) block hash
+  bestBlockHash = await conn.getBestBlockHash();
+  console.log("Best Block Hash:", bestBlockHash.slice(0, 16) + "...\n");
+} catch (error) {
+  console.error("✗ Failed to connect to Arch Network RPC");
+  console.error("Error:", error.message || error);
+  console.log("\n⚠️  The Arch Network testnet might be down or unreachable");
+  console.log("\n💡 This example requires a working RPC connection.");
+  console.log("   Check https://docs.arch.network for current RPC endpoints");
+  console.log("\n❌ Stopping execution - cannot proceed without RPC connection");
+  // Don't throw - just exit gracefully
+  return;
 }
 
-// Example: Query multiple accounts at once (new in 0.0.21)
-console.log("\n--- Batch Operations ---");
-const systemProgram = PubkeyUtil.systemProgram();
-const accounts = await conn.getMultipleAccounts([
-  systemProgram,
-  PubkeyUtil.fromHex(newAccount.pubkey)
-]);
-console.log("Queried", accounts.length, "accounts");
-accounts.forEach((acc, i) => {
-  if (acc) {
-    console.log("Account " + i + ":", acc.lamports, "lamports");
-  } else {
-    console.log("Account " + i + ": not found");
+// ============================================================================
+// Step 1: Setup account (use wallet if available, otherwise create new)
+// ============================================================================
+console.log("--- Step 1: Setting Up Account ---");
+
+let accountPubkey;
+let accountAddress;
+let useWallet = false;
+
+// Debug: Check if walletProxy is available
+console.log("walletProxy available:", typeof walletProxy !== 'undefined');
+
+// Check if a Bitcoin wallet is available via walletProxy
+if (typeof walletProxy !== 'undefined') {
+  console.log("Checking for wallet extensions...");
+
+  try {
+    const walletAvailable = await walletProxy.isAvailable();
+    console.log("Wallet available:", walletAvailable);
+
+    if (walletAvailable) {
+      const walletType = await walletProxy.getWalletType();
+      console.log("Wallet type:", walletType);
+      console.log("✓ " + (walletType || 'Bitcoin') + " wallet detected");
+
+      try {
+        const accounts = await walletProxy.getAccounts();
+        console.log("Accounts received:", accounts);
+
+        if (accounts && accounts.length > 0) {
+          accountAddress = accounts[0];
+          const pubkey = await walletProxy.getPublicKey();
+          accountPubkey = PubkeyUtil.fromHex(pubkey);
+          useWallet = true;
+          console.log("✓ Using wallet account");
+          console.log("  Address:", accountAddress);
+          console.log("  Pubkey:", pubkey.slice(0, 20) + "...");
+        }
+      } catch (e) {
+        console.log("⚠️  Could not connect to wallet:", e.message || e);
+        console.log("Full error:", e);
+      }
+    } else {
+      console.log("⚠️  No wallet extension detected in browser");
+      console.log("💡 To use your wallet:");
+      console.log("   1. Install Unisat (https://unisat.io) or Xverse wallet extension");
+      console.log("   2. Refresh this page after installing");
+      console.log("   3. Make sure the wallet is unlocked");
+    }
+  } catch (walletCheckError) {
+    console.log("⚠️  Error checking wallet availability:", walletCheckError.message || walletCheckError);
+    console.log("Will proceed with creating a new account instead");
   }
-});
+}
+
+// Fallback: create a new account if no wallet
+if (!useWallet) {
+  console.log("Creating new account...");
+  const archConn = ArchConnection(conn);
+  const newAccount = await archConn.createNewAccount();
+  accountPubkey = PubkeyUtil.fromHex(newAccount.pubkey);
+  accountAddress = newAccount.address;
+
+  console.log("✓ Account Created:");
+  console.log("  Address:", accountAddress);
+  console.log("  Pubkey (hex):", newAccount.pubkey.slice(0, 20) + "...");
+  console.log("  Pubkey (base58):", toBase58(accountPubkey));
+
+  // Request airdrop for the new account
+  try {
+    await conn.requestAirdrop(accountPubkey);
+    console.log("✓ Airdrop requested successfully!");
+  } catch(e) {
+    console.log("✗ Airdrop error:", e.error ? e.error.message : e.message);
+  }
+}
+
+console.log("");
+
+// ============================================================================
+// Step 2: Prepare instruction data using Borsh serialization
+// ============================================================================
+console.log("--- Step 2: Preparing Instruction Data ---");
+
+// Helper function to serialize a string using Borsh format
+function borshSerializeString(str) {
+  const encoder = new TextEncoder();
+  const strBytes = encoder.encode(str);
+  const length = strBytes.length;
+
+  // Borsh serializes strings as: length (4 bytes, little-endian) + bytes
+  const buffer = new Uint8Array(4 + length);
+  buffer[0] = length & 0xFF;
+  buffer[1] = (length >> 8) & 0xFF;
+  buffer[2] = (length >> 16) & 0xFF;
+  buffer[3] = (length >> 24) & 0xFF;
+  buffer.set(strBytes, 4);
+
+  return buffer;
+}
+
+// Helper function to serialize Vec<u8> using Borsh format
+function borshSerializeVecU8(vec) {
+  const length = vec.length;
+
+  // Borsh serializes Vec<u8> as: length (4 bytes, little-endian) + bytes
+  const buffer = new Uint8Array(4 + length);
+  buffer[0] = length & 0xFF;
+  buffer[1] = (length >> 8) & 0xFF;
+  buffer[2] = (length >> 16) & 0xFF;
+  buffer[3] = (length >> 24) & 0xFF;
+  buffer.set(vec, 4);
+
+  return buffer;
+}
+
+// Create HelloWorldParams: { name: String, tx_hex: Vec<u8> }
+const userName = "Arch Developer";
+console.log("Creating greeting for:", userName);
+
+// Create a dummy Bitcoin transaction for fees (32 byte txid + input data)
+// In production, this would be a real Bitcoin transaction
+const dummyTxHex = new Uint8Array(250).fill(0);
+
+// Serialize the struct fields
+const nameBytes = borshSerializeString(userName);
+const txHexBytes = borshSerializeVecU8(dummyTxHex);
+
+// Combine into instruction data
+const instructionData = new Uint8Array(nameBytes.length + txHexBytes.length);
+instructionData.set(nameBytes, 0);
+instructionData.set(txHexBytes, nameBytes.length);
+
+console.log("✓ Instruction data serialized:", instructionData.length, "bytes\n");
+
+// ============================================================================
+// Step 3: Call the Hello World program
+// ============================================================================
+console.log("--- Step 3: Calling Hello World Program ---");
+
+// NOTE: Replace PROGRAM_ID_HEX with your deployed program's pubkey
+// You can get this from the Deploy panel after building and deploying
+const PROGRAM_ID_HEX = "YOUR_PROGRAM_ID_HERE";
+
+// For this example to work, you need to:
+// 1. Build the program using the Build panel
+// 2. Deploy the program and copy the program ID
+// 3. Replace PROGRAM_ID_HEX above with your actual program ID
+// 4. Run this client code
+
+if (PROGRAM_ID_HEX === "YOUR_PROGRAM_ID_HERE") {
+  console.log("⚠️  Please deploy the program first and update PROGRAM_ID_HEX");
+  console.log("\n📋 Quick Start Guide:");
+  console.log("   1. Click 'Build' in the Build panel");
+  console.log("   2. Click 'Deploy' and wait for completion");
+  console.log("   3. Copy the Program ID from the Deploy panel");
+  console.log("   4. Update PROGRAM_ID_HEX in this code (line 201)");
+  console.log("   5. Run the client again");
+  console.log("\n💡 The program will:");
+  console.log("   - Accept your name as input");
+  console.log("   - Write 'Hello {name}' to the account");
+  console.log("   - Return a signed Bitcoin transaction");
+} else {
+  console.log("Program ID:", PROGRAM_ID_HEX.slice(0, 20) + "...");
+  console.log("\n⚠️  Important: This client demonstrates the structure of calling");
+  console.log("    the program. To fully execute the transaction, you would need");
+  console.log("    to sign it with a BIP-322 signature using the account's private key.");
+  console.log("\n📚 Transaction Structure:");
+
+  try {
+    const programId = PubkeyUtil.fromHex(PROGRAM_ID_HEX);
+
+    // Create the instruction
+    const instruction = {
+      program_id: programId,
+      accounts: [
+        {
+          pubkey: accountPubkey,
+          is_signer: true,
+          is_writable: true
+        }
+      ],
+      data: instructionData
+    };
+
+    console.log("✓ Instruction created");
+    console.log("  - Program ID: " + PROGRAM_ID_HEX.slice(0, 16) + "...");
+    console.log("  - Accounts: 1 (writable, signer)");
+    console.log("  - Data: " + instructionData.length + " bytes");
+
+    // Create the message
+    const message = {
+      signers: [accountPubkey],
+      instructions: [instruction]
+    };
+
+    console.log("\n✓ Message created");
+    console.log("  - Signers: " + message.signers.length);
+    console.log("  - Instructions: " + message.instructions.length);
+
+    // Hash the message (this is what gets signed)
+    const messageHash = MessageUtil.hash(message);
+
+    // Convert Uint8Array to hex string for display
+    const hashHex = Array.from(messageHash)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    console.log("\n✓ Message hash: " + hashHex.slice(0, 32) + "...");
+
+    // ============================================================================
+    // Sign and send the transaction using browser wallet
+    // ============================================================================
+    console.log("\n--- Signing Transaction with Wallet ---");
+
+    // Check if wallet proxy is available and wallet is connected
+    if (typeof walletProxy !== 'undefined' && useWallet) {
+      const walletType = await walletProxy.getWalletType();
+      console.log("✓ Using " + (walletType || 'wallet') + " for signing");
+
+      try {
+        // Use wallet proxy to sign with BIP-322
+        console.log("Requesting signature from wallet...");
+        console.log("⚠️  Please approve the signature request in your wallet");
+
+        const signatureBase64 = await walletProxy.signMessage(hashHex, 'bip322-simple');
+
+        // Decode base64 signature to bytes
+        let signature = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
+        console.log("✓ Signature received from wallet");
+
+        // Adjust signature using SignatureUtil if available
+        if (typeof SignatureUtil !== 'undefined') {
+          signature = SignatureUtil.adjustSignature(signature);
+          console.log("✓ Signature adjusted for Arch Network");
+        }
+
+        // Create the runtime transaction
+        const transaction = {
+          version: 0,
+          signatures: [signature],
+          message: message
+        };
+
+        console.log("\n✓ Transaction created");
+        console.log("  - Version: " + transaction.version);
+        console.log("  - Signatures: " + transaction.signatures.length);
+        console.log("  - Signature length: " + signature.length + " bytes");
+
+        // Send the transaction
+        console.log("\n--- Sending Transaction ---");
+        const txid = await conn.sendTransaction(transaction);
+        console.log("✅ Transaction sent!");
+        console.log("Transaction ID: " + txid);
+
+        // Wait a bit for the transaction to be processed
+        console.log("\n⏳ Waiting for transaction to be processed...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // Try to get the processed transaction
+        try {
+          const processedTx = await conn.getProcessedTransaction(txid);
+          if (processedTx) {
+            console.log("✓ Transaction processed");
+            console.log("  - Status:", processedTx.status);
+            if (processedTx.bitcoin_txid) {
+              console.log("  - Bitcoin TXID:", processedTx.bitcoin_txid);
+            }
+          }
+        } catch (e) {
+          console.log("⚠️  Transaction submitted but confirmation pending");
+        }
+
+      } catch (error) {
+        console.error("✗ Error signing/sending transaction:", error.message || error);
+        console.log("\n💡 Troubleshooting:");
+        console.log("   - Make sure your wallet is unlocked");
+        console.log("   - Check that you have BTC for fees");
+        console.log("   - Try connecting your wallet to the dApp");
+        console.log("   - Approve the signature request in your wallet");
+      }
+
+    } else {
+      console.log("⚠️  No wallet connected");
+      console.log("\n💡 To complete this transaction:");
+      console.log("   1. Install Unisat (https://unisat.io) or Xverse wallet");
+      console.log("   2. Connect your wallet to this site");
+      console.log("   3. Run this script again");
+      console.log("\n📝 Transaction was prepared successfully:");
+      console.log("   - Message hash: " + hashHex.slice(0, 32) + "...");
+      console.log("   - You can sign this manually with BIP-322");
+      console.log("   - Then create RuntimeTransaction and call conn.sendTransaction()");
+    }
+
+  } catch (error) {
+    console.error("✗ Error preparing transaction:", error);
+  }
+}
+
+// ============================================================================
+// Step 4: Read account data to verify
+// ============================================================================
+console.log("\n--- Step 4: Verifying Account Data ---");
+try {
+  const accountInfo = await conn.readAccountInfo(accountPubkey);
+  console.log("✓ Account found!");
+  console.log("  Owner:", toBase58(accountInfo.owner));
+  console.log("  Data length:", accountInfo.data.length, "bytes");
+
+  // Decode the account data (it should contain "Hello Arch Developer")
+  if (accountInfo.data.length > 0) {
+    const decoder = new TextDecoder();
+    const greeting = decoder.decode(accountInfo.data);
+    console.log("  📝 Greeting:", greeting);
+
+    if (greeting.includes("Hello")) {
+      console.log("\n🎉 Success! The program executed correctly!");
+    }
+  } else {
+    console.log("  (No data yet - transaction may still be processing)");
+  }
+} catch(e) {
+  console.log("⚠️  Account not found or no data yet");
+  console.log("   This is normal if the transaction hasn't been sent or is still processing");
+}
+
+console.log("\n=== Example Complete ===");
 `;
 
 const PROGRAM_TEMPLATE: FileNode[] = [

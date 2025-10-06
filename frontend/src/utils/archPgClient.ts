@@ -59,6 +59,11 @@ export class ArchPgClient {
       const iframeWindow = this._getIframeWindow();
       const iframeDocument = iframeWindow.document;
 
+      // Verify iframe context
+      console.log('[Setup] Iframe window obtained');
+      console.log('[Setup] iframeWindow.parent === window:', iframeWindow.parent === window);
+      console.log('[Setup] iframeWindow === window:', iframeWindow === window);
+
       // Clear all scripts
       const scriptEls = iframeDocument.getElementsByTagName("script");
       while (scriptEls.length > 0) {
@@ -67,6 +72,22 @@ export class ArchPgClient {
 
       // IMPORTANT: Add message handler BEFORE injecting script
       messageHandler = (event: MessageEvent) => {
+        // Log ALL messages - even from other sources for debugging
+        console.log('[Parent] Raw message received:', {
+          source: event.source === iframeWindow ? 'iframe' : 'other',
+          type: event.data?.type,
+          hasId: !!event.data?.id,
+          id: event.data?.id,
+          data: event.data
+        });
+
+        if (event.source === iframeWindow) {
+          console.log('[Parent] ✓ Message is from our iframe');
+          if (event.data?.type?.startsWith('wallet')) {
+            console.log('[Parent] ✓ This is a wallet message!', event.data.type, 'id:', event.data.id);
+          }
+        }
+
         if (event.source === iframeWindow) {
           const data = event.data;
           if (data && typeof data === 'object') {
@@ -82,11 +103,128 @@ export class ArchPgClient {
               onMessage('error', data.message || 'Unknown error');
               cleanup();
             }
+            // ============================================================================
+            // WALLET PROXY MESSAGE HANDLERS - Forwards wallet requests from iframe
+            // ============================================================================
+            else if (data.type === 'wallet-check') {
+              const available = !!(window.unisat || window.xverse);
+              console.log('[Parent] Handling wallet-check, id:', data.id);
+              console.log('[Parent] window.unisat:', !!window.unisat);
+              console.log('[Parent] window.xverse:', !!window.xverse);
+              console.log('[Parent] Available:', available);
+              console.log('[Parent] Sending response to iframe');
+              iframeWindow.postMessage({
+                type: 'wallet-check-response',
+                id: data.id,
+                available
+              }, '*');
+              console.log('[Parent] Response sent');
+            }
+            else if (data.type === 'wallet-type') {
+              const walletType = window.unisat ? 'unisat' : window.xverse ? 'xverse' : null;
+              console.log('[Parent] Handling wallet-type, returning:', walletType);
+              iframeWindow.postMessage({
+                type: 'wallet-type-response',
+                id: data.id,
+                walletType
+              }, '*');
+            }
+            else if (data.type === 'wallet-get-accounts') {
+              console.log('[Parent] Handling wallet-get-accounts');
+              (async () => {
+                try {
+                  let accounts;
+                  if (window.unisat) {
+                    accounts = await window.unisat.getAccounts();
+                  } else if (window.xverse) {
+                    const response = await window.xverse.getAddress();
+                    accounts = response.addresses.map((a: any) => a.address);
+                  }
+                  console.log('[Parent] Sending accounts:', accounts);
+                  iframeWindow.postMessage({
+                    type: 'wallet-accounts-response',
+                    id: data.id,
+                    accounts
+                  }, '*');
+                } catch (error: any) {
+                  console.error('[Parent] Error getting accounts:', error);
+                  iframeWindow.postMessage({
+                    type: 'wallet-accounts-response',
+                    id: data.id,
+                    error: error.message
+                  }, '*');
+                }
+              })();
+            }
+            else if (data.type === 'wallet-get-pubkey') {
+              console.log('[Parent] Handling wallet-get-pubkey');
+              (async () => {
+                try {
+                  let publicKey;
+                  if (window.unisat) {
+                    publicKey = await window.unisat.getPublicKey();
+                  } else if (window.xverse) {
+                    const response = await window.xverse.getAddress();
+                    publicKey = response.addresses[0].publicKey;
+                  }
+                  console.log('[Parent] Sending publicKey:', publicKey);
+                  iframeWindow.postMessage({
+                    type: 'wallet-pubkey-response',
+                    id: data.id,
+                    publicKey
+                  }, '*');
+                } catch (error: any) {
+                  console.error('[Parent] Error getting pubkey:', error);
+                  iframeWindow.postMessage({
+                    type: 'wallet-pubkey-response',
+                    id: data.id,
+                    error: error.message
+                  }, '*');
+                }
+              })();
+            }
+            else if (data.type === 'wallet-sign-message') {
+              console.log('[Parent] Handling wallet-sign-message');
+              console.log('[Parent] Message to sign:', data.message);
+              console.log('[Parent] Protocol:', data.protocol);
+              (async () => {
+                try {
+                  let signature;
+                  if (window.unisat) {
+                    console.log('[Parent] Using Unisat to sign');
+                    signature = await window.unisat.signMessage(data.message, data.protocol);
+                  } else if (window.xverse) {
+                    console.log('[Parent] Using Xverse to sign');
+                    const accounts = await window.xverse.getAddress();
+                    const response = await window.xverse.signMessage({
+                      message: data.message,
+                      address: accounts.addresses[0].address,
+                      protocol: data.protocol || 'bip322'
+                    });
+                    signature = response.signature;
+                  }
+                  console.log('[Parent] Signature obtained:', signature);
+                  iframeWindow.postMessage({
+                    type: 'wallet-sign-response',
+                    id: data.id,
+                    signature
+                  }, '*');
+                } catch (error: any) {
+                  console.error('[Parent] Error signing message:', error);
+                  iframeWindow.postMessage({
+                    type: 'wallet-sign-response',
+                    id: data.id,
+                    error: error.message
+                  }, '*');
+                }
+              })();
+            }
           }
         }
       };
 
       window.addEventListener('message', messageHandler);
+      console.log('[Parent] Message handler installed, waiting for messages from iframe');
 
       // Safety timeout - if execution takes more than 30 seconds, assume it's hung
       timeoutId = setTimeout(() => {
@@ -141,36 +279,235 @@ export class ArchPgClient {
       }
 
       const consoleOverride = `
+        // Safe JSON stringify that handles circular references
+        const safeStringify = (obj, indent = 2) => {
+          const seen = new WeakSet();
+          return JSON.stringify(obj, (key, value) => {
+            // Handle special objects
+            if (value === window || value instanceof Window) {
+              return '[Window]';
+            }
+            if (value === document || value instanceof Document) {
+              return '[Document]';
+            }
+            if (value instanceof Element) {
+              return '[Element: ' + value.tagName + ']';
+            }
+            // Handle circular references
+            if (typeof value === 'object' && value !== null) {
+              if (seen.has(value)) {
+                return '[Circular]';
+              }
+              seen.add(value);
+            }
+            return value;
+          }, indent);
+        };
+
         window.console = {
           log: function() {
             const args = Array.from(arguments);
-            const message = args.map(arg =>
-              arg instanceof Error ? arg.stack || arg.message :
-              typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' ');
+            const message = args.map(arg => {
+              if (arg instanceof Error) {
+                return arg.stack || arg.message;
+              } else if (arg === window || arg instanceof Window) {
+                return '[Window]';
+              } else if (typeof arg === 'object' && arg !== null) {
+                try {
+                  return safeStringify(arg, 2);
+                } catch (e) {
+                  return String(arg);
+                }
+              } else {
+                return String(arg);
+              }
+            }).join(' ');
             window.parent.postMessage({
               type: 'console',
               level: 'info',
               message: message
             }, '*');
-            // Debug log to see if function is called
-            // window.parent.console.log('iframe log:', message);
           },
           error: function() {
             const args = Array.from(arguments);
-            const message = args.map(arg =>
-              arg instanceof Error ? arg.stack || arg.message :
-              typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' ');
+            const message = args.map(arg => {
+              if (arg instanceof Error) {
+                return arg.stack || arg.message;
+              } else if (arg === window || arg instanceof Window) {
+                return '[Window]';
+              } else if (typeof arg === 'object' && arg !== null) {
+                try {
+                  return safeStringify(arg, 2);
+                } catch (e) {
+                  return String(arg);
+                }
+              } else {
+                return String(arg);
+              }
+            }).join(' ');
             window.parent.postMessage({ type: 'console', level: 'error', message }, '*');
           },
           info: function() {
             const args = Array.from(arguments);
-            const message = args.map(arg =>
-              arg instanceof Error ? arg.stack || arg.message :
-              typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' ');
+            const message = args.map(arg => {
+              if (arg instanceof Error) {
+                return arg.stack || arg.message;
+              } else if (arg === window || arg instanceof Window) {
+                return '[Window]';
+              } else if (typeof arg === 'object' && arg !== null) {
+                try {
+                  return safeStringify(arg, 2);
+                } catch (e) {
+                  return String(arg);
+                }
+              } else {
+                return String(arg);
+              }
+            }).join(' ');
             window.parent.postMessage({ type: 'console', level: 'info', message }, '*');
+          }
+        };
+
+        // ============================================================================
+        // SECURE WALLET PROXY - Defined in iframe context to access wallet in parent
+        // ============================================================================
+        window.walletProxy = {
+          isAvailable: function() {
+            return new Promise((resolve) => {
+              console.log('[walletProxy] isAvailable called');
+              console.log('[walletProxy] window === window.parent:', window === window.parent);
+              const messageId = Math.random().toString(36);
+              console.log('[walletProxy] Sending wallet-check with id:', messageId);
+
+              const handler = (event) => {
+                // Only process messages FROM parent
+                if (event.source !== window.parent) {
+                  return;
+                }
+                console.log('[walletProxy] Received message from parent:', event.data?.type);
+                if (event.data.type === 'wallet-check-response' && event.data.id === messageId) {
+                  console.log('[walletProxy] Got response, available:', event.data.available);
+                  window.removeEventListener('message', handler);
+                  resolve(event.data.available);
+                }
+              };
+              window.addEventListener('message', handler);
+              console.log('[walletProxy] Posting message to parent');
+              window.parent.postMessage({ type: 'wallet-check', id: messageId }, '*');
+
+              setTimeout(() => {
+                window.removeEventListener('message', handler);
+                console.log('[walletProxy] isAvailable timed out - no response from parent');
+                resolve(false);
+              }, 3000);
+            });
+          },
+
+          getWalletType: function() {
+            return new Promise((resolve) => {
+              const messageId = Math.random().toString(36);
+              const handler = (event) => {
+                if (event.source !== window.parent) return;
+                if (event.data.type === 'wallet-type-response' && event.data.id === messageId) {
+                  window.removeEventListener('message', handler);
+                  resolve(event.data.walletType);
+                }
+              };
+              window.addEventListener('message', handler);
+              window.parent.postMessage({ type: 'wallet-type', id: messageId }, '*');
+
+              setTimeout(() => {
+                window.removeEventListener('message', handler);
+                resolve(null);
+              }, 1000);
+            });
+          },
+
+          getAccounts: function() {
+            return new Promise((resolve, reject) => {
+              const messageId = Math.random().toString(36);
+              const handler = (event) => {
+                if (event.source !== window.parent) return;
+                if (event.data.type === 'wallet-accounts-response' && event.data.id === messageId) {
+                  window.removeEventListener('message', handler);
+                  if (event.data.error) {
+                    reject(new Error(event.data.error));
+                  } else {
+                    resolve(event.data.accounts);
+                  }
+                }
+              };
+              window.addEventListener('message', handler);
+              window.parent.postMessage({ type: 'wallet-get-accounts', id: messageId }, '*');
+
+              setTimeout(() => {
+                window.removeEventListener('message', handler);
+                reject(new Error('Timeout getting accounts'));
+              }, 5000);
+            });
+          },
+
+          getPublicKey: function() {
+            return new Promise((resolve, reject) => {
+              const messageId = Math.random().toString(36);
+              const handler = (event) => {
+                if (event.source !== window.parent) return;
+                if (event.data.type === 'wallet-pubkey-response' && event.data.id === messageId) {
+                  window.removeEventListener('message', handler);
+                  if (event.data.error) {
+                    reject(new Error(event.data.error));
+                  } else {
+                    resolve(event.data.publicKey);
+                  }
+                }
+              };
+              window.addEventListener('message', handler);
+              window.parent.postMessage({ type: 'wallet-get-pubkey', id: messageId }, '*');
+
+              setTimeout(() => {
+                window.removeEventListener('message', handler);
+                reject(new Error('Timeout getting public key'));
+              }, 5000);
+            });
+          },
+
+          signMessage: function(message, protocol) {
+            if (!protocol) protocol = 'bip322-simple';
+            return new Promise((resolve, reject) => {
+              const messageId = Math.random().toString(36);
+              console.log('[walletProxy] signMessage called, messageId:', messageId);
+              console.log('[walletProxy] message:', message);
+              console.log('[walletProxy] protocol:', protocol);
+
+              const handler = (event) => {
+                if (event.source !== window.parent) return;
+                console.log('[walletProxy] Received response:', event.data?.type, 'id match:', event.data?.id === messageId);
+                if (event.data.type === 'wallet-sign-response' && event.data.id === messageId) {
+                  window.removeEventListener('message', handler);
+                  if (event.data.error) {
+                    console.error('[walletProxy] Sign error:', event.data.error);
+                    reject(new Error(event.data.error));
+                  } else {
+                    console.log('[walletProxy] Sign success!');
+                    resolve(event.data.signature);
+                  }
+                }
+              };
+              window.addEventListener('message', handler);
+              console.log('[walletProxy] Sending wallet-sign-message to parent');
+              window.parent.postMessage({
+                type: 'wallet-sign-message',
+                id: messageId,
+                message: message,
+                protocol: protocol
+              }, '*');
+
+              setTimeout(() => {
+                window.removeEventListener('message', handler);
+                console.error('[walletProxy] Sign timeout');
+                reject(new Error('Timeout or user rejected signing'));
+              }, 60000);
+            });
           }
         };
       `;

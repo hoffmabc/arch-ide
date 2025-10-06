@@ -36,6 +36,7 @@ import { BrowserCompatibilityAlert } from './components/BrowserCompatibilityAler
 import { TutorialProvider, useTutorial } from './context/TutorialContext';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { WelcomeModal } from './components/WelcomeModal';
+import { Toaster } from './components/ui/toaster';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -2001,6 +2002,7 @@ const App = () => {
         <TutorialOverlay />
         <QueryClientProvider client={queryClient}>
           <AppContent />
+          <Toaster />
         </QueryClientProvider>
       </TutorialProvider>
     </ThemeProvider>

@@ -20,6 +20,8 @@ declare global {
   interface Window {
     unisat?: {
       requestAccounts: () => Promise<string[]>;
+      getAccounts: () => Promise<string[]>;
+      getPublicKey: () => Promise<string>;
       signMessage: (message: string, type: string) => Promise<string>;
       sendBitcoin: (address: string, amount: number) => Promise<string>;
     };
@@ -28,7 +30,19 @@ declare global {
         connect: () => Promise<string[]>;
         signMessage: (message: string) => Promise<{ pubkey: string; signature: string }>;
         sendBtc: (params: { addressTo: string; amount: number }) => Promise<string>;
-      }
+      };
+      getAddress: () => Promise<{
+        addresses: Array<{
+          address: string;
+          publicKey: string;
+          purpose: string;
+        }>;
+      }>;
+      signMessage: (params: {
+        message: string;
+        address: string;
+        protocol?: string;
+      }) => Promise<{ signature: string }>;
     };
     leather?: {
       enable: () => Promise<void>;
@@ -92,60 +106,8 @@ interface ArchDeployOptions {
   };
 }
 
-interface BitcoinWallet {
-  name: string;
-  connect: () => Promise<void>;
-  sendPayment: (info: {
-    network: string;
-    address: string;
-    amount: bigint;
-  }) => Promise<string>;
-  isAvailable: () => boolean;
-}
-
-class UnisatWallet implements BitcoinWallet {
-  name = 'Unisat';
-
-  isAvailable() {
-    return !!window.unisat;
-  }
-
-  async connect() {
-    if (!window.unisat) throw new Error('Unisat wallet not installed');
-    const accounts = await window.unisat.requestAccounts();
-    if (!accounts || accounts.length === 0) {
-      throw new Error('No accounts available in Unisat wallet');
-    }
-  }
-
-  async sendPayment(info: { network: string; address: string; amount: bigint }) {
-    if (!window.unisat) throw new Error('Unisat wallet not installed');
-    const txid = await window.unisat.sendBitcoin(info.address, Number(info.amount));
-    return txid;
-  }
-}
-
-class XverseWallet implements BitcoinWallet {
-  name = 'Xverse';
-
-  isAvailable() {
-    return !!window.xverse?.bitcoin;
-  }
-
-  async connect() {
-    if (!window.xverse?.bitcoin) throw new Error('Xverse wallet not installed');
-    await window.xverse.bitcoin.connect();
-  }
-
-  async sendPayment(info: { network: string; address: string; amount: bigint }) {
-    if (!window.xverse?.bitcoin) throw new Error('Xverse wallet not installed');
-    const txid = await window.xverse.bitcoin.sendBtc({
-      addressTo: info.address,
-      amount: Number(info.amount)
-    });
-    return txid;
-  }
-}
+// Using the new wallet manager - old wallet classes removed
+import { walletManager } from './wallet/walletManager';
 
 export class ArchProgramLoader {
   static async load(options: ArchDeployOptions, onMessage?: (type: 'info' | 'success' | 'error', message: string) => void) {
@@ -307,10 +269,8 @@ export class ArchProgramLoader {
     switch (network) {
       case 'testnet':
       case 'mainnet-beta': {
-        const wallets = [new UnisatWallet(), new XverseWallet()];
-        const availableWallet = wallets.find(w => w.isAvailable());
-
-        if (!availableWallet) {
+        // Use the new wallet manager
+        if (walletManager.availableWallets.length === 0) {
           throw new Error(
             'No compatible Bitcoin wallet detected. Please install one of the following:\n' +
             '- Unisat Wallet (https://unisat.io)\n' +
@@ -319,17 +279,18 @@ export class ArchProgramLoader {
         }
 
         try {
-          await availableWallet.connect();
+          // Connect wallet if not already connected
+          if (!walletManager.isConnected) {
+            const firstWallet = walletManager.availableWallets[0];
+            await walletManager.connect(firstWallet.name);
+          }
 
-          const txid = await availableWallet.sendPayment({
-            network: network === 'testnet' ? 'testnet' : 'mainnet',
-            address: address,
-            amount: BigInt(5000)
-          });
+          // Send Bitcoin using the wallet manager
+          const result = await walletManager.sendBitcoin(address, 5000);
 
           return await this.waitForUtxo(address, network);
         } catch (error: any) {
-          throw new Error(`Failed to send payment using ${availableWallet.name}: ${error.message}`);
+          throw new Error(`Failed to send payment: ${error.message}`);
         }
       }
 

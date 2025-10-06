@@ -134,3 +134,16 @@ pub async fn build_status(
         )),
     }
 }
+
+/// Handle OPTIONS preflight requests for build_status
+pub async fn build_status_options() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [
+            ("Access-Control-Allow-Origin", "*"),
+            ("Access-Control-Allow-Methods", "GET, OPTIONS"),
+            ("Access-Control-Allow-Headers", "Content-Type, Accept, Cache-Control, Pragma"),
+            ("Access-Control-Max-Age", "3600"),
+        ],
+    )
+}

@@ -179,6 +179,15 @@ export const declareGlobalTypes = async (): Promise<Disposable> => {
         const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
         const UtxoMetaUtil: typeof import("@saturnbtcio/arch-sdk").UtxoMetaUtil;
         const SignatureUtil: typeof import("@saturnbtcio/arch-sdk").SignatureUtil;
+
+        // Wallet Proxy for secure wallet access from sandbox
+        const walletProxy: {
+          isAvailable: () => Promise<boolean>;
+          getWalletType: () => Promise<string | null>;
+          getAccounts: () => Promise<string[]>;
+          getPublicKey: () => Promise<string>;
+          signMessage: (message: string, protocol?: string) => Promise<string>;
+        };
       }`,
       "file:///globals.d.ts"
     )

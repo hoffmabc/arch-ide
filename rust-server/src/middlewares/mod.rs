@@ -17,8 +17,15 @@ pub fn cors(_client_url: String) -> CorsLayer {
         .allow_headers([
             header::CONTENT_TYPE,
             header::ACCEPT,
+            header::CACHE_CONTROL,
+            header::PRAGMA,
         ])
-        // Remove allow_credentials since we don't need it
+        .expose_headers([
+            header::CONTENT_TYPE,
+            header::CACHE_CONTROL,
+            header::PRAGMA,
+            header::EXPIRES,
+        ])
         .max_age(std::time::Duration::from_secs(86400)) // 24 hours cache
 }
 

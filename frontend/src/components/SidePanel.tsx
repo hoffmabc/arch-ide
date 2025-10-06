@@ -61,7 +61,7 @@ interface SidePanelProps {
 type View = 'explorer' | 'build';
 
 const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onAuthorityAccountChange, onProjectUpdate, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
-    const [width, setWidth] = useState(256);
+    const [width, setWidth] = useState(360);
 
     const handleResizeStart = React.useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -154,7 +154,6 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
             programBinary={programBinary}
             onProgramBinaryChange={onProgramBinaryChange}
             onProgramIdChange={onProgramIdChange}
-            idl={programIdl}
             config={config}
             onConfigChange={onConfigChange}
             onConnectionStatusChange={onConnectionStatusChange}

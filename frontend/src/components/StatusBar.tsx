@@ -3,6 +3,7 @@ import { Config } from '../types/config';
 import { WifiOff, Wifi } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { FileChange } from '../types/types';
+import { WalletButton } from './BitcoinWallet';
 
 interface StatusBarProps {
   config: Config;
@@ -12,6 +13,14 @@ interface StatusBarProps {
   isSaving: boolean;
   children?: React.ReactNode;
 }
+
+// Map config network to wallet network
+const mapConfigNetwork = (network: string): 'mainnet' | 'testnet' | 'regtest' => {
+  if (network === 'testnet') return 'testnet';
+  if (network === 'mainnet-beta') return 'mainnet';
+  if (network === 'devnet') return 'regtest';
+  return 'mainnet';
+};
 
 export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendingChanges, isSaving }: StatusBarProps) => {
   const [lastPingTime, setLastPingTime] = useState<Date | null>(null);
@@ -66,6 +75,7 @@ export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendi
             Last ping: {lastPingTime.toLocaleTimeString()}
           </span>
         )}
+        <WalletButton network={mapConfigNetwork(config.network)} />
         <ConnectionStatus
           rpcUrl={config.rpcUrl}
           network={config.network}
