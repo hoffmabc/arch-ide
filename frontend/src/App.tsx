@@ -1288,7 +1288,9 @@ const AppContent = () => {
       const updatedProject = {
         ...fullCurrentProject,
         files: updatedFiles,
-        lastModified: new Date()
+        lastModified: new Date(),
+        account: fullCurrentProject.account,
+        authorityAccount: fullCurrentProject.authorityAccount
       };
 
       // Save project
@@ -1318,10 +1320,10 @@ const AppContent = () => {
         });
       });
 
-      // Update project state
+      // Update project state WITHOUT triggering Build panel reset
       setFullCurrentProject(updatedProject);
 
-      console.log('File saved successfully');
+      console.log('File saved successfully (Build panel state preserved)');
 
       // Force save tab state to localStorage
       if (openFiles.length > 0) {

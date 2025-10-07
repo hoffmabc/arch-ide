@@ -172,12 +172,63 @@ if (typeof walletProxy !== 'undefined') {
 
         if (accounts && accounts.length > 0) {
           accountAddress = accounts[0];
-          const pubkey = await walletProxy.getPublicKey();
+          let pubkey = await walletProxy.getPublicKey();
+
+          // Bitcoin wallets return 33-byte compressed keys (66 hex chars)
+          // Arch Network needs 32-byte x-only keys (64 hex chars)
+          // Strip the first byte (02 or 03 prefix) to get the x-only key
+          if (pubkey.length === 66) {
+            pubkey = pubkey.slice(2); // Remove first byte
+            console.log("✓ Converted compressed pubkey to x-only format");
+          }
+
           accountPubkey = PubkeyUtil.fromHex(pubkey);
           useWallet = true;
           console.log("✓ Using wallet account");
           console.log("  Address:", accountAddress);
           console.log("  Pubkey:", pubkey.slice(0, 20) + "...");
+
+          // Fund the account on testnet using the faucet
+          console.log("");
+          console.log("--- Funding Account on Testnet ---");
+          try {
+            console.log("Requesting funds from faucet...");
+            const faucetPayload = {
+              jsonrpc: '2.0',
+              id: 'faucet-request',
+              method: 'create_account_with_faucet',
+              params: Array.from(accountPubkey),
+            };
+
+            const faucetResponse = await fetch(conn.url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(faucetPayload),
+            });
+
+            if (!faucetResponse.ok) {
+              throw new Error("Faucet HTTP error: " + faucetResponse.status);
+            }
+
+            const faucetResult = await faucetResponse.json();
+
+            if (faucetResult.error) {
+              // Account might already have funds
+              console.log("⚠️  Faucet note:", faucetResult.error.message);
+              console.log("  (Account may already have funds)");
+            } else {
+              console.log("✓ Airdrop transaction submitted!");
+              console.log("  Waiting for confirmation...");
+
+              // Wait a bit for the transaction to be processed
+              await new Promise(resolve => setTimeout(resolve, 2000));
+
+              console.log("✓ Account funded!");
+            }
+          } catch (error) {
+            console.log("⚠️  Airdrop failed:", error.message);
+            console.log("  Continuing anyway (account may already have funds)");
+          }
         }
       } catch (e) {
         console.log("⚠️  Could not connect to wallet:", e.message || e);
@@ -313,7 +364,7 @@ if (PROGRAM_ID_HEX === "YOUR_PROGRAM_ID_HERE") {
   try {
     const programId = PubkeyUtil.fromHex(PROGRAM_ID_HEX);
 
-    // Create the instruction
+    // Create the instruction (using SDK format)
     const instruction = {
       program_id: programId,
       accounts: [
@@ -331,18 +382,19 @@ if (PROGRAM_ID_HEX === "YOUR_PROGRAM_ID_HERE") {
     console.log("  - Accounts: 1 (writable, signer)");
     console.log("  - Data: " + instructionData.length + " bytes");
 
-    // Create the message
-    const message = {
+    // Create a proper SanitizedMessage using MessageUtil
+    // This will create the correct format with header, account_keys, etc.
+    const unsanitizedMessage = {
       signers: [accountPubkey],
       instructions: [instruction]
     };
 
     console.log("\n✓ Message created");
-    console.log("  - Signers: " + message.signers.length);
-    console.log("  - Instructions: " + message.instructions.length);
+    console.log("  - Signers: 1");
+    console.log("  - Instructions: 1");
 
     // Hash the message (this is what gets signed)
-    const messageHash = MessageUtil.hash(message);
+    const messageHash = MessageUtil.hash(unsanitizedMessage);
 
     // Convert Uint8Array to hex string for display
     const hashHex = Array.from(messageHash)
@@ -370,18 +422,74 @@ if (PROGRAM_ID_HEX === "YOUR_PROGRAM_ID_HERE") {
         // Decode base64 signature to bytes
         let signature = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
         console.log("✓ Signature received from wallet");
+        console.log("  - Raw signature length: " + signature.length + " bytes");
+        console.log("  - Signature preview: " + Array.from(signature.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join('') + "...");
+
+        // BIP322 signatures can be 65 bytes (64-byte sig + 1-byte recovery/sighash)
+        // Arch Network expects 64-byte Schnorr signatures
+        if (signature.length === 65) {
+          console.log("  - Stripping extra byte from BIP322 signature (65 -> 64 bytes)");
+          signature = signature.slice(0, 64);
+        }
 
         // Adjust signature using SignatureUtil if available
         if (typeof SignatureUtil !== 'undefined') {
-          signature = SignatureUtil.adjustSignature(signature);
-          console.log("✓ Signature adjusted for Arch Network");
+          console.log("  - Adjusting signature for Arch Network...");
+          try {
+            signature = SignatureUtil.adjustSignature(signature);
+            console.log("✓ Signature adjusted for Arch Network");
+            console.log("  - Adjusted signature length: " + signature.length + " bytes");
+            console.log("  - Adjusted preview: " + Array.from(signature.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join('') + "...");
+          } catch (e) {
+            console.log("⚠️  Could not adjust signature:", e.message);
+            console.log("  - Using raw signature instead");
+          }
         }
+
+        // Validate signature length (should be 64 bytes for Schnorr)
+        if (signature.length !== 64) {
+          console.log("⚠️  Warning: Signature length is " + signature.length + " bytes (expected 64 for Schnorr)");
+          console.log("  - This might cause issues when sending the transaction");
+        }
+
+        // Get a recent blockhash for the transaction
+        const bestBlockHash = await conn.getBestBlockHash();
+        console.log("\n✓ Recent blockhash:", bestBlockHash.slice(0, 20) + "...");
+
+        // Convert blockhash from hex string to bytes
+        const blockhashBytes = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+          blockhashBytes[i] = parseInt(bestBlockHash.slice(i * 2, i * 2 + 2), 16);
+        }
+
+        // Create a SanitizedMessage in the format the RPC expects
+        // CRITICAL: The fee payer (accountPubkey) MUST be:
+        // 1. First in account_keys (index 0)
+        // 2. Marked as writable (num_readonly_signed_accounts: 0)
+        // 3. A signer (counted in num_required_signatures: 1)
+        const sanitizedMessage = {
+          header: {
+            num_required_signatures: 1,     // 1 signer (the fee payer)
+            num_readonly_signed_accounts: 0, // 0 readonly signers (fee payer is writable)
+            num_readonly_unsigned_accounts: 1  // 1 program ID (readonly)
+          },
+          account_keys: [
+            Array.from(accountPubkey),  // Index 0: Fee payer (signer, writable)
+            Array.from(programId)       // Index 1: Program ID (readonly)
+          ],
+          recent_blockhash: Array.from(blockhashBytes),  // Real blockhash
+          instructions: [{
+            program_id_index: 1,  // Index to programId in account_keys
+            accounts: [0],         // Index to fee payer in account_keys
+            data: Array.from(instructionData)
+          }]
+        };
 
         // Create the runtime transaction
         const transaction = {
           version: 0,
-          signatures: [signature],
-          message: message
+          signatures: [Array.from(signature)],
+          message: sanitizedMessage
         };
 
         console.log("\n✓ Transaction created");

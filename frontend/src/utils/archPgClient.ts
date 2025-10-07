@@ -1,6 +1,7 @@
 import { transpile, ScriptTarget, ModuleKind } from "typescript";
 import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil, UtxoMetaUtil, SignatureUtil } from "@saturnbtcio/arch-sdk";
 import { base58 } from '@scure/base';
+import { walletManager } from './wallet/walletManager';
 
 declare global {
   interface Window {
@@ -104,24 +105,27 @@ export class ArchPgClient {
               cleanup();
             }
             // ============================================================================
-            // WALLET PROXY MESSAGE HANDLERS - Forwards wallet requests from iframe
+            // WALLET PROXY MESSAGE HANDLERS - Uses wallet manager
             // ============================================================================
             else if (data.type === 'wallet-check') {
-              const available = !!(window.unisat || window.xverse);
               console.log('[Parent] Handling wallet-check, id:', data.id);
-              console.log('[Parent] window.unisat:', !!window.unisat);
-              console.log('[Parent] window.xverse:', !!window.xverse);
-              console.log('[Parent] Available:', available);
-              console.log('[Parent] Sending response to iframe');
+              console.log('[Parent] walletManager state:', {
+                isConnected: walletManager.isConnected,
+                currentWallet: walletManager.current?.name,
+                account: walletManager.account?.address,
+                availableWallets: walletManager.availableWallets.map(w => w.name)
+              });
+
+              const available = walletManager.isConnected;
+              console.log('[Parent] Sending response to iframe, available:', available);
               iframeWindow.postMessage({
                 type: 'wallet-check-response',
                 id: data.id,
                 available
               }, '*');
-              console.log('[Parent] Response sent');
             }
             else if (data.type === 'wallet-type') {
-              const walletType = window.unisat ? 'unisat' : window.xverse ? 'xverse' : null;
+              const walletType = walletManager.current?.name?.toLowerCase() || null;
               console.log('[Parent] Handling wallet-type, returning:', walletType);
               iframeWindow.postMessage({
                 type: 'wallet-type-response',
@@ -133,13 +137,8 @@ export class ArchPgClient {
               console.log('[Parent] Handling wallet-get-accounts');
               (async () => {
                 try {
-                  let accounts;
-                  if (window.unisat) {
-                    accounts = await window.unisat.getAccounts();
-                  } else if (window.xverse) {
-                    const response = await window.xverse.getAddress();
-                    accounts = response.addresses.map((a: any) => a.address);
-                  }
+                  const account = walletManager.account;
+                  const accounts = account ? [account.address] : [];
                   console.log('[Parent] Sending accounts:', accounts);
                   iframeWindow.postMessage({
                     type: 'wallet-accounts-response',
@@ -160,13 +159,8 @@ export class ArchPgClient {
               console.log('[Parent] Handling wallet-get-pubkey');
               (async () => {
                 try {
-                  let publicKey;
-                  if (window.unisat) {
-                    publicKey = await window.unisat.getPublicKey();
-                  } else if (window.xverse) {
-                    const response = await window.xverse.getAddress();
-                    publicKey = response.addresses[0].publicKey;
-                  }
+                  const account = walletManager.account;
+                  const publicKey = account?.publicKey || null;
                   console.log('[Parent] Sending publicKey:', publicKey);
                   iframeWindow.postMessage({
                     type: 'wallet-pubkey-response',
@@ -187,27 +181,16 @@ export class ArchPgClient {
               console.log('[Parent] Handling wallet-sign-message');
               console.log('[Parent] Message to sign:', data.message);
               console.log('[Parent] Protocol:', data.protocol);
+              console.log('[Parent] Using wallet:', walletManager.current?.name);
               (async () => {
                 try {
-                  let signature;
-                  if (window.unisat) {
-                    console.log('[Parent] Using Unisat to sign');
-                    signature = await window.unisat.signMessage(data.message, data.protocol);
-                  } else if (window.xverse) {
-                    console.log('[Parent] Using Xverse to sign');
-                    const accounts = await window.xverse.getAddress();
-                    const response = await window.xverse.signMessage({
-                      message: data.message,
-                      address: accounts.addresses[0].address,
-                      protocol: data.protocol || 'bip322'
-                    });
-                    signature = response.signature;
-                  }
-                  console.log('[Parent] Signature obtained:', signature);
+                  // Use wallet manager to sign message (BIP322)
+                  const result = await walletManager.signMessage(data.message);
+                  console.log('[Parent] Signature obtained:', result.signature);
                   iframeWindow.postMessage({
                     type: 'wallet-sign-response',
                     id: data.id,
-                    signature
+                    signature: result.signature
                   }, '*');
                 } catch (error: any) {
                   console.error('[Parent] Error signing message:', error);
@@ -535,11 +518,30 @@ export class ArchPgClient {
         (async () => {
           ${consoleOverride}
 
-          // Add a helper to handle RPC URLs correctly in the iframe
+          // Add a helper to handle RPC URLs correctly in the iframe (with CORS proxy)
           const getSmartRpcUrl = (url) => {
             try {
-              // If no URL provided, return empty string
               if (!url) return '';
+
+              // Check if this is a localhost URL
+              const isLocalhostUrl = url.includes('localhost') || url.includes('127.0.0.1');
+
+              // Check if we're running on localhost
+              const isRunningOnLocalhost = window.location.hostname === 'localhost' ||
+                                           window.location.hostname === '127.0.0.1';
+
+              // If the RPC URL is localhost, use it directly
+              if (isLocalhostUrl) {
+                return url;
+              }
+
+              // For external RPC endpoints: Use proxy on localhost dev to avoid CORS
+              if (isRunningOnLocalhost) {
+                console.log('Using proxy to avoid CORS:', url, '→ /rpc');
+                return '/rpc';
+              }
+
+              // In production, use RPC directly
               return url;
             } catch (e) {
               console.error('Critical error in getSmartRpcUrl:', e);
