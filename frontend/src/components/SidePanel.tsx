@@ -50,6 +50,7 @@ interface SidePanelProps {
   onAuthorityAccountChange: (account: ProjectAccount | null) => void;
   onProjectUpdate?: (project: Project) => void;
   onNewProject: () => void;
+  onOpenHomeTab?: () => void;
   binaryFileName: string | null;
   setBinaryFileName: (name: string | null) => void;
   addOutputMessage: (type: any, message: any) => void;
@@ -60,7 +61,7 @@ interface SidePanelProps {
 
 type View = 'explorer' | 'build';
 
-const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onAuthorityAccountChange, onProjectUpdate, onNewProject, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
+const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect, onUpdateTree, onNewItem, onBuild, onDeploy, isBuilding, isDeploying, programId, programBinary, onProgramBinaryChange, onProgramIdChange, programIdl, config, onConfigChange, onConnectionStatusChange, currentAccount, onAccountChange, currentFile, project, onProjectAccountChange, onAuthorityAccountChange, onProjectUpdate, onNewProject, onOpenHomeTab, binaryFileName, setBinaryFileName, addOutputMessage, connected, expandedFolders, onExpandedFoldersChange }: SidePanelProps) => {
   const MIN_WIDTH = 420;
   const MAX_WIDTH = 800;
   const [width, setWidth] = useState(MIN_WIDTH);
@@ -136,6 +137,7 @@ const SidePanel = ({ hasProjects, currentView, onViewChange, files, onFileSelect
               onExpandedFoldersChange={onExpandedFoldersChange}
               currentFile={currentFile}
               onNewProject={onNewProject}
+              onOpenHomeTab={onOpenHomeTab}
               addOutputMessage={addOutputMessage}
               project={project}
               onProjectAccountChange={onProjectAccountChange}

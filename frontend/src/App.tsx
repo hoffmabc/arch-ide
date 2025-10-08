@@ -37,6 +37,9 @@ import { TutorialProvider, useTutorial } from './context/TutorialContext';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { WelcomeModal } from './components/WelcomeModal';
 import { Toaster } from './components/ui/toaster';
+import { HomeScreen } from './components/HomeScreen';
+import { exampleProjectsService } from './services/exampleProjectsService';
+import { createHomeTab, isHomeTab, addHomeTabIfNotExists } from './utils/homeTab';
 
 const queryClient = new QueryClient();
 console.log('API_URL', import.meta.env.VITE_API_URL);
@@ -319,7 +322,13 @@ const AppContent = () => {
         setProjects(loadedProjects);
       }
 
-      if (loadedProjects.length > 0) {
+      if (loadedProjects.length === 0) {
+        // No projects - open the Home tab
+        console.log('No projects found, opening Home tab');
+        const homeTab = createHomeTab();
+        setOpenFiles([homeTab]);
+        setCurrentFile(homeTab);
+      } else if (loadedProjects.length > 0) {
         // Try to restore the last active project
         const lastActiveProjectId = localStorage.getItem('currentProjectId');
         console.log('💾 Last active project ID from localStorage:', lastActiveProjectId);
@@ -1713,6 +1722,50 @@ const AppContent = () => {
     }
   };
 
+  const handleLoadExampleProject = async (exampleName: string) => {
+    try {
+      addOutputMessage('info', `Loading example project: ${exampleName}...`);
+      const project = await exampleProjectsService.loadExampleProject(exampleName);
+
+      // Update projects list
+      const updatedProjects = await projectService.getAllProjects();
+      setProjects(updatedProjects.map(stripProjectContent));
+
+      // Set as current project
+      setFullCurrentProject(project);
+      setCurrentAccount(project.account || null);
+      setProgramId(project.account?.pubkey);
+      setProgramBinary(null);
+
+      // Clear open tabs
+      setOpenFiles([]);
+      setCurrentFile(null);
+
+      addOutputMessage('success', `Successfully loaded ${exampleName} example project!`);
+    } catch (error) {
+      console.error('Failed to load example project:', error);
+      addOutputMessage('error', `Failed to load example: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleOpenHomeTab = useCallback(() => {
+    // Check if Home tab is already open
+    const homeTabExists = openFiles.some(isHomeTab);
+
+    if (homeTabExists) {
+      // If it exists, just switch to it
+      const homeTab = openFiles.find(isHomeTab);
+      if (homeTab) {
+        setCurrentFile(homeTab);
+      }
+    } else {
+      // Create and open the Home tab
+      const homeTab = createHomeTab();
+      setOpenFiles(prev => [homeTab, ...prev]);
+      setCurrentFile(homeTab);
+    }
+  }, [openFiles]);
+
   useEffect(() => {
     const hasCompletedTutorial = storage.getHasCompletedTutorial();
     if (!hasCompletedTutorial && !isActive) {
@@ -1749,67 +1802,72 @@ const AppContent = () => {
 
       <div className="flex flex-1 overflow-hidden">
         <SidePanel
-          connected={isConnected}
-          hasProjects={projects.length > 0}
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          currentFile={currentFile}
-          files={fullCurrentProject?.files || []}
-          onFileSelect={handleFileSelect}
-          onUpdateTree={handleUpdateTreeAdapter}
-          onNewItem={handleNewItem}
-          onBuild={handleBuild}
-          onDeploy={handleDeploy}
-          isBuilding={isCompiling}
-          isDeploying={isDeploying}
-          programId={programId}
-          programBinary={programBinary}
-          onProgramBinaryChange={setProgramBinary}
-          programIdl={programIdl}
-          config={config}
-          onConfigChange={setConfig}
-          onConnectionStatusChange={setIsConnected}
-          onProgramIdChange={handleProgramIdChange}
-          currentAccount={currentAccount}
-          onAccountChange={setCurrentAccount}
-          project={fullCurrentProject}
-          onProjectAccountChange={handleProjectAccountChange}
-          onAuthorityAccountChange={handleAuthorityAccountChange}
-          onProjectUpdate={handleProjectUpdate}
-          onNewProject={handleNewProject}
-          binaryFileName={binaryFileName}
-          setBinaryFileName={setBinaryFileName}
-          addOutputMessage={addOutputMessage}
-          expandedFolders={expandedFolders}
-          onExpandedFoldersChange={setExpandedFolders}
-        />
+              connected={isConnected}
+              hasProjects={projects.length > 0}
+              currentView={currentView}
+              onViewChange={setCurrentView}
+              currentFile={currentFile}
+              files={fullCurrentProject?.files || []}
+              onFileSelect={handleFileSelect}
+              onUpdateTree={handleUpdateTreeAdapter}
+              onNewItem={handleNewItem}
+              onBuild={handleBuild}
+              onDeploy={handleDeploy}
+              isBuilding={isCompiling}
+              isDeploying={isDeploying}
+              programId={programId}
+              programBinary={programBinary}
+              onProgramBinaryChange={setProgramBinary}
+              programIdl={programIdl}
+              config={config}
+              onConfigChange={setConfig}
+              onConnectionStatusChange={setIsConnected}
+              onProgramIdChange={handleProgramIdChange}
+              currentAccount={currentAccount}
+              onAccountChange={setCurrentAccount}
+              project={fullCurrentProject}
+              onProjectAccountChange={handleProjectAccountChange}
+              onAuthorityAccountChange={handleAuthorityAccountChange}
+              onProjectUpdate={handleProjectUpdate}
+              onNewProject={handleNewProject}
+              onOpenHomeTab={handleOpenHomeTab}
+              binaryFileName={binaryFileName}
+              setBinaryFileName={setBinaryFileName}
+              addOutputMessage={addOutputMessage}
+              expandedFolders={expandedFolders}
+              onExpandedFoldersChange={setExpandedFolders}
+            />
 
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <TabBar
-            openFiles={openFiles}
-            currentFile={currentFile}
-            onSelectFile={handleFileSelect}
-            onCloseFile={handleCloseFile}
-            currentProject={fullCurrentProject}
-          />
-          <div className="flex-1 overflow-hidden">
-          <Editor
-            code={currentFile?.content ?? '// Select a file to edit'}
-            onChange={handleFileChange}
-            onSave={handleSaveFile}
-            currentFile={currentFile}
-            onSelectFile={handleFileSelect}
-            key={currentFile?.path || 'welcome'}
-          />
-          </div>
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <TabBar
+                openFiles={openFiles}
+                currentFile={currentFile}
+                onSelectFile={handleFileSelect}
+                onCloseFile={handleCloseFile}
+                currentProject={fullCurrentProject}
+              />
+              <div className="flex-1 overflow-hidden">
+              <Editor
+                code={currentFile?.content ?? '// Select a file to edit'}
+                onChange={handleFileChange}
+                onSave={handleSaveFile}
+                currentFile={currentFile}
+                onSelectFile={handleFileSelect}
+                key={currentFile?.path || 'welcome'}
+                recentProjects={projects}
+                onNewProject={handleNewProject}
+                onSelectProject={handleProjectSelect}
+                onLoadExample={handleLoadExampleProject}
+              />
+              </div>
 
-          <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
-            <ResizeHandle onMouseDown={handleResizeStart} />
-            <div className="flex-1 min-h-0">
-              <Output messages={outputMessages} onClear={clearOutputMessages} />
+              <div style={{ height: terminalHeight }} className="flex flex-col border-t border-gray-700">
+                <ResizeHandle onMouseDown={handleResizeStart} />
+                <div className="flex-1 min-h-0">
+                  <Output messages={outputMessages} onClear={clearOutputMessages} />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
       </div>
 
       <StatusBar

@@ -6,6 +6,8 @@ import { COMMENT, H_ORANGE, H_YELLOW, H_PURPLE, H_BLUE, ARCH_DARK, ARCH_GRAY, TE
 import { MonacoFileSystem } from '../services/MonacoFileSystem';
 import * as monaco from 'monaco-editor';
 import { editor as monacoEditor } from 'monaco-editor';
+import { isHomeTab } from '../utils/homeTab';
+import { HomeScreen } from './HomeScreen';
 
 interface EditorProps {
   code: string;
@@ -14,45 +16,81 @@ interface EditorProps {
   currentFile?: FileNode | null;
   currentProject?: any;
   onSelectFile: (file: FileNode) => void;
+  // Props for HomeScreen
+  recentProjects?: any[];
+  onNewProject?: () => void;
+  onSelectProject?: (project: any) => void;
+  onLoadExample?: (exampleName: string) => Promise<void>;
 }
 
 
 const DEFAULT_WELCOME_MESSAGE = `
-//  █████╗ ██████╗  ██████╗██╗  ██╗    ███╗   ██╗███████╗████████╗██╗    ██╗ ██████╗ ██████╗ ██╗  ██╗
-// ██╔══██╗██╔══██╗██╔════╝██║  ██║    ████╗  ██║██╔════╝╚══██╔══╝██║    ██║██╔═══██╗██╔══██╗██║ ██╔╝
-// ███████║██████╔╝██║     ███████║    ██╔██╗ ██║█████╗     ██║   ██║ █╗ ██║██║   ██║██████╔╝█████╔╝
-// ██╔══██║██╔══██╗██║     ██╔══██║    ██║╚██╗██║██╔══╝     ██║   ██║███╗██║██║   ██║██╔══██╗██╔═█╗
-// ██║  ██║██║  ██║╚██████╗██║  ██║    ██║ ╚███║███████╗     █║     ╚███╔█╔╝╚██████╔╝██║  ██║██║  ██╗
-// ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═══╝╚══════╝   ╚═╝    ╚══╝╚══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *                    🏗️  ARCH NETWORK PLAYGROUND
+ *
+ *            Build Bitcoin-native programs with Rust + eBPF
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 
-// Welcome to Arch Network Playground! 🚀
+// 🚀 QUICK START
+// ─────────────────────────────────────────────────────────────────────────
+//
+// 1. CREATE A PROJECT
+//    Click the "+" button in the top navigation to get started
+//
+// 2. EXPLORE THE TEMPLATE
+//    • src/lib.rs       → Your Rust program code
+//    • client/client.ts → Example client interaction code
+//
+// 3. BUILD & DEPLOY
+//    • Open the Build panel (🔨) in the left sidebar
+//    • Click "Build" to compile your program
+//    • Configure network settings (testnet/devnet)
+//    • Generate program & authority keypairs
+//    • Deploy to Arch Network
+//
+// 4. TEST YOUR PROGRAM
+//    • Open client/client.ts to see example usage
+//    • Modify the client code to interact with your program
+//    • Run and test your transactions
+
+
+// ⚡ KEYBOARD SHORTCUTS
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Cmd/Ctrl + S     →  Save current file
+// Cmd/Ctrl + B     →  Build program
+// Cmd/Ctrl + W     →  Close current tab
+
+
+// 📚 LEARN MORE
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Documentation   →  https://docs.arch.network
+// Discord         →  Join our community for support
+// Examples        →  Check out the template programs
+// GitHub          →  https://github.com/Arch-Network
+
+
+// 💡 TIPS
+// ─────────────────────────────────────────────────────────────────────────
+//
+// • Use the Explorer (📁) to navigate between files
+// • The Build panel shows build status and deployment info
+// • Connect your Bitcoin wallet (Unisat/Xverse) for seamless transactions
+// • Use testnet for development, devnet for local testing
+// • Check the Output panel below for build logs and errors
+
 
 /*
- * This is your workspace for building and deploying Arch Network programs.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- * Getting Started:
- * ───────────────
- * 1. Create a new project using the "+" button in the top navigation
- * 2. Use the Explorer (📁) to navigate your project files
- * 3. Write your Arch program in Rust
- * 4. Build your program using the Build panel (🔨)
- * 5. Deploy to your chosen network (mainnet-beta [coming soon], devnet, or testnet)
+ *                    Ready to build? Create your first project!
  *
- * Key Features:
- * ────────────
- * • Full Rust development environment
- * • Real-time compilation
- * • Program deployment management
- * • Automatic keypair generation
- * • Binary import/export support
- *
- * Need Help?
- * ─────────
- * • Visit https://docs.arch.network for documentation
- * • Join our Discord community for support
- * • Check out example programs in the templates
- *
- * Happy coding! 🎉
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 `;
 
@@ -114,9 +152,21 @@ const defineTheme = (monaco: any) => {
   });
 };
 
-const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectFile }: EditorProps) => {
+const Editor = ({
+  code,
+  onChange,
+  onSave,
+  currentFile,
+  currentProject,
+  onSelectFile,
+  recentProjects = [],
+  onNewProject,
+  onSelectProject,
+  onLoadExample
+}: EditorProps) => {
   const [editorContent, setEditorContent] = useState<string>(code || '');
   const isWelcomeScreen = !currentFile;
+  const isHomeTabActive = currentFile ? isHomeTab(currentFile) : false;
   const displayCode = isWelcomeScreen ? DEFAULT_WELCOME_MESSAGE : decodeBase64Content(code);
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
   const monacoFsRef = useRef<MonacoFileSystem | null>(null);
@@ -215,6 +265,20 @@ const Editor = ({ code, onChange, onSave, currentFile, currentProject, onSelectF
       console.groupEnd();
     }
   }, [onSave, isWelcomeScreen]);
+
+  // Render HomeScreen if Home tab is active
+  if (isHomeTabActive && onNewProject && onSelectProject && onLoadExample) {
+    return (
+      <div className="h-full w-full">
+        <HomeScreen
+          recentProjects={recentProjects}
+          onNewProject={onNewProject}
+          onSelectProject={onSelectProject}
+          onLoadExample={onLoadExample}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full">

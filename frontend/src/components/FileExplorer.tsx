@@ -29,7 +29,8 @@ import {
   Rocket,
   Play,
   FlaskConical,
-  Loader2
+  Loader2,
+  Home
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -286,6 +287,7 @@ interface FileExplorerProps {
   onExpandedFoldersChange: (folders: Set<string>) => void;
   currentFile: FileNode | null;
   onNewProject?: () => void;
+  onOpenHomeTab?: () => void;
   addOutputMessage: (type: string, message: string) => void;
   project: Project | null;
   onProjectAccountChange?: (account: ProjectAccount | null) => void;
@@ -578,6 +580,7 @@ const FileExplorer = ({
   onExpandedFoldersChange,
   currentFile,
   onNewProject,
+  onOpenHomeTab,
   addOutputMessage,
   project,
   onProjectAccountChange,
@@ -707,6 +710,15 @@ const FileExplorer = ({
       <div className="flex justify-between items-center p-2 border-b border-gray-700">
         <h2 className="text-sm font-medium">Explorer</h2>
         <div className="flex gap-1">
+          {onOpenHomeTab && (
+            <button
+              className="hover:bg-gray-700 p-1 rounded transition-colors"
+              onClick={onOpenHomeTab}
+              title="Open Home Tab"
+            >
+              <Home size={16} />
+            </button>
+          )}
           {/* <button
             className="hover:bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => onNewItem([], 'file')}
