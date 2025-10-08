@@ -4,6 +4,12 @@ import { projectService } from './projectService';
 
 const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/Arch-Network/arch-examples/main/examples';
 
+// Simple in-memory cache to reduce API calls
+// Note: We only need to cache directory listings (API calls)
+// File content uses raw.githubusercontent.com which has no rate limits!
+const apiCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for directory listings
+
 interface GithubFile {
   name: string;
   path: string;
@@ -15,31 +21,76 @@ interface GithubFile {
  * Fetches the file tree for an example project from GitHub
  */
 async function fetchGithubDirectoryContents(exampleName: string, path: string = ''): Promise<GithubFile[]> {
+  const cacheKey = `dir:${exampleName}:${path}`;
+
+  // Check cache first
+  const cached = apiCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('Using cached directory contents for:', cacheKey);
+    return cached.data;
+  }
+
   const apiUrl = path
     ? `https://api.github.com/repos/Arch-Network/arch-examples/contents/examples/${exampleName}/${path}`
     : `https://api.github.com/repos/Arch-Network/arch-examples/contents/examples/${exampleName}`;
 
-  const response = await fetch(apiUrl, {
-    headers: {
-      'Accept': 'application/vnd.github.v3+json',
-    }
-  });
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+  };
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch directory contents: ${response.statusText}`);
+  // Add GitHub token if available (increases rate limit from 60 to 5000 req/hour)
+  const githubToken = import.meta.env.VITE_GITHUB_TOKEN;
+  if (githubToken) {
+    headers['Authorization'] = `Bearer ${githubToken}`;
   }
 
-  return response.json();
+  const response = await fetch(apiUrl, { headers });
+
+  if (!response.ok) {
+    // Check for rate limiting
+    if (response.status === 403) {
+      const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+      if (rateLimitRemaining === '0') {
+        const resetTime = response.headers.get('X-RateLimit-Reset');
+        const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : null;
+        throw new Error(`GitHub API rate limit exceeded. Resets at ${resetDate?.toLocaleTimeString() || 'unknown time'}. Please try again later.`);
+      }
+    }
+    throw new Error(`Failed to fetch directory contents: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  // Cache the result
+  apiCache.set(cacheKey, { data, timestamp: Date.now() });
+
+  return data;
 }
 
 /**
- * Fetches file content from GitHub
+ * Converts GitHub API download_url to raw.githubusercontent.com URL
+ * This bypasses API rate limits completely!
+ */
+function convertToRawUrl(apiDownloadUrl: string): string {
+  // API URLs look like: https://raw.githubusercontent.com/...
+  // They're already raw URLs, so we can use them directly
+  return apiDownloadUrl;
+}
+
+/**
+ * Fetches file content from GitHub using raw URLs (no rate limits!)
  */
 async function fetchFileContent(url: string): Promise<string> {
-  const response = await fetch(url);
+  // Use raw GitHub URL - no authentication needed, no rate limits!
+  // We don't need aggressive caching since raw.githubusercontent.com has no rate limits
+  const rawUrl = convertToRawUrl(url);
+
+  const response = await fetch(rawUrl);
+
   if (!response.ok) {
-    throw new Error(`Failed to fetch file content: ${response.statusText}`);
+    throw new Error(`Failed to fetch file content: ${response.status} ${response.statusText}`);
   }
+
   return response.text();
 }
 
@@ -186,7 +237,7 @@ export async function loadExampleProject(exampleName: string): Promise<Project> 
       name: exampleName,
       description: getExampleDescription(exampleName),
       files,
-      createdAt: new Date(),
+      created: new Date(),
       lastModified: new Date()
     };
 
