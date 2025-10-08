@@ -15,9 +15,11 @@ import {
   import { Project, ProjectAccount } from '../types';
   import { useToast } from "@/components/ui/use-toast";
   import { getSmartRpcUrl } from '../utils/smartRpcConnection';
-  import { AuthorityAccountPanel } from './AuthorityAccountPanel';
-  import { hexToBase58 } from '../utils/base58';
-  import FormatToggleInput from './FormatToggleInput';
+import { AuthorityAccountPanel } from './AuthorityAccountPanel';
+import { hexToBase58 } from '../utils/base58';
+import FormatToggleInput from './FormatToggleInput';
+import StepCard from './StepCard';
+import Identicon from './Identicon';
 
   interface BuildPanelProps {
     hasProjects: boolean;
@@ -278,9 +280,20 @@ import {
     const deployStatus = isDeployReady();
 
     return (
-        <div className="w-full bg-gray-800 border-r border-gray-700 p-4 space-y-6">
+        <div className="w-full min-w-[390px] shrink-0 bg-gray-800 border-r border-gray-700 p-5 space-y-6 no-scrollbar overflow-y-auto">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-medium px-2 py-1 rounded border ${
+                config.network === 'mainnet-beta'
+                  ? 'bg-red-900/40 text-red-300 border-red-400'
+                  : config.network === 'testnet'
+                    ? 'bg-yellow-900/30 text-yellow-300 border-yellow-400'
+                    : 'bg-blue-900/40 text-blue-300 border-blue-400'
+              }`}>
+                {config.network === 'mainnet-beta' ? 'MAINNET' : config.network.toUpperCase()}
+              </span>
+            </div>
           </div>
 
           <Button
@@ -298,54 +311,33 @@ import {
             )}
           </Button>
 
-          {/* Program ID Section */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">Program ID</h3>
-              <div className="flex gap-1">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="icon" data-tutorial="generate-key" variant="ghost" onClick={handleNewKeypairClick}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Generate new program ID</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <NewKeypairDialog
-                    isOpen={isNewKeypairDialogOpen}
-                    onClose={() => setIsNewKeypairDialogOpen(false)}
-                    onConfirm={handleNewKeypair}
-                    isConnected={isRpcConnected}
-                  />
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="icon" variant="ghost" onClick={() => document.getElementById('import-keypair')?.click()}>
-                        <Import className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Import program keypair</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button size="icon" variant="ghost" onClick={handleExportKeypair} disabled={!currentAccount}>
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Save program keypair</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
+          {/* Step 1: Program */}
+          <StepCard
+            step={1}
+            title="Program"
+            actions={
+              <>
+                <Button data-tutorial="generate-key" variant="ghost" size="sm" onClick={handleNewKeypairClick} aria-label="New">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden lg:inline ml-1">New</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => document.getElementById('import-keypair')?.click()} aria-label="Import">
+                  <Import className="h-4 w-4" />
+                  <span className="hidden lg:inline ml-1">Import</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleExportKeypair} disabled={!currentAccount} aria-label="Save">
+                  <Save className="h-4 w-4" />
+                  <span className="hidden lg:inline ml-1">Save</span>
+                </Button>
+              </>
+            }
+          >
+            <NewKeypairDialog
+              isOpen={isNewKeypairDialogOpen}
+              onClose={() => setIsNewKeypairDialogOpen(false)}
+              onConfirm={handleNewKeypair}
+              isConnected={isRpcConnected}
+            />
             <input
               type="file"
               id="import-keypair"
@@ -354,10 +346,9 @@ import {
               onChange={handleImportKeypair}
             />
             {currentAccount && currentAccount.pubkey && project?.account ? (
-              <FormatToggleInput
-                label=""
-                hex={currentAccount.pubkey}
-              />
+              <div className="flex items-center gap-2 min-w-0">
+                <FormatToggleInput label="Program ID" hex={currentAccount.pubkey} />
+              </div>
             ) : (
               <div className="flex items-center space-x-2">
                 <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
@@ -365,57 +356,35 @@ import {
                 </code>
               </div>
             )}
-          </div>
+          </StepCard>
 
-          {/* Authority Account Section */}
-          <div className="mb-4">
+          {/* Step 2: Authority */}
+          <StepCard step={2} title="Authority" actions={null}>
             <AuthorityAccountPanel
               project={project}
               onAuthorityAccountChange={onAuthorityAccountChange}
               config={config}
               isConnected={isRpcConnected}
             />
-          </div>
+          </StepCard>
 
-          {/* Program Binary Section */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">Program binary</h3>
-              <div className="flex gap-1">
-                <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => document.getElementById('import-binary')?.click()}
-                      >
-                        <Import className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Import program binary (.so)</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={handleExportBinary}
-                        disabled={!programBinary}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Save program binary</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
+          {/* Step 3: Artifact */}
+          <StepCard
+            step={3}
+            title="Artifact"
+            actions={
+              <>
+                <Button variant="ghost" size="sm" onClick={() => document.getElementById('import-binary')?.click()} aria-label="Import">
+                  <Import className="h-4 w-4" />
+                  <span className="hidden lg:inline ml-1">Import</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleExportBinary} disabled={!programBinary} aria-label="Save">
+                  <Save className="h-4 w-4" />
+                  <span className="hidden lg:inline ml-1">Save</span>
+                </Button>
+              </>
+            }
+          >
             <div className="flex items-center gap-2">
               <input
                 type="file"
@@ -434,16 +403,28 @@ import {
               <div className={`w-2 h-2 rounded-full ${programBinary ? 'bg-green-500' : 'bg-red-500'}`}
                    title={programBinary ? 'Binary loaded' : 'No binary loaded'} />
             </div>
-          </div>
+          </StepCard>
 
-          <Button
-            className="w-full mt-4"
-            data-tutorial="deploy"
-            onClick={onDeploy}
-            disabled={isDeploying || !currentAccount || !hasProjects}
-          >
-            {isDeploying ? 'Deploying...' : 'Deploy'}
-          </Button>
+          {config.network === 'mainnet-beta' && (
+            <div className="rounded-md border border-red-700 bg-red-900/20 text-red-300 text-xs p-3">
+              Deploys on Mainnet are irreversible. Review fees and program permissions.
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-gray-400">
+              Estimated fee: <span className="text-gray-200">~0.001 ARCH</span>
+            </div>
+            <div className="flex-1" />
+            <Button
+              className="mt-2"
+              data-tutorial="deploy"
+              onClick={onDeploy}
+              disabled={isDeploying || !currentAccount || !hasProjects}
+            >
+              {isDeploying ? 'Deploying...' : 'Deploy'}
+            </Button>
+          </div>
         </div>
       );
   };

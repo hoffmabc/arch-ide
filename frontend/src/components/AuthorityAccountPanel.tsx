@@ -7,6 +7,7 @@ import { RpcConnection } from '@saturnbtcio/arch-sdk';
 import { getSmartRpcUrl } from '../utils/smartRpcConnection';
 import { getExplorerUrls } from '../utils/explorerLinks';
 import { hexToBase58 } from '../utils/base58';
+// Identicon removed per design update
 import { requestFaucetFunds, isFaucetAvailable } from '../utils/faucet';
 import { useToast } from './ui/use-toast';
 
@@ -189,8 +190,8 @@ export const AuthorityAccountPanel: React.FC<AuthorityAccountPanelProps> = ({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">Authority Account</h3>
+            <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-200 tracking-wide uppercase">Authority Account</h3>
 
         {authority && (
           <div className="flex gap-1">
@@ -256,7 +257,7 @@ export const AuthorityAccountPanel: React.FC<AuthorityAccountPanelProps> = ({
           </Button>
         </div>
       ) : (
-        <div className="bg-gray-800/40 border border-gray-700 rounded-md p-2 space-y-2">
+        <div className="bg-gray-800/40 border border-gray-700 rounded-md p-4 space-y-3">
           {/* Balance & Network Display */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -265,7 +266,17 @@ export const AuthorityAccountPanel: React.FC<AuthorityAccountPanelProps> = ({
                 <span className="text-xs text-gray-500">Loading...</span>
               ) : balance !== null ? (
                 <div className="flex items-center gap-1">
-                  <span className="text-xs font-mono font-semibold text-gray-100">{formatBalance(balance)} ARCH</span>
+                  <span className="text-xs font-mono font-semibold text-gray-100">
+                    {(() => {
+                      const arch = formatBalance(balance);
+                      // Show fewer decimals on very narrow sidebars
+                      if (window && window.innerWidth < 360) {
+                        const short = (balance / 100_000_000).toFixed(2);
+                        return `${short} ARCH`;
+                      }
+                      return `${arch} ARCH`;
+                    })()}
+                  </span>
                   {hasSufficientFunds ? (
                     <CheckCircle2 className="h-3 w-3 text-green-500" />
                   ) : needsFunding && (
@@ -276,7 +287,7 @@ export const AuthorityAccountPanel: React.FC<AuthorityAccountPanelProps> = ({
                 <span className="text-xs text-gray-400">-</span>
               )}
             </div>
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+            <span className={`text-[10px] font-medium px-1 py-0.5 rounded border border-current ${
               config.network === 'mainnet-beta'
                 ? 'bg-red-900/40 text-red-300'
                 : config.network === 'testnet'
@@ -305,64 +316,33 @@ export const AuthorityAccountPanel: React.FC<AuthorityAccountPanelProps> = ({
             </div>
           )}
 
-          {/* Public Key (copyable input) */}
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-gray-300">Pubkey</span>
-              <input
-                readOnly
-                value={authority.pubkey}
-                className="flex-1 text-[10px] font-mono bg-gray-900 border border-gray-700 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleCopy(authority.pubkey, 'pubkey')}
-                className="h-6 px-1"
-                title="Copy public key"
-              >
-                {copiedField === 'pubkey' ? (
-                  <CheckCircle2 className="h-3 w-3 text-green-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
+          {/* Keys row */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-300 w-14">Pubkey</span>
+              <div className="flex-1 min-w-0 h-6 text-[11px] font-mono bg-gray-900 border border-gray-700 rounded px-1 flex items-center">
+                <span className="truncate" title={authority.pubkey}>{authority.pubkey}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => handleCopy(authority.pubkey, 'pubkey')} className="h-6 px-2">
+                {copiedField === 'pubkey' ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                <span className="text-[10px] ml-1 hidden md:inline">Copy</span>
               </Button>
               {explorerUrls && authorityBase58 && (
-                <a href={explorerUrls.account(authorityBase58)} target="_blank" rel="noopener noreferrer" className="text-[10px] underline">
-                  Explorer
-                </a>
+                <a href={explorerUrls.account(authorityBase58)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-300 underline">Explorer</a>
               )}
             </div>
-          </div>
 
-          {/* Address (copyable input) */}
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-gray-300">Address</span>
-              <input
-                readOnly
-                value={authority.address}
-                className="flex-1 text-[10px] font-mono bg-gray-900 border border-gray-700 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleCopy(authority.address, 'address')}
-                className="h-6 px-1"
-                title="Copy address"
-              >
-                {copiedField === 'address' ? (
-                  <CheckCircle2 className="h-3 w-3 text-green-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-300 w-14">Address</span>
+              <div className="flex-1 min-w-0 h-6 text-[11px] font-mono bg-gray-900 border border-gray-700 rounded px-1 flex items-center">
+                <span className="truncate" title={authority.address}>{authority.address}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => handleCopy(authority.address, 'address')} className="h-6 px-2">
+                {copiedField === 'address' ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                <span className="text-[10px] ml-1 hidden md:inline">Copy</span>
               </Button>
               {explorerUrls && authorityBase58 && (
-                <a href={explorerUrls.account(authorityBase58)} target="_blank" rel="noopener noreferrer" className="text-[10px] underline">
-                  Explorer
-                </a>
+                <a href={explorerUrls.account(authorityBase58)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-300 underline">Explorer</a>
               )}
             </div>
           </div>
