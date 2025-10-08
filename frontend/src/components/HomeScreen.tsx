@@ -14,6 +14,14 @@ interface HomeScreenProps {
 // Example projects from https://github.com/Arch-Network/arch-examples/tree/main/examples
 const EXAMPLE_PROJECTS = [
   {
+    name: 'helloworld',
+    title: 'Hello World',
+    description: 'The classic first program - perfect for getting started with Arch.',
+    icon: '👋',
+    difficulty: 'Beginner',
+    tags: ['Tutorial', 'Basic']
+  },
+  {
     name: 'counter',
     title: 'Counter Program',
     description: 'A simple counter program demonstrating state management on Arch Network.',
@@ -38,28 +46,52 @@ const EXAMPLE_PROJECTS = [
     tags: ['Accounts', 'Setup']
   },
   {
-    name: 'helloworld',
-    title: 'Hello World',
-    description: 'The classic first program - perfect for getting started with Arch.',
-    icon: '👋',
-    difficulty: 'Beginner',
-    tags: ['Tutorial', 'Basic']
-  },
-  {
-    name: 'transfer',
-    title: 'Transfer Program',
-    description: 'Learn token and value transfers between accounts.',
-    icon: '💸',
+    name: 'escrow',
+    title: 'Escrow Program',
+    description: 'Implement secure escrow patterns for conditional transfers.',
+    icon: '🔒',
     difficulty: 'Intermediate',
-    tags: ['Transfers', 'Tokens']
+    tags: ['Security', 'Transfers']
   },
   {
-    name: 'multisig',
-    title: 'Multi-Signature',
-    description: 'Implement multi-signature authorization patterns.',
-    icon: '🔐',
+    name: 'secp256k1_signature',
+    title: 'Secp256k1 Signature',
+    description: 'Learn secp256k1 signature verification on Arch Network.',
+    icon: '✍️',
+    difficulty: 'Intermediate',
+    tags: ['Crypto', 'Security']
+  },
+  {
+    name: 'oracle',
+    title: 'Oracle Program',
+    description: 'Build decentralized oracle solutions for external data feeds.',
+    icon: '🔮',
     difficulty: 'Advanced',
-    tags: ['Security', 'Auth']
+    tags: ['Oracles', 'Data']
+  },
+  {
+    name: 'stake',
+    title: 'Staking Program',
+    description: 'Implement staking mechanisms and reward distribution.',
+    icon: '💰',
+    difficulty: 'Advanced',
+    tags: ['DeFi', 'Staking']
+  },
+  {
+    name: 'vote',
+    title: 'Voting Program',
+    description: 'Build voting and governance mechanisms with multi-file structure.',
+    icon: '🗳️',
+    difficulty: 'Advanced',
+    tags: ['Governance', 'Complex']
+  },
+  {
+    name: 'test-sol-log-data',
+    title: 'Logging Test',
+    description: 'Test and debug logging functionality in Arch programs.',
+    icon: '📝',
+    difficulty: 'Beginner',
+    tags: ['Testing', 'Debug']
   }
 ];
 

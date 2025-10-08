@@ -149,6 +149,87 @@ proptest = "1.5.0""#;
     Ok(())
 }
 
+/// Warms up the build cache by pre-compiling dependencies
+/// This significantly speeds up the first user build
+pub async fn warmup() -> anyhow::Result<()> {
+    info!("🔥 Warming up build cache by pre-compiling dependencies...");
+
+    let warmup_id = "warmup-cache";
+    let warmup_dir = Path::new(PROGRAMS_DIR).join(warmup_id);
+
+    // Check if warmup build already exists (cached from previous run)
+    let binary_path = warmup_dir.join("target/deploy/warmup.so");
+    if binary_path.exists() {
+        info!("✅ Build cache already warm (found existing warmup build)");
+        return Ok(());
+    }
+
+    // Create warmup project directory structure
+    fs::create_dir_all(&warmup_dir)?;
+    let src_dir = warmup_dir.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // Create minimal Cargo.toml with all dependencies
+    let cargo_toml = CARGO_TOML_TEMPLATE.replace("{}", "warmup");
+    fs::write(warmup_dir.join("Cargo.toml"), cargo_toml)?;
+
+    // Create minimal lib.rs that uses the dependencies
+    let lib_rs = r#"use arch_program::{
+    account::AccountInfo,
+    entrypoint,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
+use borsh::{BorshDeserialize, BorshSerialize};
+
+entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _instruction_data: &[u8],
+) -> Result<(), ProgramError> {
+    Ok(())
+}
+"#;
+    fs::write(src_dir.join("lib.rs"), lib_rs)?;
+
+    // Run the build in the background (don't block server startup)
+    let warmup_dir_clone = warmup_dir.clone();
+    tokio::spawn(async move {
+        info!("🔨 Starting background warmup build...");
+        let start = std::time::Instant::now();
+
+        let result = TokioCommand::new("cargo")
+            .args(&[
+                "build-sbf",
+                "--manifest-path",
+                &warmup_dir_clone.join("Cargo.toml").to_string_lossy(),
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+
+        match result {
+            Ok(status) if status.success() => {
+                let elapsed = start.elapsed();
+                info!("✅ Build cache warmed up successfully in {:.1}s", elapsed.as_secs_f64());
+                info!("   Next user build will be much faster!");
+            }
+            Ok(status) => {
+                info!("⚠️  Warmup build exited with status: {}", status);
+            }
+            Err(e) => {
+                info!("⚠️  Warmup build failed: {}", e);
+            }
+        }
+    });
+
+    info!("✅ Warmup build started in background (server ready to accept requests)");
+    Ok(())
+}
+
 pub type Files = Vec<[String; 2]>;
 
 pub async fn build(
@@ -245,7 +326,7 @@ pub async fn build(
         }
     };
     println!("Using shared target directory: {:?}", shared_target);
-    
+
     let shared_cargo_home = match cargo_home.canonicalize() {
         Ok(path) => path,
         Err(e) => {

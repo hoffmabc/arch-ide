@@ -322,14 +322,14 @@ const AppContent = () => {
         setProjects(loadedProjects);
       }
 
-      if (loadedProjects.length === 0) {
-        // No projects - open the Home tab
-        console.log('No projects found, opening Home tab');
-        const homeTab = createHomeTab();
-        setOpenFiles([homeTab]);
-        setCurrentFile(homeTab);
-      } else if (loadedProjects.length > 0) {
-        // Try to restore the last active project
+      // Always open Home tab by default
+      console.log('Opening Home tab by default');
+      const homeTab = createHomeTab();
+      setOpenFiles([homeTab]);
+      setCurrentFile(homeTab);
+
+      if (loadedProjects.length > 0) {
+        // Try to restore the last active project in the background
         const lastActiveProjectId = localStorage.getItem('currentProjectId');
         console.log('💾 Last active project ID from localStorage:', lastActiveProjectId);
         console.log('📋 Available project IDs:', loadedProjects.map(p => p.id));
@@ -1737,9 +1737,10 @@ const AppContent = () => {
       setProgramId(project.account?.pubkey);
       setProgramBinary(null);
 
-      // Clear open tabs
-      setOpenFiles([]);
-      setCurrentFile(null);
+      // Keep Home tab open, clear other tabs, and set it as current
+      const homeTab = openFiles.find(isHomeTab);
+      setOpenFiles(homeTab ? [homeTab] : []);
+      setCurrentFile(homeTab || null);
 
       addOutputMessage('success', `Successfully loaded ${exampleName} example project!`);
     } catch (error) {

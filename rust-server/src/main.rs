@@ -33,6 +33,12 @@ async fn main() -> Result<()> {
     })?;
     info!("Program directory initialized");
 
+    // Warm up the build cache by pre-compiling dependencies
+    program::warmup().await.map_err(|e| {
+        error!("Failed to warmup build cache: {}", e);
+        e
+    })?;
+
     let build_tracker = BuildTracker::new();
 
     let app = Router::new()
