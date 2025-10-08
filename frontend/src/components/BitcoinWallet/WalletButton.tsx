@@ -1,6 +1,6 @@
 // Wallet connection button - shows in the UI like Solana Playground
 import React from 'react';
-import { Wallet, ChevronDown } from 'lucide-react';
+import { Wallet, ChevronDown, LogOut } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useBitcoinWallet } from '../../hooks/useBitcoinWallet';
 import { useToast } from '../ui/use-toast';
@@ -37,9 +37,12 @@ const WalletIcon: React.FC<{ name: string }> = ({ name }) => {
 
 interface WalletButtonProps {
   network?: 'mainnet' | 'testnet' | 'regtest';
+  rpcUrl?: string;
 }
 
-export const WalletButton: React.FC<WalletButtonProps> = ({ network = 'testnet' }) => {
+export const WalletButton: React.FC<WalletButtonProps> = ({
+  network = 'testnet',
+}) => {
   const {
     wallet,
     account,
@@ -116,9 +119,10 @@ export const WalletButton: React.FC<WalletButtonProps> = ({ network = 'testnet' 
           <DropdownMenuSeparator className="bg-gray-700" />
           <DropdownMenuItem
             onClick={() => disconnect()}
-            className="text-red-400 hover:text-red-300 hover:bg-red-950/30 font-medium cursor-pointer"
+            className="text-red-400 hover:text-red-300 hover:bg-red-950/30 font-medium cursor-pointer flex items-center gap-2"
           >
-            Disconnect
+            <LogOut className="h-4 w-4" />
+            <span>Disconnect</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

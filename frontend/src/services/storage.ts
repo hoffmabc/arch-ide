@@ -32,13 +32,84 @@ export interface IStorageService {
 
 export class StorageService implements IStorageService {
   private db: IDBPDatabase<ArchIDEDB> | null = null;
+  private initRetries = 0;
+  private readonly maxRetries = 3;
 
-  async init() {
-    this.db = await openDB<ArchIDEDB>(DB_NAME, DB_VERSION, {
-      upgrade(db: IDBPDatabase<ArchIDEDB>) {
-        const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
-        projectStore.createIndex('by-name', 'name');
-      },
+  async init(): Promise<void> {
+    try {
+      this.db = await openDB<ArchIDEDB>(DB_NAME, DB_VERSION, {
+        upgrade(db: IDBPDatabase<ArchIDEDB>) {
+          if (!db.objectStoreNames.contains('projects')) {
+            const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
+            projectStore.createIndex('by-name', 'name');
+          }
+        },
+      });
+      this.initRetries = 0; // Reset retry counter on success
+    } catch (error) {
+      console.error('Failed to initialize IndexedDB:', error);
+
+      // Try to delete and recreate the database
+      if (this.initRetries < this.maxRetries) {
+        this.initRetries++;
+        console.log(`Attempting to recreate database (attempt ${this.initRetries}/${this.maxRetries})`);
+
+        try {
+          // Delete the corrupted database
+          await this.deleteDatabase();
+
+          // Try to initialize again
+          this.db = await openDB<ArchIDEDB>(DB_NAME, DB_VERSION, {
+            upgrade(db: IDBPDatabase<ArchIDEDB>) {
+              if (!db.objectStoreNames.contains('projects')) {
+                const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
+                projectStore.createIndex('by-name', 'name');
+              }
+            },
+          });
+
+          this.initRetries = 0;
+        } catch (retryError) {
+          console.error('Failed to recreate database:', retryError);
+
+          if (this.initRetries >= this.maxRetries) {
+            const message = 'IndexedDB is unavailable. Please try:\n' +
+              '1. Close all other tabs with this site\n' +
+              '2. Clear browser data for this site\n' +
+              '3. Restart your browser\n' +
+              '4. Check if you\'re in private browsing mode';
+
+            alert(message);
+            throw new Error('IndexedDB initialization failed after multiple retries');
+          } else {
+            // Try again
+            return this.init();
+          }
+        }
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  private async deleteDatabase(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+
+      request.onsuccess = () => {
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error('Failed to delete database:', request.error);
+        reject(request.error);
+      };
+
+      request.onblocked = () => {
+        console.warn('Database deletion blocked. Please close all other tabs.');
+        // Resolve anyway and try to continue
+        setTimeout(() => resolve(), 1000);
+      };
     });
   }
 

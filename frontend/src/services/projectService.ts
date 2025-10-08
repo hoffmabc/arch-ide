@@ -618,13 +618,33 @@ const addPathsToNodes = (nodes: FileNode[], parentPath: string = ''): FileNode[]
 
 export class ProjectService {
   private storage = new StorageService();
+  private isInitialized = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
     // Initialize the storage service when ProjectService is created
-    this.storage.init().catch(console.error);
+    this.initPromise = this.initializeStorage();
+  }
+
+  private async initializeStorage(): Promise<void> {
+    try {
+      await this.storage.init();
+      this.isInitialized = true;
+    } catch (error) {
+      console.error('Failed to initialize ProjectService storage:', error);
+      this.isInitialized = false;
+      throw error;
+    }
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized && this.initPromise) {
+      await this.initPromise;
+    }
   }
 
   async createProject(name: string, description?: string): Promise<Project> {
+    await this.ensureInitialized();
     const uniqueName = await this.getUniqueProjectName(name);
     const project: Project = {
       id: uuidv4(),
@@ -641,6 +661,7 @@ export class ProjectService {
   }
 
   async updateProjectAccount(projectId: string, account: ProjectAccount): Promise<void> {
+    await this.ensureInitialized();
     const project = await this.storage.getProject(projectId);
     if (project) {
       project.account = account;
@@ -650,6 +671,7 @@ export class ProjectService {
   }
 
   async saveProject(project: Project): Promise<void> {
+    await this.ensureInitialized();
     // Prevent auto-saving during development hot reload
     if (import.meta.env.DEV && document.visibilityState === 'hidden') {
       return;
@@ -659,14 +681,17 @@ export class ProjectService {
   }
 
   async getProject(id: string): Promise<Project | null> {
+    await this.ensureInitialized();
     return (await this.storage.getProject(id)) || null;
   }
 
   async getAllProjects(): Promise<Project[]> {
+    await this.ensureInitialized();
     return await this.storage.getAllProjects();
   }
 
   async deleteProject(id: string): Promise<void> {
+    await this.ensureInitialized();
     await this.storage.deleteProject(id);
   }
 
@@ -733,6 +758,7 @@ export class ProjectService {
   }
 
   async importProject(files: FileList): Promise<Project> {
+    await this.ensureInitialized();
     const fileNodes: FileNode[] = [];
     const fileMap = new Map<string, FileNode>();
 
@@ -869,6 +895,7 @@ export class ProjectService {
   }
 
   async importProjectAsZip(file: File): Promise<Project> {
+    await this.ensureInitialized();
     const zip = await JSZip.loadAsync(file);
     const fileNodes: FileNode[] = [];
     const fileMap = new Map<string, FileNode>()
@@ -976,6 +1003,7 @@ export class ProjectService {
   }
 
   async importFromFolder(files: FileList): Promise<Project> {
+    await this.ensureInitialized();
     const fileNodes: FileNode[] = [];
     const fileMap = new Map<string, FileNode>();
 
@@ -1033,6 +1061,7 @@ export class ProjectService {
   }
 
   async exportProjectAsZip(project: Project): Promise<Blob> {
+    await this.ensureInitialized();
     const zip = new JSZip();
 
     const addToZip = (nodes: FileNode[], currentPath: string = '') => {

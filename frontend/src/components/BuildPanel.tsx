@@ -16,6 +16,8 @@ import {
   import { useToast } from "@/components/ui/use-toast";
   import { getSmartRpcUrl } from '../utils/smartRpcConnection';
   import { AuthorityAccountPanel } from './AuthorityAccountPanel';
+  import { hexToBase58 } from '../utils/base58';
+  import FormatToggleInput from './FormatToggleInput';
 
   interface BuildPanelProps {
     hasProjects: boolean;
@@ -351,30 +353,18 @@ import {
               accept="application/json"
               onChange={handleImportKeypair}
             />
-            <div className="flex items-center space-x-2">
-              <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
-                {(currentAccount && currentAccount.pubkey && project?.account)
-                  ? currentAccount.pubkey
-                  : 'Not deployed'}
-              </code>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => currentAccount && navigator.clipboard.writeText(currentAccount.pubkey)}
-                      disabled={!currentAccount}
-                    >
-                      <ClipboardIcon className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Copy program ID</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+            {currentAccount && currentAccount.pubkey && project?.account ? (
+              <FormatToggleInput
+                label=""
+                hex={currentAccount.pubkey}
+              />
+            ) : (
+              <div className="flex items-center space-x-2">
+                <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
+                  Not deployed
+                </code>
+              </div>
+            )}
           </div>
 
           {/* Authority Account Section */}

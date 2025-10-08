@@ -75,7 +75,9 @@ export const StatusBar = ({ config, isConnected, onConnectionStatusChange, pendi
             Last ping: {lastPingTime.toLocaleTimeString()}
           </span>
         )}
-        <WalletButton network={mapConfigNetwork(config.network)} />
+        <WalletButton
+          network={mapConfigNetwork(config.network)}
+        />
         <ConnectionStatus
           rpcUrl={config.rpcUrl}
           network={config.network}

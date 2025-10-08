@@ -165,8 +165,7 @@ const ProjectList = ({
         id="import-project"
         className="hidden"
         accept=".zip,.json"
-        webkitdirectory={true}
-        directory={true}
+        {...({ webkitdirectory: "", directory: "" } as any)}
         multiple
         onChange={handleImportProject}
       />
