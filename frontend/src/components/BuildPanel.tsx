@@ -280,7 +280,7 @@ import Identicon from './Identicon';
     const deployStatus = isDeployReady();
 
     return (
-        <div className="w-full min-w-[390px] shrink-0 bg-gray-800 border-r border-gray-700 p-5 space-y-6 no-scrollbar overflow-y-auto">
+        <div className="w-full min-w-[390px] shrink-0 bg-gray-800 border-r border-gray-700 p-5 space-y-6 no-scrollbar overflow-y-auto overflow-x-hidden">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">BUILD & DEPLOY</h2>
             <div className="flex items-center gap-2">
