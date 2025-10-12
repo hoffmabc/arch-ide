@@ -403,12 +403,12 @@ try {
   const txid = await ClientTransactionUtil.signAndSendTransaction(conn, message, useWallet);
 
   if (txid) {
-    console.log("\\n🎉 " + operationName.charAt(0).toUpperCase() + operationName.slice(1) + " operation completed!");
+    console.log("\n🎉 " + operationName.charAt(0).toUpperCase() + operationName.slice(1) + " operation completed!");
 
     // ============================================================================
     // Read Counter Value After Operation
     // ============================================================================
-    console.log("\\n--- Reading Counter Value (After) ---");
+    console.log("\n--- Reading Counter Value (After) ---");
     console.log("⏳ Waiting for transaction to be processed...");
     let finalCount = null;
     for (let attempt = 1; attempt <= 5; attempt++) {
@@ -445,24 +445,75 @@ try {
       console.log("⚠️  Could not read updated counter value after retries");
     }
 
-    console.log("\\n📝 What happened:");
-    console.log("  - Derived a PDA from seeds: [\\"counter\\", user_pubkey]");
+    // ============================================================================
+    // If we just initialized, automatically increment and prove change
+    // ============================================================================
+    if (operationName === "initialize") {
+      console.log("\n--- Sending Increment Instruction (Proof) ---");
+      const incInstruction = {
+        program_id: programPubkey,
+        accounts: [
+          { pubkey: counterPubkey, is_signer: false, is_writable: true },
+          { pubkey: accountPubkey, is_signer: true, is_writable: false },
+        ],
+        data: incrementDiscriminator
+      };
+
+      const incMessage = {
+        signers: [accountPubkey],
+        instructions: [incInstruction]
+      };
+
+      try {
+        const txid2 = await ClientTransactionUtil.signAndSendTransaction(conn, incMessage, useWallet);
+        if (txid2) {
+          console.log("✓ Increment transaction sent: " + txid2);
+          console.log("⏳ Waiting for increment to process...");
+          let newCount = null;
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              const accountInfo2 = await conn.readAccountInfo(counterPubkey);
+              if (accountInfo2 && accountInfo2.data && accountInfo2.data.length >= 48) {
+                const countBytes2 = accountInfo2.data.slice(8, 16);
+                let count2 = 0;
+                for (let i = 0; i < 8; i++) count2 += countBytes2[i] * Math.pow(256, i);
+                newCount = count2;
+                console.log("Attempt " + attempt + ": Counter after increment:", count2);
+                break;
+              }
+            } catch (_) {}
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          if (newCount !== null) {
+            const base = finalCount ?? 0;
+            console.log("\n✅ Proof: Counter incremented:", base, "→", newCount, "(Δ=", newCount - base, ")");
+          } else {
+            console.log("⚠️  Could not confirm increment after retries");
+          }
+        }
+      } catch (e) {
+        console.log("✗ Increment failed:", e?.message || e);
+      }
+    }
+
+    console.log("\n📝 What happened:");
+    console.log("  - Derived a PDA from seeds: [\"counter\", user_pubkey]");
     console.log("  - Called Satellite program's " + operationName + " instruction");
     console.log("  - Used instruction discriminator for routing");
     console.log("  - Signed with only your wallet (PDA doesn't need to sign!)");
     console.log("  - Transaction submitted to Arch Network");
     if (operationName === "initialize") {
       console.log("  - Counter PDA initialized at deterministic address");
-      console.log("\\n💡 Run this script again to increment the counter!");
     } else {
       console.log("  - Counter value was incremented successfully");
     }
-    console.log("\\n📌 Key Concepts:");
+    console.log("\n📌 Key Concepts:");
     console.log("  PDAs (Program Derived Addresses):");
     console.log("    - Stored at a deterministic address (seeds + program ID)");
     console.log("    - No private key needed - the program controls it!");
     console.log("    - Each user gets their own counter automatically");
-    console.log("\\n  Satellite Account Layout:");
+    console.log("\n  Satellite Account Layout:");
     console.log("    - #[account] macro adds 8-byte discriminator at start");
     console.log("    - Counter data: [discriminator(8) | count(8) | authority(32)]");
     console.log("    - Always skip first 8 bytes when reading account data!");
