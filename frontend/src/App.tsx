@@ -6,7 +6,7 @@ import { Output } from './components/Output';
 import ProjectList from './components/ProjectList';
 import NewProjectDialog from './components/NewProjectDialog';
 import { projectService } from './services/projectService';
-import type { Project, FileNode, ProjectAccount } from './types';
+import type { Project, FileNode, ProjectAccount, ProjectFramework } from './types';
 import TabBar from './components/TabBar';
 import ResizeHandle from './components/ResizeHandle';
 import NewItemDialog from './components/NewItemDialog';
@@ -694,8 +694,8 @@ const AppContent = () => {
     return Buffer.from(base64, 'base64');
   };
 
-  const handleCreateProject = async (name: string, description: string) => {
-    const newProject = await projectService.createProject(name, description);
+  const handleCreateProject = async (name: string, description: string, framework?: ProjectFramework) => {
+    const newProject = await projectService.createProject(name, description, framework);
     const updatedProjects = await projectService.getAllProjects();
     setProjects(updatedProjects.map(stripProjectContent));
     setFullCurrentProject(newProject);
@@ -1294,12 +1294,26 @@ const AppContent = () => {
     try {
       // Even if content is unchanged, we need to ensure tab state is preserved
       const updatedFiles = updateFileContent(fullCurrentProject.files, currentFile, newContent);
+
+      // Preserve keypairs across saves, even if local state is briefly stale
+      let preservedProgramAccount = fullCurrentProject.account || currentAccount || undefined;
+      let preservedAuthorityAccount = fullCurrentProject.authorityAccount || undefined;
+
+      // As a last resort, read from storage to avoid wiping accounts
+      if (!preservedProgramAccount) {
+        try {
+          const persisted = await projectService.getProject(fullCurrentProject.id);
+          preservedProgramAccount = persisted?.account || undefined;
+          preservedAuthorityAccount = preservedAuthorityAccount || persisted?.authorityAccount || undefined;
+        } catch {}
+      }
+
       const updatedProject = {
         ...fullCurrentProject,
         files: updatedFiles,
         lastModified: new Date(),
-        account: fullCurrentProject.account,
-        authorityAccount: fullCurrentProject.authorityAccount
+        account: preservedProgramAccount,
+        authorityAccount: preservedAuthorityAccount
       };
 
       // Save project
@@ -1346,7 +1360,7 @@ const AppContent = () => {
     }
 
     console.groupEnd();
-  }, [currentFile, fullCurrentProject, openFiles]);
+  }, [currentFile, fullCurrentProject, openFiles, currentAccount]);
 
   useEffect(() => {
     console.group('Connection Status Change Debug');
@@ -1703,17 +1717,31 @@ const AppContent = () => {
       const projectIds = projects.map(p => p.id);
       await Promise.all(projectIds.map(id => projectService.deleteProject(id)));
 
-      // Clear state
-      setProjects([]);
-      setFullCurrentProject(null);
-      setCurrentFile(null);
-      setOpenFiles([]);
-      setPendingChanges(new Map());
-
-      // Clear storage
+      // Clear storage-backed artifacts and accounts
       storage.saveProgramBinary(null);
       storage.saveProgramId(undefined);
       storage.saveCurrentAccount(null);
+
+      // Clear editor tab persistence
+      localStorage.removeItem('editorTabs');
+      localStorage.removeItem('currentEditorFile');
+
+      // Reset UI state
+      setProjects([]);
+      setFullCurrentProject(null);
+      setCurrentAccount(null);
+      setProgramId(undefined);
+      setProgramBinary(null);
+      setProgramIdl(null);
+      setBinaryFileName(null);
+      setExpandedFolders(new Set());
+      setPendingChanges(new Map());
+
+      // Switch to Explorer tab and open Home tab
+      setCurrentView('explorer');
+      const homeTab = createHomeTab();
+      setOpenFiles([homeTab]);
+      setCurrentFile(homeTab);
 
       addOutputMessage('success', 'All projects have been deleted');
     } catch (error) {

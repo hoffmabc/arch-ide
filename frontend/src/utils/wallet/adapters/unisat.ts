@@ -122,7 +122,9 @@ export class UnisatWalletAdapter implements BitcoinWalletAdapter {
       throw new Error('Wallet not connected');
     }
 
-    const signature = await window.unisat!.signMessage(message, 'ecdsa');
+    // Use BIP-322 for Taproot addresses to get Schnorr signatures
+    // Unisat supports 'bip322-simple' for Taproot (P2TR) addresses
+    const signature = await window.unisat!.signMessage(message, 'bip322-simple');
 
     return {
       signature,

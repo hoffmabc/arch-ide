@@ -301,35 +301,49 @@ interface FileExplorerProps {
 interface SectionHeaderProps {
   title: string;
   icon: React.ReactNode;
+  // Optional action buttons displayed on the right side of the header
   actions?: Array<{
     icon: React.ReactNode;
     label: string;
     onClick: () => void;
     disabled?: boolean;
+    // When set to 'primary', render a prominent, labeled button
+    emphasis?: 'primary' | 'default';
   }>;
+  // When true, actions are always visible (not just on hover)
+  alwaysShowActions?: boolean;
 }
 
-const SectionHeader = ({ title, icon, actions }: SectionHeaderProps) => {
+const SectionHeader = ({ title, icon, actions, alwaysShowActions }: SectionHeaderProps) => {
   return (
     <div className="border-b border-gray-700">
-      <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-700 group">
+      <div className="flex items-center justify-between px-2 py-1.5 group">
         <div className="flex items-center gap-1.5">
           {icon}
           <span className="text-sm font-medium">{title}</span>
         </div>
         {actions && actions.length > 0 && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-            {actions.map((action, idx) => (
-              <button
-                key={idx}
-                className="hover:bg-gray-600 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={action.onClick}
-                disabled={action.disabled}
-                title={action.label}
-              >
-                {action.icon}
-              </button>
-            ))}
+          <div className={cn("flex items-center gap-1", alwaysShowActions ? "opacity-100" : "opacity-0 group-hover:opacity-100") }>
+            {actions.map((action, idx) => {
+              const isPrimary = action.emphasis === 'primary';
+              return (
+                <button
+                  key={idx}
+                  className={cn(
+                    isPrimary
+                      ? "bg-[#F7931A] hover:bg-[#E8870E] text-gray-900 font-semibold px-2 py-1 rounded flex items-center gap-1"
+                      : "hover:bg-gray-600 p-1 rounded",
+                    "disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
+                  onClick={action.onClick}
+                  disabled={action.disabled}
+                  title={action.label}
+                >
+                  {action.icon}
+                  {isPrimary && <span className="text-xs">{action.label}</span>}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -805,17 +819,11 @@ const FileExplorer = ({
                     {
                       icon: <Play size={16} />,
                       label: "Run",
-                      onClick: () => runClientCode()
-                    },
-                    {
-                      icon: <FlaskConical size={16} />,
-                      label: "Test",
-                      onClick: () => {
-                        // This will be handled by the parent component
-                        console.log('Test clicked from FileExplorer');
-                      }
+                      onClick: () => runClientCode(),
+                      emphasis: 'primary'
                     }
                   ]}
+                  alwaysShowActions
                 />
                 {clientFiles.map((node, index) => (
                   <FileExplorerItem

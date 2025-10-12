@@ -24,7 +24,7 @@ export const FormatToggleInput: React.FC<FormatToggleInputProps> = ({
   const rawValue = format === 'base58' ? base58Value : hex;
   const displayValue = middleTruncate(rawValue, 36);
 
-  const copy = () => navigator.clipboard.writeText(displayValue);
+  const copy = () => navigator.clipboard.writeText(rawValue); // Copy full value, not truncated
 
   return (
     <div className={`space-y-2 ${className || ''}`}>

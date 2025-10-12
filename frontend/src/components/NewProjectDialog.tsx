@@ -3,22 +3,25 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { ProjectFramework } from '@/types';
 
 interface NewProjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateProject: (name: string, description: string) => void;
+  onCreateProject: (name: string, description: string, framework?: ProjectFramework) => void;
 }
 
 const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialogProps) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [framework, setFramework] = useState<ProjectFramework>('native');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onCreateProject(name, description);
+    onCreateProject(name, description, framework);
     setName('');
     setDescription('');
+    setFramework('native');
   };
 
   return (
@@ -27,7 +30,7 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
         <DialogHeader>
           <DialogTitle className="text-gray-900">Create New Project</DialogTitle>
           <DialogDescription className="text-gray-500">
-            Create a new Arch Network project with the basic template
+            Choose a framework and create a new Arch Network project
           </DialogDescription>
         </DialogHeader>
 
@@ -54,6 +57,66 @@ const NewProjectDialog = ({ isOpen, onClose, onCreateProject }: NewProjectDialog
                 onChange={(e) => setDescription(e.target.value)}
                 className="border-gray-300 bg-white text-gray-900 focus:border-gray-400 focus:ring-gray-400"
               />
+            </div>
+
+            {/* Framework Selection */}
+            <div className="grid gap-3">
+              <label className="text-gray-700 font-medium">
+                Choose a Framework
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Native Rust */}
+                <button
+                  type="button"
+                  onClick={() => setFramework('native')}
+                  className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                    framework === 'native'
+                      ? 'border-[#F7931A] bg-orange-50'
+                      : 'border-gray-300 bg-white hover:border-gray-400'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-3xl">🦀</div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">Native (Rust)</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Pure Rust program using Arch SDK
+                      </p>
+                    </div>
+                  </div>
+                  {framework === 'native' && (
+                    <div className="absolute top-2 right-2">
+                      <span className="text-[#F7931A]">✓</span>
+                    </div>
+                  )}
+                </button>
+
+                {/* Satellite */}
+                <button
+                  type="button"
+                  onClick={() => setFramework('satellite')}
+                  className={`relative p-4 rounded-lg border-2 transition-all text-left ${
+                    framework === 'satellite'
+                      ? 'border-[#F7931A] bg-orange-50'
+                      : 'border-gray-300 bg-white hover:border-gray-400'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-3xl">🛰️</div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">Satellite (Rust)</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Framework for cleaner Arch programs
+                      </p>
+                    </div>
+                  </div>
+                  {framework === 'satellite' && (
+                    <div className="absolute top-2 right-2">
+                      <span className="text-[#F7931A]">✓</span>
+                    </div>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
           <DialogFooter>

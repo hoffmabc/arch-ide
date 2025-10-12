@@ -15,10 +15,13 @@ export interface ProjectAccount {
   address: string;
 }
 
+export type ProjectFramework = 'native' | 'satellite';
+
 export interface Project {
   id: string;
   name: string;
   description?: string;
+  framework?: ProjectFramework; // Framework type (native or satellite)
   files: FileNode[];
   created: Date;
   lastModified: Date;

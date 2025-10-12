@@ -158,6 +158,19 @@ export const declareGlobalTypes = async (): Promise<Disposable> => {
         export class SignatureUtil {
           static adjustSignature(signature: Uint8Array): Uint8Array;
         }
+
+        export class ClientTransactionUtil {
+          static setupAccount(conn: RpcConnection): Promise<{
+            accountPubkey: Uint8Array;
+            accountAddress: string;
+            useWallet: boolean;
+          }>;
+          static signAndSendTransaction(
+            conn: RpcConnection,
+            message: Message,
+            useWallet: boolean
+          ): Promise<string | undefined>;
+        }
       }`,
       "file:///node_modules/@types/arch-sdk/index.d.ts"
     ),
@@ -179,6 +192,7 @@ export const declareGlobalTypes = async (): Promise<Disposable> => {
         const MessageUtil: typeof import("@saturnbtcio/arch-sdk").MessageUtil;
         const UtxoMetaUtil: typeof import("@saturnbtcio/arch-sdk").UtxoMetaUtil;
         const SignatureUtil: typeof import("@saturnbtcio/arch-sdk").SignatureUtil;
+        const ClientTransactionUtil: typeof import("@saturnbtcio/arch-sdk").ClientTransactionUtil;
 
         // Wallet Proxy for secure wallet access from sandbox
         const walletProxy: {

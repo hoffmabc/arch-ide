@@ -1,5 +1,5 @@
 import { transpile, ScriptTarget, ModuleKind } from "typescript";
-import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil, UtxoMetaUtil, SignatureUtil } from "@saturnbtcio/arch-sdk";
+import { RpcConnection, ArchConnection, PubkeyUtil, MessageUtil, UtxoMetaUtil, SignatureUtil, SanitizedMessageUtil, TransactionUtil } from "@saturnbtcio/arch-sdk";
 import { base58 } from '@scure/base';
 import { walletManager } from './wallet/walletManager';
 
@@ -222,6 +222,8 @@ export class ArchPgClient {
         (iframeWindow as any).ArchConnection = ArchConnection;
         (iframeWindow as any).PubkeyUtil = PubkeyUtil;
         (iframeWindow as any).MessageUtil = MessageUtil;
+          (iframeWindow as any).SanitizedMessageUtil = SanitizedMessageUtil;
+          (iframeWindow as any).TransactionUtil = TransactionUtil;
         (iframeWindow as any).UtxoMetaUtil = UtxoMetaUtil;
         (iframeWindow as any).SignatureUtil = SignatureUtil;
 
@@ -491,6 +493,173 @@ export class ArchPgClient {
                 reject(new Error('Timeout or user rejected signing'));
               }, 60000);
             });
+          }
+        };
+
+        // ============================================================================
+        // ClientTransactionUtil - Exposed in iframe for client.ts usage
+        // Depends on: RpcConnection, MessageUtil, PubkeyUtil, SignatureUtil, walletProxy
+        // ============================================================================
+        window.ClientTransactionUtil = {
+          setupAccount: async function(conn) {
+            try {
+              let accountPubkey;
+              let accountAddress;
+              let useWallet = false;
+
+              const PubkeyUtil = window.PubkeyUtil;
+              const ArchConnection = window.ArchConnection;
+              const toBase58 = window.toBase58;
+              const walletProxy = window.walletProxy;
+
+              if (typeof walletProxy !== 'undefined') {
+                try {
+                  const walletAvailable = await walletProxy.isAvailable();
+                  if (walletAvailable) {
+                    const accounts = await walletProxy.getAccounts();
+                    if (accounts && accounts.length > 0) {
+                      accountAddress = accounts[0];
+                      let pubkey = await walletProxy.getPublicKey();
+                      if (pubkey && pubkey.length === 66) {
+                        pubkey = pubkey.slice(2);
+                      }
+                      accountPubkey = PubkeyUtil.fromHex(pubkey);
+                      useWallet = true;
+
+                      try {
+                        await conn.requestAirdrop(accountPubkey);
+                      } catch (_) {}
+
+                      return { accountPubkey, accountAddress, useWallet };
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // Fallback: create a new account
+              const archConn = ArchConnection(conn);
+              const newAccount = await archConn.createNewAccount();
+              accountPubkey = PubkeyUtil.fromHex(newAccount.pubkey);
+              accountAddress = newAccount.address;
+              try { await conn.requestAirdrop(accountPubkey); } catch (_) {}
+              return { accountPubkey, accountAddress, useWallet };
+            } catch (error) {
+              throw new Error('[ClientTransactionUtil.setupAccount] ' + (error && error.message ? error.message : String(error)));
+            }
+          },
+
+          signAndSendTransaction: async function(conn, message, useWallet) {
+            const MessageUtil = window.MessageUtil;
+            const SanitizedMessageUtil = window.SanitizedMessageUtil;
+            const walletProxy = window.walletProxy;
+            const SignatureUtil = window.SignatureUtil;
+
+            // Build sanitized message with SDK utilities
+            const bestBlockHash = await conn.getBestBlockHash();
+            const blockhashBytes = new Uint8Array(32);
+            for (let i = 0; i < 32; i++) {
+              blockhashBytes[i] = parseInt(bestBlockHash.slice(i * 2, i * 2 + 2), 16);
+            }
+            const payer = Array.isArray(message.signers) && message.signers.length > 0 ? message.signers[0] : null;
+            const sanitizedOrError = SanitizedMessageUtil.createSanitizedMessage(
+              message.instructions,
+              payer,
+              blockhashBytes
+            );
+            if (!sanitizedOrError || typeof sanitizedOrError !== 'object' || !('header' in sanitizedOrError)) {
+              throw new Error('Failed to create sanitized message');
+            }
+            const sanitizedMessage = sanitizedOrError;
+            // Build a send-safe message where recent_blockhash is a number[] to avoid cross-realm TypedArray issues
+            const sendMessage = {
+              header: sanitizedMessage.header,
+              account_keys: sanitizedMessage.account_keys.map((k: Uint8Array) => Array.from(k)),
+              recent_blockhash: Array.from(blockhashBytes),
+              instructions: sanitizedMessage.instructions.map((ix: any) => ({
+                program_id_index: ix.program_id_index,
+                accounts: Array.isArray(ix.accounts) ? ix.accounts.slice() : [],
+                data: Array.from(ix.data)
+              }))
+            };
+
+            // Hash the sanitized message using SDK util (returns ASCII-encoded hex bytes)
+            const messageHash = SanitizedMessageUtil.hash(sanitizedMessage);
+            const hashHex = new TextDecoder().decode(messageHash);
+
+            if (typeof walletProxy !== 'undefined' && useWallet) {
+              try {
+                const signatureStr = await walletProxy.signMessage(hashHex, 'bip322-simple');
+
+                // Robust decode: handle base64 or hex strings from different wallets
+                const isHex = (s) => /^[0-9a-fA-F]+$/.test(s) && (s.length % 2 === 0);
+                const fromHex = (s) => {
+                  const out = new Uint8Array(s.length / 2);
+                  for (let i = 0; i < s.length; i += 2) {
+                    out[i / 2] = parseInt(s.slice(i, i + 2), 16);
+                  }
+                  return out;
+                };
+                const isBase64 = (s) => {
+                  try { return btoa(atob(s)) === s; } catch { return false; }
+                };
+
+                let signature = isHex(signatureStr)
+                  ? fromHex(signatureStr)
+                  : isBase64(signatureStr)
+                    ? Uint8Array.from(atob(signatureStr), c => c.charCodeAt(0))
+                    : (() => { throw new Error('Unknown signature encoding from wallet'); })();
+                if (signature.length === 65) {
+                  signature = signature.slice(0, 64);
+                }
+                if (typeof SignatureUtil !== 'undefined') {
+                  try { signature = SignatureUtil.adjustSignature(signature); } catch (_) {}
+                }
+
+                const transaction = { version: 0, signatures: [Array.from(signature)], message: sendMessage };
+                try {
+                  // Basic validation logs
+                  console.log('[ClientTransactionUtil] header:', sanitizedMessage.header);
+                  console.log('[ClientTransactionUtil] account_keys len:', sanitizedMessage.account_keys.length);
+                  console.log('[ClientTransactionUtil] recent_blockhash len:', sanitizedMessage.recent_blockhash?.length);
+                  console.log('[ClientTransactionUtil] signatures[0] len:', signature.length);
+                  try {
+                    const firstIx = sanitizedMessage.instructions?.[0];
+                    if (firstIx) {
+                      console.log('[ClientTransactionUtil] first ix program_id_index:', firstIx.program_id_index);
+                      console.log('[ClientTransactionUtil] first ix accounts:', firstIx.accounts);
+                    }
+                  } catch {}
+                  // Preview (numeric arrays) for server-side schema check
+                  const txPreview = TransactionUtil.toNumberArray(transaction);
+                  console.log('[ClientTransactionUtil] TX preview:', JSON.stringify(txPreview).slice(0, 800) + '...');
+                } catch {}
+
+                // Try primary shape
+                try {
+                  return await conn.sendTransaction(transaction);
+                } catch (e1) {
+                  // Fallback: version 1 with number[] signature
+                  try {
+                    const txV1 = { version: 1, signatures: [Array.from(signature)], message: sendMessage };
+                    console.log('[ClientTransactionUtil] Retrying with version=1 and number[] signature');
+                    return await conn.sendTransaction(txV1);
+                  } catch (e2) {
+                    // Fallback: version 1 with Uint8Array signature (in case server accepts Uint8Array)
+                    try {
+                      const txV1U8 = { version: 1, signatures: [signature], message: sendMessage };
+                      console.log('[ClientTransactionUtil] Retrying with version=1 and Uint8Array signature');
+                      return await conn.sendTransaction(txV1U8);
+                    } catch (e3) {
+                      throw e3;
+                    }
+                  }
+                }
+              } catch (error) {
+                throw new Error('[ClientTransactionUtil.signAndSendTransaction] ' + (error && error.message ? error.message : String(error)));
+              }
+            } else {
+              return undefined;
+            }
           }
         };
       `;

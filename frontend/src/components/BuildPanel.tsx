@@ -345,17 +345,20 @@ import Identicon from './Identicon';
               accept="application/json"
               onChange={handleImportKeypair}
             />
-            {currentAccount && currentAccount.pubkey && project?.account ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <FormatToggleInput label="Program ID" hex={currentAccount.pubkey} />
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
-                  Not deployed
-                </code>
-              </div>
-            )}
+            {(() => {
+              const programPubkeyHex = currentAccount?.pubkey || project?.account?.pubkey;
+              return programPubkeyHex ? (
+                <div className="flex items-center gap-2 min-w-0" data-tutorial="keypair-generated">
+                  <FormatToggleInput label="Program ID" hex={programPubkeyHex} />
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <code className="text-xs bg-gray-900 p-2 rounded flex-1 overflow-hidden">
+                    Not deployed
+                  </code>
+                </div>
+              );
+            })()}
           </StepCard>
 
           {/* Step 2: Authority */}

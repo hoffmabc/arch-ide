@@ -1,5 +1,5 @@
 // Xverse Wallet Adapter
-import { request } from 'sats-connect';
+import { request, AddressPurpose } from 'sats-connect';
 import { BitcoinWalletAdapter, BitcoinWalletAccount, SignMessageResponse, SendBitcoinResponse } from '../../../types/wallet';
 
 export class XverseWalletAdapter implements BitcoinWalletAdapter {
@@ -35,11 +35,11 @@ export class XverseWalletAdapter implements BitcoinWalletAdapter {
       console.log(`[Xverse] Connecting to ${xverseNetwork} with Taproot addresses...`);
 
       // Use sats-connect library to connect
-      // Request payment purpose which gives Taproot (P2TR) addresses
+      // Request Ordinals purpose which gives Taproot (P2TR) addresses for Schnorr signatures
       const response = await request('wallet_connect', {
-        addresses: ['payment'], // Payment addresses are Taproot in Xverse
+        addresses: [AddressPurpose.Ordinals], // Ordinals addresses are Taproot
         message: 'Connect to Arch IDE',
-        network: xverseNetwork
+        network: xverseNetwork as any
       });
 
       console.log('[Xverse] Connection response:', response);
@@ -52,19 +52,19 @@ export class XverseWalletAdapter implements BitcoinWalletAdapter {
         throw new Error('No addresses received from Xverse wallet');
       }
 
-      // Find the payment address (Taproot)
-      const paymentAddress = response.result.addresses.find(
-        (addr: any) => addr.purpose === 'payment'
+      // Find the ordinals address (Taproot/P2TR for Schnorr signatures)
+      const ordinalsAddress = response.result.addresses.find(
+        (addr: any) => addr.purpose === AddressPurpose.Ordinals
       );
 
-      if (!paymentAddress) {
-        throw new Error('No payment address found in Xverse wallet');
+      if (!ordinalsAddress) {
+        throw new Error('No ordinals address found in Xverse wallet');
       }
 
-      // Xverse payment addresses are P2TR (Taproot)
+      // Xverse ordinals addresses are P2TR (Taproot) with Schnorr signatures
       this.accounts = [{
-        address: paymentAddress.address,
-        publicKey: paymentAddress.publicKey,
+        address: ordinalsAddress.address,
+        publicKey: ordinalsAddress.publicKey,
         type: 'p2tr' // Taproot
       }];
 
@@ -116,9 +116,11 @@ export class XverseWalletAdapter implements BitcoinWalletAdapter {
     }
 
     try {
+      // Use BIP-322 for Taproot addresses to get Schnorr signatures
       const response = await request('signMessage', {
         address: this.accounts[0].address,
-        message
+        message,
+        protocol: 'BIP322' as any // Explicitly request BIP-322 for Taproot/Schnorr signatures
       });
 
       if (response.status === 'error') {
@@ -144,7 +146,7 @@ export class XverseWalletAdapter implements BitcoinWalletAdapter {
         recipients: [
           {
             address: toAddress,
-            amountSats: BigInt(amount)
+            amount: amount
           }
         ]
       });

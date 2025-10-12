@@ -59,6 +59,9 @@ apl-associated-token-account = "0.5.13"
 apl-token = "0.5.13"
 apl-token-metadata = "0.5.13"
 
+# Satellite framework (pre-compiled in parent Cargo.toml)
+satellite-lang = "0.31.3"
+
 # Core serialization/encoding
 borsh = "^1.5.3"
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
@@ -113,6 +116,9 @@ arch_program = "0.5.13"
 apl-associated-token-account = "0.5.13"
 apl-token = "0.5.13"
 apl-token-metadata = "0.5.13"
+
+# Satellite framework (published crate)
+satellite-lang = "0.31.3"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
