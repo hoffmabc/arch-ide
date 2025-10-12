@@ -645,6 +645,13 @@ const FileExplorer = ({
   }, [addOutputMessage]);
 
   useEffect(() => {
+    // Replay persisted console history on mount so it appears before live logs
+    try {
+      ArchPgClient.replayConsoleHistory((level, message) => addOutputMessage(level as any, message));
+    } catch {}
+  }, [addOutputMessage]);
+
+  useEffect(() => {
     console.log('🔍 FileExplorer - expandedFolders changed:', Array.from(expandedFolders));
     console.log('🔍 FileExplorer - expandedFolders size:', expandedFolders.size);
   }, [expandedFolders]);
