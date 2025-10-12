@@ -1193,6 +1193,31 @@ const AppContent = () => {
   };
 
   const addOutputMessage = (type: OutputMessage['type'], content: string, link?: string, isLoading: boolean = false) => {
+    // Normalize console content to fix escaped newlines and mojibake (mis-decoded UTF-8)
+    const normalizeConsoleMessage = (raw: string): string => {
+      try {
+        // 1) Convert literal "\n" sequences to real newlines
+        let normalized = raw.replace(/\\n/g, '\n');
+
+        // 2) Attempt to fix mojibake like "â" → "✓" and "ð\u009f\u0093\u009d" → "📝"
+        // Heuristic: only attempt when we see typical mojibake indicator chars
+        const looksMojibake = /[ÃÂâð]/.test(normalized);
+        if (looksMojibake) {
+          const bytes = Uint8Array.from(Array.from(normalized, ch => ch.charCodeAt(0)));
+          try {
+            normalized = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          } catch {
+            // If strict decode fails, try non-fatal
+            normalized = new TextDecoder('utf-8').decode(bytes);
+          }
+        }
+
+        return normalized;
+      } catch {
+        return raw;
+      }
+    };
+
     setOutputMessages(prev => {
       const messages = [...prev];
 
@@ -1218,7 +1243,7 @@ const AppContent = () => {
       // Add the new message with commandId if applicable
       return [...messages, {
         type,
-        content,
+        content: normalizeConsoleMessage(content),
         timestamp: new Date(),
         isLoading,
         commandId, // Add commandId to track related messages
