@@ -35,10 +35,10 @@ class BitcoinWalletManager {
     // Try to restore previous connection
     this.restoreConnection();
 
-    // If not restored and exactly one wallet is available, auto-connect on testnet
+    // If not restored, auto-connect to the first available wallet on testnet
     setTimeout(async () => {
       try {
-        if (!this.isConnected && this.state.availableWallets.length === 1) {
+        if (!this.isConnected && this.state.availableWallets.length > 0) {
           const preferred = this.state.availableWallets[0];
           console.log('[WalletManager] Auto-connecting to', preferred.name, 'on testnet');
           await this.connect(preferred.name, 'testnet');

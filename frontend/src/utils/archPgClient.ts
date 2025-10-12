@@ -31,40 +31,6 @@ interface ProjectFile {
 export class ArchPgClient {
   private static _IframeWindow: Window | null = null;
   private static _isClientRunning = false;
-  private static _CONSOLE_HISTORY_KEY = 'arch-ide-console-history';
-
-  private static _loadConsoleHistory(): Array<{ level: string; message: string; time: number }> {
-    try {
-      const raw = localStorage.getItem(this._CONSOLE_HISTORY_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private static _appendConsoleHistory(entry: { level: string; message: string }) {
-    try {
-      const history = this._loadConsoleHistory();
-      history.push({ level: entry.level, message: entry.message, time: Date.now() });
-      // Keep last 500 entries
-      const trimmed = history.slice(-500);
-      localStorage.setItem(this._CONSOLE_HISTORY_KEY, JSON.stringify(trimmed));
-    } catch {
-      // ignore storage errors
-    }
-  }
-
-  // Public helper to replay persisted console history without executing code
-  static replayConsoleHistory(onMessage: (type: string, message: string) => void) {
-    try {
-      const prev = ArchPgClient._loadConsoleHistory();
-      if (prev && prev.length) {
-        prev.forEach((e) => onMessage(e.level || 'info', e.message));
-      }
-    } catch {}
-  }
 
   static async execute({ fileName, code, onMessage }: ClientParams) {
     console.log('ArchPgClient.execute called', this._isClientRunning);
@@ -91,12 +57,6 @@ export class ArchPgClient {
     };
 
     try {
-      // Restore console history on run (persists across page refresh)
-      const prev = ArchPgClient._loadConsoleHistory();
-      if (prev.length > 0) {
-        prev.forEach((e) => onMessage(e.level || 'info', e.message));
-      }
-
       const iframeWindow = this._getIframeWindow();
       const iframeDocument = iframeWindow.document;
 
@@ -135,7 +95,6 @@ export class ArchPgClient {
             if (data.type === 'console') {
               console.log('Received console message:', data);
               onMessage(data.level || 'info', data.message || '');
-              ArchPgClient._appendConsoleHistory({ level: data.level || 'info', message: data.message || '' });
             } else if (data.type === 'completion') {
               console.log('Execution completed successfully');
               onMessage('success', 'Code execution completed');
@@ -143,7 +102,6 @@ export class ArchPgClient {
             } else if (data.type === 'error') {
               console.error('Execution error:', data.message);
               onMessage('error', data.message || 'Unknown error');
-              ArchPgClient._appendConsoleHistory({ level: 'error', message: data.message || 'Unknown error' });
               cleanup();
             }
             // ============================================================================
