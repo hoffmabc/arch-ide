@@ -69,4 +69,5 @@ export type SerializedBitcoinWallet = Pick<
   'state'
 > & {
   walletName: string | null;
+  network?: 'mainnet' | 'testnet' | 'regtest';
 };

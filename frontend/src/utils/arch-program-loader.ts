@@ -282,7 +282,7 @@ export class ArchProgramLoader {
           // Connect wallet if not already connected
           if (!walletManager.isConnected) {
             const firstWallet = walletManager.availableWallets[0];
-            await walletManager.connect(firstWallet.name);
+            await walletManager.connect(firstWallet.name, 'testnet');
           }
 
           // Send Bitcoin using the wallet manager

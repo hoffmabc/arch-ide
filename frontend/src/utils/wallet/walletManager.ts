@@ -34,6 +34,19 @@ class BitcoinWalletManager {
 
     // Try to restore previous connection
     this.restoreConnection();
+
+    // If not restored, auto-connect to the first available wallet on testnet
+    setTimeout(async () => {
+      try {
+        if (!this.isConnected && this.state.availableWallets.length > 0) {
+          const preferred = this.state.availableWallets[0];
+          console.log('[WalletManager] Auto-connecting to', preferred.name, 'on testnet');
+          await this.connect(preferred.name, 'testnet');
+        }
+      } catch (e) {
+        console.log('[WalletManager] Auto-connect skipped:', (e as any)?.message || e);
+      }
+    }, 0);
   }
 
   /** Get current state */
@@ -85,6 +98,7 @@ class BitcoinWalletManager {
       const serialized: SerializedBitcoinWallet = {
         state: this.state.state,
         walletName: this.state.currentWallet?.name || null,
+        network: this.state.currentWallet?.network,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
     } catch (error) {
@@ -108,7 +122,7 @@ class BitcoinWalletManager {
         if (wallet) {
           // Try to reconnect silently
           try {
-            await this.connect(wallet.name);
+            await this.connect(wallet.name, serialized.network ?? 'testnet');
           } catch (error) {
             console.log('Failed to restore wallet connection:', error);
             // Clear stored state if reconnection fails
@@ -133,7 +147,7 @@ class BitcoinWalletManager {
       this.updateState({ state: 'connecting', currentWallet: wallet });
 
       // Pass network to wallet connect method
-      await wallet.connect(network);
+      await wallet.connect(network ?? 'testnet');
 
       // Use accounts from wallet adapter directly (already set in connect())
       // Only call getAccounts if no accounts are set
