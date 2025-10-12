@@ -1802,6 +1802,15 @@ const AppContent = () => {
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      ArchPgClient.replayConsoleHistory((type, message) => {
+        const mapped = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'command' ? 'command' : 'info';
+        addOutputMessage(mapped as any, message);
+      });
+    } catch {}
+  }, []);
+
   return (
     <div className="h-screen flex flex-col" style={{
       backgroundColor: theme.colors.default.bgPrimary,
