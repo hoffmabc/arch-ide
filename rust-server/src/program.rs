@@ -54,13 +54,14 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-arch_program = "0.5.13"
-apl-associated-token-account = "0.5.13"
-apl-token = "0.5.13"
-apl-token-metadata = "0.5.13"
+arch_program = "0.5.15"
+apl-associated-token-account = { version = "0.5.15", features = ["no-entrypoint"] }
+apl-token = { version = "0.5.15", features = ["no-entrypoint"] }
+apl-token-metadata = { version = "0.5.15", features = ["no-entrypoint"] }
 
 # Satellite framework (pre-compiled in parent Cargo.toml)
-satellite-lang = "0.31.3"
+satellite-lang = "0.31.5"
+satellite-apl = "0.31.5"
 
 # Core serialization/encoding
 borsh = "^1.5.3"
@@ -112,13 +113,14 @@ overflow-checks = true
 incremental = true
 
 [dependencies]
-arch_program = "0.5.13"
-apl-associated-token-account = "0.5.13"
-apl-token = "0.5.13"
-apl-token-metadata = "0.5.13"
+arch_program = "0.5.15"
+apl-associated-token-account = { version = "0.5.15", features = ["no-entrypoint"] }
+apl-token = { version = "0.5.15", features = ["no-entrypoint"] }
+apl-token-metadata = { version = "0.5.15", features = ["no-entrypoint"] }
 
 # Satellite framework (published crate)
-satellite-lang = "0.31.3"
+satellite-lang = "0.31.5"
+satellite-apl = "0.31.5"
 
 # Core serialization/encoding
 borsh = { version = "1.5.1", features = ["derive"] }
